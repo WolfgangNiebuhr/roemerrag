@@ -1,0 +1,48 @@
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: rag-api
+  namespace: experimental
+spec:
+  replicas: 1
+  selector:
+    matchLabels:
+      app: rag-api
+  template:
+    metadata:
+      labels:
+        app: rag-api
+    spec:
+      containers:
+      - name: rag-api
+        image: python:3.9-slim
+        command: ["/bin/bash", "/app/entrypoint.sh"]
+
+        ports:
+        - containerPort: 5500
+        volumeMounts:
+          - name: config-volume
+            mountPath: /app
+          - name: security-volume
+            mountPath: /security
+
+      volumes:
+        - name: config-volume
+          configMap:
+            name: rag-config
+        - name: security-volume
+          configMap:
+            name: security-config
+---
+apiVersion: v1
+kind: Service
+metadata:
+  name: rag-api
+  namespace: experimental
+spec:
+  selector:
+    app: rag-api
+  ports:
+    - protocol: TCP
+      port: 5600
+      targetPort: 5600

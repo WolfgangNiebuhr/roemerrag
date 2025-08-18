@@ -1,0 +1,111 @@
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: postgres
+  namespace: experimental
+spec:
+  replicas: 1
+  selector:
+    matchLabels:
+      app: postgres
+  template:
+    metadata:
+      labels:
+        app: postgres
+    spec:
+      volumes:
+        - name: pgvector-artifacts
+          emptyDir: {}
+        - name: init-scripts
+          configMap:
+            name: postgres-init-scripts
+        - name: pgdata
+          persistentVolumeClaim:
+            claimName: pgvector-pvc
+      initContainers:
+        - name: install-pgvector
+          image: postgres:latest
+          command:
+          - /bin/bash
+          - -c
+          - |
+            apt-get update && \
+            apt-get install -y git postgresql-server-dev-17 build-essential && \
+            git clone https://github.com/pgvector/pgvector.git && \
+            cd pgvector && \
+            make && \
+            make DESTDIR=/pgvector-artifacts install && \
+            echo "===== vector.control content =====" && \
+            cat /pgvector-artifacts/usr/share/postgresql/17/extension/vector.control && \
+            echo "===== End of vector.control ====="
+          volumeMounts:
+            - name: pgvector-artifacts
+              mountPath: /pgvector-artifacts
+      containers:
+      - name: postgres
+        image: postgres:latest
+        env:
+        - name: POSTGRES_USER
+          value: admin
+        - name: POSTGRES_PASSWORD
+          value: admin
+        - name: POSTGRES_DB
+          value: vector_db
+        - name: PGDATA
+          value: /var/lib/postgresql/data/pgdata
+        volumeMounts:
+        - mountPath: /docker-entrypoint-initdb.d
+          name: init-scripts
+        - name: pgvector-artifacts
+          mountPath: /usr/lib/postgresql/17/lib/vector.so
+          subPath: usr/lib/postgresql/17/lib/vector.so
+        - name: pgvector-artifacts
+          mountPath: /usr/share/postgresql/17/extension/vector.control
+          subPath: usr/share/postgresql/17/extension/vector.control
+        - name: pgvector-artifacts
+          mountPath: /usr/share/postgresql/17/extension/vector--0.8.0.sql
+          subPath: usr/share/postgresql/17/extension/vector--0.8.0.sql
+        - name: pgdata
+          mountPath: /var/lib/postgresql/data
+        ports:
+        - containerPort: 5432
+
+
+---
+apiVersion: v1
+kind: ConfigMap
+metadata:
+  name: postgres-init-scripts
+  namespace: experimental
+data:
+  init.sql: |
+    -- Datei: init.sql
+      CREATE EXTENSION IF NOT EXISTS vector;
+      
+    -- Tabelle für Vektoren mit einer festen Dimension von 3
+      CREATE TABLE IF NOT EXISTS vectors (
+      id SERIAL PRIMARY KEY,
+      chunk_id TEXT NOT NULL,
+      embedding TEXT NOT NULL,
+      vector VECTOR(1024),
+      metadata TEXT,
+      UNIQUE (chunk_id, embedding)
+      );
+      
+      -- Index für die Suche mit euklidischer Distanz
+      -- CREATE INDEX IF NOT EXISTS vectors_vector_idx ON vectors USING ivfflat (vector) WITH (lists = 100);
+      CREATE INDEX IF NOT EXISTS vectors_vector_idx ON vectors USING hnsw (vector vector_l2_ops) ;
+---
+apiVersion: v1
+kind: Service
+metadata:
+  name: postgres
+  namespace: experimental
+spec:
+  selector:
+    app: postgres
+  ports:
+    - protocol: TCP
+      port: 5432
+      targetPort: 5432
+  type: ClusterIP

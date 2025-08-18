@@ -1,0 +1,1 @@
+curl -X POST http://localhost:5600/process -H "Content-Type: application/json" -d "{\"query\": \"Wer beherrschte die westliche Hälfte des Mittelmeeres?\", \"metric\": \"cosine\", \"num_results\": 5}"

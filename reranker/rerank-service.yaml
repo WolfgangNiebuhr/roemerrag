@@ -1,0 +1,13 @@
+apiVersion: v1
+kind: Service
+metadata:
+  name: reranker
+  namespace: experimental  
+spec:
+  selector:
+    app: reranker
+  ports:
+    - protocol: TCP
+      port: 6000
+      targetPort: 5000
+  type: ClusterIP

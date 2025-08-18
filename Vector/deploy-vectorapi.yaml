@@ -1,0 +1,57 @@
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: vector-api
+  namespace: experimental
+spec:
+  replicas: 1
+  selector:
+    matchLabels:
+      app: vector-api
+  template:
+    metadata:
+      labels:
+        app: vector-api
+    spec:
+      containers:
+      - name: vector-api
+        image: python:3.9-slim
+        command: ["/bin/bash", "/app/entrypoint.sh"]
+        env:
+        - name: DB_HOST
+          value: postgres
+        - name: DB_PORT
+          value: "5432"
+        - name: DB_USER
+          value: admin
+        - name: DB_PASSWORD
+          value: admin
+
+        ports:
+        - containerPort: 5500
+        volumeMounts:
+          - name: config-volume
+            mountPath: /app
+          - name: security-volume
+            mountPath: /security
+
+      volumes:
+        - name: config-volume
+          configMap:
+            name: vectorapi-config
+        - name: security-volume
+          configMap:
+            name: security-config
+---
+apiVersion: v1
+kind: Service
+metadata:
+  name: vector-api
+  namespace: experimental
+spec:
+  selector:
+    app: vector-api
+  ports:
+    - protocol: TCP
+      port: 5500
+      targetPort: 5500

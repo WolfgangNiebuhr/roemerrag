@@ -1,0 +1,38 @@
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: reranker
+  namespace: experimental  
+spec:
+  replicas: 1
+  selector:
+    matchLabels:
+      app: reranker
+  template:
+    metadata:
+      labels:
+        app: reranker
+    spec:
+      containers:
+      - name: reranker-container
+        image: python:3.9-slim-buster
+        ports:
+        - containerPort: 5000
+        env:
+        - name: RERANK_MODEL
+          value: "cross-encoder/ms-marco-MiniLM-L6-v2"
+        - name: SSL_CERT_FILE
+          value: "/etc/ssl/certs/ca-certificates.crt"
+        volumeMounts:
+        - name: config-volume
+          mountPath: /app
+        - name: security-volume
+          mountPath: /security
+        command: ["/bin/bash", "/app/entrypoint.sh"]
+      volumes:
+      - name: config-volume
+        configMap:
+          name: reranker-config
+      - name: security-volume
+        configMap:
+          name: security-config
