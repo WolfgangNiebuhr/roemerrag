@@ -74,6 +74,15 @@ wsl --import podman-machine-default D:\wsl\podman-machine-default D:\wsl\podman-
 # VM wieder starten
 podman machine start
 
+# Gestoppten Pod wieder starten
+podman pod start vectorpod
+
+# Mit DB verbinden
+podman exec -it vectordb psql -U admin -d vector_db
+
+# Vector-Api container neu starten
+podman restart vector-api
+
 
 ############################
 

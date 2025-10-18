@@ -10,7 +10,7 @@ GATEWAY_URL = "https://aigateway.api.dev.datev.de/datev/v1/openai/deployments/gp
 
 OLLAMA_HOST = "http://localhost:11434"
 OLLAMA_CHAT_URL = f"{OLLAMA_HOST}/api/chat"
-OLLAMA_MODEL = "phi3:mini"
+OLLAMA_MODEL = "gemma3:4b"
 
 def _headers():
     return {
