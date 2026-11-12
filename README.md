@@ -1,119 +1,53 @@
 # knowledge-experimental-ki
-Experimentelle KI-Komponenten in Kubernetes
 
-## Umgebung am MEAP einrichten
+Experimentelle KI-Komponenten lokal mit Podman ausführen.
 
-Installieren aus dem Softwarecenter:
-- tkgi
-- kubectl
-- Python
+## Voraussetzungen
 
-CommandShell-Window vorbereiten (DEV-Umgebung):
+- Podman mit laufender Podman-Machine (unter Windows)
+- Python für Import- und Analysewerkzeuge
+- Ollama, falls lokale Sprach- oder Embedding-Modelle verwendet werden
 
-```bash
-set no_proxy=.k8s.dev.datev.de
-set https_proxy=www-proxy-p-wl-iap.services.datev.de:8880
-set all_proxy=socks5://socks-proxy-p-iap.services.datev.de:1080
+## Gesamten Podman-Stack starten
+
+Die Befehle sind f?r PowerShell im Projektstamm gedacht. Voraussetzung f?r den Reranker ist ein Windows-NVIDIA-Treiber mit WSL2-CUDA-Unterst?tzung und eine laufende Podman-Machine. Der Stack besteht aus PostgreSQL/pgvector, Vector-API, Ollama, RAG-API und Reranker. Die Datenbank und die Modelle bleiben in Named Volumes erhalten.
+
+### Images bauen
+
+```powershell
+podman machine start
+podman build -t vectordb:local -f Vector/Dockerfile Vector
+podman build -t vectorapi:local -f Vector/Dockerfile.api Vector
+podman build -t rag-api:local -f rag/Dockerfile rag
+podman build -t reranker:local -f reranker/Dockerfile reranker
 ```
 
-Einmal pro Session:
+### Vector-Datenbank und API starten
 
-login-k8s.py ausführen im Command-Window
-
-## Deployment auf kubernetes
-
-* Die Setups im Verzeichnis global-setup müssen zuerst ausgeführt werden, diese werden von anderen ggf
-gemeinsam genutzt
-* registry-setup ist nicht nutzbar, in der entstehenden registry kann man zwar Images speichern, diese sind jedoch wegen des fehlenden https-Zugangs nicht in den Deployments nutzbar. Dazu bäuchte es entweder zum pod-dnsnamen passende zertikate oder eine Einstellung am zugrundeliegenden worker-node
-* Zugriff auf die Services bekommt man im Moment nur via port-forward, etwa
-```bash
-kubectl port-forward -n experimental service/reranker 6000:6000
-```
-port-forward ist ein blocking-call, man braucht für jeden weiterzuleitenden port ein eigenes cmd-Fenster
-
-Ports:
-* (5000: Container-registry)
-* 5432: Postgres "nativ"
-* 5500: Vektor-api
-* 5600: rag-api
-* 6000: reranker-api
-* 11434: Ollama, nutzbar mit passenden Modellen für Embedding und Textgenerierung
-
-Konfiguration:
-* Embedding snowflake-arctic-embed2 , Vektorgröße 1024, via Ollama
-* LLM : phi3:mini  , via Ollama
-  * phi-3:mini ist auf Faktenwissen, Code und kurze Dialoge optimiert.
-* Pgvector-DB: Index mit hnsw , euklidischer Abstand
-* Reranker: cross-encoder/ms-marco-MiniLM-L6-v2 via Huggingface-Library
-* rag-api : bindet alle komponenten zusammen, anfragen an port 5600, Endpunkt /process , parameter query, metric, num_results
-
-## Debugging
-
-Wie geht es dem Cluster allgemein:
-
-```bash
-kubectl top pods --all-namespaces
+```powershell
+podman pod create --name vectorpod -p 5432:5432 -p 5500:5500
+podman volume create pgvector-data
+podman run -d --name vectordb --pod vectorpod -e POSTGRES_USER=admin -e POSTGRES_PASSWORD=admin -e POSTGRES_DB=vector_db -e PGDATA=/var/lib/postgresql/data/pgdata -v pgvector-data:/var/lib/postgresql/data localhost/vectordb:local
+podman run -d --name vector-api --pod vectorpod -e DB_HOST=127.0.0.1 -e DB_PORT=5432 -e DB_USER=admin -e DB_PASSWORD=admin -e POSTGRES_DB=vector_db localhost/vectorapi:local
 ```
 
-viele Fehler sieht man in den logs:
-```bash
-kubectl logs -n experimental <podname>
-``` 
+### Einzelne Dienste und Details
 
-In die Datenbank kann man auch reinsehen:
+Der vollst?ndige Build- und Startablauf steht oben. Die Vector-spezifischen Hinweise und alternative Einzelstarts sind in [Vector/README.txt](Vector/README.txt) beschrieben. Die lokalen RAG- und Reranker-Dateien liegen in [rag](rag) und [reranker](reranker); Kubernetes-Manifeste sind in deren `k8s`-Unterverzeichnissen.
 
-```bash
-kubectl exec -it <postgres-pod-name> -n experimental -- psql -U admin -d vector_db
-```
-Ersetze <postgres-pod-name> durch den Namen des PostgreSQL-Pods.
+### NVIDIA-GPU unter Windows mit WSL2 und Podman
 
-Backup auf lokales System.
-```bash
-kubectl exec -it <postgres-pod-name> -n experimental -- pg_dump -U admin -d vector_db > mydb_backup.sql
-```
+Der Windows-NVIDIA-Treiber stellt CUDA f?r WSL2 bereit. In dieser Umgebung ist die RTX 4060 in der Podman-Machine ?ber `/dev/dxg` sichtbar; der Treiberpfad `/usr/lib/wsl/lib` muss in den Container eingebunden werden. Der Reranker-Startbefehl oben reicht das Ger?t durch und bindet die Treiberbibliotheken read-only ein. Eine zus?tzliche Installation des Linux-NVIDIA-Treibers in WSL oder im Container ist nicht erforderlich.
 
-Backup wieder herstellen:
-Datei in Pod kopieren und dort ausführen:
-```bash
-kubectl cp mydb_backup.sql experimental/<postgres-pod-name>:/tmp/mydb_backup.sql
-kubectl exec -it <postgres-pod-name> -n experimental -- bash
-psql -U admin -d vector_db -f /tmp/mydb_backup.sql
+Voraussetzungen und Pr?fung:
+
+1. Aktuellen NVIDIA-Windows-Treiber mit WSL-CUDA-Unterst?tzung installieren.
+2. WSL2 verwenden und die Podman-Machine starten (`podman machine start`).
+3. In der Podman-Machine pr?fen, dass `/dev/dxg` und `/usr/lib/wsl/lib/libcuda.so.1` vorhanden sind.
+4. Nach dem Start des Rerankers GPU-Erkennung pr?fen:
+
+```powershell
+podman exec reranker python -c "import torch; print('CUDA verf?gbar:', torch.cuda.is_available()); print('Ger?te:', torch.cuda.device_count()); print('GPU:', torch.cuda.get_device_name(0) if torch.cuda.is_available() else 'keine')"
 ```
 
-
-Man kann im psql auch die Größe der Datenbank abfragen:
-```sql
-SELECT pg_size_pretty(pg_database_size(current_database())) AS db_size;
-```
-(Zur Einschätzung: Die Testdatenbank mit Band 1 (pg3060.txt) hat eine Größe von 20 MB)
-
-bzw pro Tabelle: Gesamtspeicher, Datenspeicher, Indexgröße)
-
-```sql
-SELECT
-    relname AS table_name,
-    pg_size_pretty(pg_total_relation_size(relid)) AS total_size,
-    pg_size_pretty(pg_relation_size(relid)) AS data_size,
-    pg_size_pretty(pg_total_relation_size(relid) - pg_relation_size(relid)) AS index_size
-FROM pg_catalog.pg_statio_user_tables
-ORDER BY pg_total_relation_size(relid) DESC;
-```
-
-Für die Daten zu Band 1 (pg3060.txt) und für alle 6 Bände sieht das so aus:
-
-| table_name | total_size | data_size | index_size |
-|------------|------------|-----------|------------|
-| vectors    | 12 MB      | 768 kB    | 12 MB      |
-| vectors (alle) | 129 MB | 8568 kB | 121 MB |
-
-**Ollama:**
-
-geladene Modelle abfragen (Voraussetzung: port-forward läuft):
-```bash
-curl http://localhost:11434/api/tags
-```
-
-Modell nachladen (Voraussetzung: port-forward läuft):
-```bash
-curl http://localhost:11434/api/pull -d "{\"name\": \"mixtral\"}" -H "Content-Type: application/json"
-```
+Erwartet werden `CUDA verf?gbar: True` und als Ger?t die NVIDIA-Grafikkarte. Falls `/dev/dxg` in der Podman-Machine fehlt, WSL aktualisieren (`wsl --update`) und Windows neu starten. Die Host-Treiber m?ssen mit der CUDA-Version des installierten PyTorch kompatibel sein.

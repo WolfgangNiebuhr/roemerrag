@@ -15,7 +15,7 @@ NUM_RESULTS = 5
 
 ## Generation
 OLLAMA_ANSWER_URL = "http://localhost:11434/api/generate"
-ANSWER_MODEL_NAME = "phi3:mini"
+ANSWER_MODEL_NAME = "gemma4:e4b"
 
 QUERY = "Wer beherrschte die westliche Hälfte des Mittelmeeres?"
 
