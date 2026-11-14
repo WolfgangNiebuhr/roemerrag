@@ -53,7 +53,7 @@ Die Importkante zur Vector-API beschreibt die implementierte Abhängigkeit. Die 
 | RAG-API | Fragebeantwortung orchestrieren; Kontext und Quellen-IDs zusammenstellen | `POST /process`; ausgehend Ollama und `/search` | Python-Code in [rag-configmap.yaml](../rag/k8s/rag-configmap.yaml) |
 | Vector-API | Chunks verwalten und nach Vektorähnlichkeit suchen; Datenbankzugriff kapseln | HTTP/JSON, SQL über psycopg2 | Deploymentcode in [vectorapi-configmap.yaml](../Vector/k8s/vectorapi-configmap.yaml); abweichende lokale Variante [app.py](../Vector/app.py) |
 | Vektorspeicher | Chunks, Modell-/Variantenkennung und 1024-dimensionale Vektoren persistent halten | PostgreSQL-Protokoll, Tabelle `vectors` | [init.sql](../Vector/init.sql), [deploy-vectordb.yaml](../Vector/k8s/deploy-vectordb.yaml) |
-| Ollama | Embedding- und Sprachmodelle ausführen | `/api/embeddings`, `/api/generate`, `/api/chat` | [ollama.yaml](../Ollama/ollama.yaml) |
+| Ollama | Embedding- und Sprachmodelle ausführen | `/api/embeddings`, `/api/generate`, `/api/chat` | [ollama.yaml](../Ollama/k8s/ollama.yaml) |
 | Reranker | Frage-Dokument-Paare bewerten und absteigend sortieren | `POST /rerank`, `GET /health` | [configmap.yaml](../reranker/k8s/configmap.yaml), [reranker-local.py](../reranker/reranker-local.py) |
 | Lokale Werkzeuge | RAG-Ablauf lokal ausführen, Retrieval und Modelle untersuchen | direkte HTTP-Aufrufe; JSON- und Textdateien | [interact.py](../interact.py), [analyze.py](../analyze.py), `Vector/analyze_data.py`, `Ingest/chunktest*.py`, Testskripte |
 
