@@ -1,5 +1,4 @@
 from flask import Flask, request, jsonify
-from sentence_transformers import CrossEncoder
 import os
 import logging
 
@@ -15,6 +14,7 @@ def load_model():
     if MODEL is None:
         logging.info(f"Lade Rerank-Modell: {MODEL_NAME}...")
         try:
+            from sentence_transformers import CrossEncoder
             MODEL = CrossEncoder(MODEL_NAME, trust_remote_code=True)
             logging.info("Modell erfolgreich geladen.")
         except Exception as e:
