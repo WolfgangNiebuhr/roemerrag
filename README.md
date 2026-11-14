@@ -10,7 +10,7 @@ Experimentelle KI-Komponenten lokal mit Podman ausführen.
 
 ## Gesamten Podman-Stack starten
 
-Die Befehle sind f?r PowerShell im Projektstamm gedacht. Voraussetzung f?r den Reranker ist ein Windows-NVIDIA-Treiber mit WSL2-CUDA-Unterst?tzung und eine laufende Podman-Machine. Der Stack besteht aus PostgreSQL/pgvector, Vector-API, Ollama, RAG-API und Reranker. Die Datenbank und die Modelle bleiben in Named Volumes erhalten.
+Die Befehle sind für PowerShell im Projektstamm gedacht. Voraussetzung für den Reranker ist ein Windows-NVIDIA-Treiber mit WSL2-CUDA-Unterstützung und eine laufende Podman-Machine. Der Stack besteht aus PostgreSQL/pgvector, Vector-API, Ollama, RAG-API und Reranker. Die Datenbank und die Modelle bleiben in Named Volumes erhalten.
 
 ### Images bauen
 
@@ -33,7 +33,7 @@ podman run -d --name vector-api --pod vectorpod -e DB_HOST=127.0.0.1 -e DB_PORT=
 
 ### Einzelne Dienste und Details
 
-Der vollst?ndige Build- und Startablauf steht oben. Die Vector-spezifischen Hinweise und alternative Einzelstarts sind in [Vector/README.txt](Vector/README.txt) beschrieben. Die lokalen RAG- und Reranker-Dateien liegen in [rag](rag) und [reranker](reranker); Kubernetes-Manifeste sind in deren `k8s`-Unterverzeichnissen.
+Der vollständige Build- und Startablauf steht oben. Die Vector-spezifischen Hinweise und alternative Einzelstarts sind in [Vector/README.txt](Vector/README.txt) beschrieben. Die lokalen RAG- und Reranker-Dateien liegen in [rag](rag) und [reranker](reranker); Kubernetes-Manifeste sind in deren `k8s`-Unterverzeichnissen.
 
 ### Automatisierte Tests: Unit und Podman-Integration
 
@@ -66,17 +66,17 @@ python -m pytest -c tests/pytest.ini tests --all --keep-podman
 `--all` aktiviert die optionalen RAG-, Reranker- und Ollama-Gruppen. Der Reranker lädt sein Modell beim Image-Build. Alle Podman-Ressourcen und Testdaten sind von regulären Stack-Ressourcen getrennt.
 ### NVIDIA-GPU unter Windows mit WSL2 und Podman
 
-Der Windows-NVIDIA-Treiber stellt CUDA f?r WSL2 bereit. In dieser Umgebung ist die RTX 4060 in der Podman-Machine ?ber `/dev/dxg` sichtbar; der Treiberpfad `/usr/lib/wsl/lib` muss in den Container eingebunden werden. Der Reranker-Startbefehl oben reicht das Ger?t durch und bindet die Treiberbibliotheken read-only ein. Eine zus?tzliche Installation des Linux-NVIDIA-Treibers in WSL oder im Container ist nicht erforderlich.
+Der Windows-NVIDIA-Treiber stellt CUDA für WSL2 bereit. In dieser Umgebung ist die RTX 4060 in der Podman-Machine  `/dev/dxg` sichtbar; der Treiberpfad `/usr/lib/wsl/lib` muss in den Container eingebunden werden. Der Reranker-Startbefehl oben reicht das Gerät durch und bindet die Treiberbibliotheken read-only ein. Eine zusätzliche Installation des Linux-NVIDIA-Treibers in WSL oder im Container ist nicht erforderlich.
 
-Voraussetzungen und Pr?fung:
+Voraussetzungen und Prüfung:
 
-1. Aktuellen NVIDIA-Windows-Treiber mit WSL-CUDA-Unterst?tzung installieren.
+1. Aktuellen NVIDIA-Windows-Treiber mit WSL-CUDA-Unterstützung installieren.
 2. WSL2 verwenden und die Podman-Machine starten (`podman machine start`).
-3. In der Podman-Machine pr?fen, dass `/dev/dxg` und `/usr/lib/wsl/lib/libcuda.so.1` vorhanden sind.
-4. Nach dem Start des Rerankers GPU-Erkennung pr?fen:
+3. In der Podman-Machine prüfen, dass `/dev/dxg` und `/usr/lib/wsl/lib/libcuda.so.1` vorhanden sind.
+4. Nach dem Start des Rerankers GPU-Erkennung prüfen:
 
 ```powershell
-podman exec reranker python -c "import torch; print('CUDA verf?gbar:', torch.cuda.is_available()); print('Ger?te:', torch.cuda.device_count()); print('GPU:', torch.cuda.get_device_name(0) if torch.cuda.is_available() else 'keine')"
+podman exec reranker python -c "import torch; print('CUDA verfügbar:', torch.cuda.is_available()); print('Geräte:', torch.cuda.device_count()); print('GPU:', torch.cuda.get_device_name(0) if torch.cuda.is_available() else 'keine')"
 ```
 
-Erwartet werden `CUDA verf?gbar: True` und als Ger?t die NVIDIA-Grafikkarte. Falls `/dev/dxg` in der Podman-Machine fehlt, WSL aktualisieren (`wsl --update`) und Windows neu starten. Die Host-Treiber m?ssen mit der CUDA-Version des installierten PyTorch kompatibel sein.
+Erwartet werden `CUDA verfügbar: True` und als Gerät die NVIDIA-Grafikkarte. Falls `/dev/dxg` in der Podman-Machine fehlt, WSL aktualisieren (`wsl --update`) und Windows neu starten. Die Host-Treiber müssen mit der CUDA-Version des installierten PyTorch kompatibel sein.
