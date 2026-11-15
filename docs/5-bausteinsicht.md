@@ -101,11 +101,13 @@ Die Testfixture baut einen eigenen Pod mit eindeutigen Container-/Image-Namen un
 
 ## 5.5 Offene Punkte
 
+Das zentrale Register mit Nachweisen, Prioritäten und Abschlusskriterien steht in [Kapitel 11 – Risiken und technische Schulden](11-risiken-und-technische-schulden.md). Die folgende Tabelle fasst die Auswirkungen auf die Bausteinsicht zusammen; die Abbaureihenfolge wird in Kapitel 11 gepflegt.
+
 | Befund | Auswirkung |
 |---|---|
 | Importkennung und RAG-Standardfilter unterscheiden sich | Für Import3-Daten im Request `filter: snowflake-arctic-embed2-v2` setzen. |
 | Nicht unterstützte Suchmetrik | Vector-Suche akzeptiert `euclidean` (`<->`) und `cosine` (`<=>`); andere Werte liefern HTTP 400. |
-| Fehlerbehandlung der Vector-API unvollständig | SQL-Fehler führen nicht systematisch zum Rollback vor Poolrückgabe; Requestvalidierung ist lückenhaft. |
+| Fehlerbehandlung und Nebenläufigkeit der Vector-API unvollständig | Requestvalidierung ist lückenhaft; Poolnutzung und atomare Schreibsemantik sind zu überarbeiten. Transaktionsbereinigung hängt teilweise von der Poolimplementierung ab (TS-03, TS-06, TS-07). |
 | Reranker nicht in RAG integriert | Kein Reranking im `/process`-Pfad. |
 | Modellantworten variabel, Generierung auch bei leeren Treffern | HTTP 200 garantiert weder brauchbaren Kontext noch korrekte Antwort. |
 | Pakete und pgvector-Quellstand nicht vollständig fixiert | Builds können variieren; pgvector wird beim Image-Build aus dem aktuellen Repositorystand gebaut. |

@@ -129,8 +129,11 @@ Die Ollama-Ermittlung wird containerfrei in `tests/unit/test_ollama_endpoint.py`
 
 ## Empfohlene Ausbaureihenfolge
 
-1. Vector-API-Integration um Schema-/Indexprüfungen, Persistenz und Requestvalidierung erweitern.
-2. Den vorhandenen E2E-Test um nicht beantwortbare Fragen und den vollständigen Importskriptpfad mit Keyword-Anreicherung erweitern.
-3. Neustart-, Last- und optionale GPU-Prüfungen als getrennte, länger laufende Testgruppe ergänzen.
+Die projektweite Reihenfolge und die Abschlusskriterien stehen in [Kapitel 11 – Risiken und technische Schulden](11-risiken-und-technische-schulden.md#113-priorisierte-reihenfolge-für-den-abbau). TS-17 beschreibt die übergreifenden Testlücken. Tests begleiten die jeweilige Korrektur:
+
+1. Zuerst Regressionstests für abweichende Defaults, wirkungslose Modellwahl, falschen Goldtext, ungültige Requests, leeren Kontext und Nullzeiten ergänzen (Pakete 1 und 2).
+2. Atomare Writes, Poolnutzung und verzögerten DB-Start isoliert mit Podman prüfen; danach Migration, Variantenisolation und Wiederholungsimporte absichern (Pakete 3 bis 5).
+3. Schnittstellen- und Adapterverträge sowie den tatsächlichen Importpfad inklusive Keywords und Chunkgrenzen prüfen; E2E um nicht beantwortbare Fragen ergänzen (Pakete 6 und 7).
+4. Modellinitialisierung und Health-Zustände prüfen; Schema-/Indexnachweise, Persistenz, Neustart- und Lastfälle nach Änderung und Betriebsbedarf ergänzen. Optionale GPU-Prüfungen bleiben eine getrennte Testgruppe (Pakete 8 und 9).
 
 Der vorhandene E2E-Test wurde am 15.11.2026 mit der Ollama-Hintergrund-App und automatischer Gateway-Ermittlung erfolgreich ausgeführt. Das ist kein Nachweis für die noch geplanten Betriebs-/Lastfälle oder die fachliche Qualität auf dem gesamten historischen Korpus.
