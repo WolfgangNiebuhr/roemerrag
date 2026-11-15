@@ -1,8 +1,8 @@
 import requests
-import json
 import argparse
 import numpy as np
-
+import time
+import json
 # Konfiguration
 
 ## Embedding
@@ -15,6 +15,8 @@ NUM_RESULTS = 5
 
 ## Generation
 OLLAMA_ANSWER_URL = "http://localhost:11434/api/generate"
+# ANSWER_MODEL_NAME = "gemma3:4b"
+# ANSWER_MODEL_NAME = "phi3:mini"
 ANSWER_MODEL_NAME = "gemma4:e4b"
 
 QUERY = "Wer beherrschte die westliche Hälfte des Mittelmeeres?"
@@ -34,12 +36,13 @@ def generate_embedding(query):
     else:
         raise Exception(f"Fehler beim Abrufen des Embeddings: {response.text}")
 
-def search_vectors(embedding, metric, num_results):
+def search_vectors(embedding, metric, key, num_results):
     """Führt eine Suche über die Vektor-API aus und gibt die besten Treffer zurück."""
     payload = {
         "vector": embedding.tolist(),
         "num_results": num_results,
-        "metric": metric
+        "metric": metric,
+        "embedding": key
     }
     response = requests.post(VECTOR_API_URL, json=payload)
     if response.status_code == 200:
@@ -98,16 +101,67 @@ def generate_answer(context, question):
 
     return answer + metrics_report
 
+def rerank_results(query, results, reranker, top_k):
+    """Rerankt die Suchergebnisse """
+    payload = {
+        "model": reranker,
+        "query": query,
+        "documents": [result["metadata"] for result in results]
+    }
+    response = requests.post("http://localhost:5000/rerank", json=payload)
+
+    # print("Rohantwort der Rerank-API:", response.text)  # Debugging-Ausgabe
+
+    if response.status_code == 200:
+        reranked = response.json()["ranked_documents"]
+
+        sorted_results = []
+        for item in reranked[:top_k]:
+            original = results[item["original_index"]]
+            sorted_results.append({
+                "metadata": item["text"],
+                "chunk_id": original["chunk_id"]
+            })
+        return sorted_results
+    else:
+        raise Exception(f"Fehler beim Reranking: {response.text}")
+
+
+def export_results(query, results, filename="search_results.json"):
+    """Exportiert Query und Suchergebnisse in eine JSON-Datei."""
+    try:
+        # Erstelle das Export-Datenformat
+        export_data = {
+            "query": query,
+            "passages": [result["metadata"] for result in results]
+        }
+
+        # Schreibe JSON-Datei mit UTF-8 Encoding und ensure_ascii=False für Sonderzeichen
+        with open(filename, 'w', encoding='utf-8') as f:
+            json.dump(export_data, f, ensure_ascii=False, indent=2)
+
+        print(f"Ergebnisse erfolgreich nach '{filename}' exportiert.")
+
+    except Exception as e:
+        print(f"Fehler beim Exportieren: {e}")
+
 def main():
     parser = argparse.ArgumentParser(description="Interaktives KI-Tool für Embedding, Suche und Antwortgenerierung.")
-    parser.add_argument("--metric", type=str, default="euclidean", help="Die zu verwendende Metrik (z.B. 'euclidean', 'cosine').")
+    parser.add_argument("--metric", type=str, default="cosine", help="Die zu verwendende Metrik (z.B. 'euclidean', 'cosine').")
+    parser.add_argument("--embedding", type=str, default="snowflake-arctic-embed2-v2", help="Die Kennung der zu verwendenden Embeddings.")
     parser.add_argument("--num_results", type=int, default=5, help="Anzahl der zu suchenden Vektoren.")
     parser.add_argument("--query", type=str, required=True, help="Die Query, die verarbeitet werden soll.")
+    parser.add_argument("--top_k", type=int, default=6, help="Anzahl der Top-Rerank-Ergebnisse.")
+    parser.add_argument("--reranker", type=str, default="cross-encoder/ms-marco-MiniLM-L6-v2", help="Zu verwendendes Reranker-Modell")
+
     args = parser.parse_args()
 
     metric = args.metric
     num_results = args.num_results
+    top_k = args.top_k
     query = args.query
+    embedding_key = args.embedding
+    reranker = args.reranker
 
     try:
         print("Frage:", query)
@@ -117,13 +171,24 @@ def main():
         # -------------------------
 
         print(f"Führe {metric}-Suche über die Vektor-API aus...")
-        results = search_vectors(embedding, metric, num_results)
+        results = search_vectors(embedding, metric, embedding_key, num_results)
 
-        # Kontext aus den letzten Elementen der Suchergebnisse erstellen
-        context = "\n".join([result["metadata"] for result in results])
+        export_results(query, results)
 
-        # Zweite Elemente für die Aufzählung extrahieren
-        second_elements = [result["chunk_id"] for result in results]
+        # IDs für die Aufzählung extrahieren
+        retrieved_ids = [result["chunk_id"] for result in results]
+
+        if top_k > 0:
+            start = time.time()
+            results = rerank_results(query, results, reranker, top_k)
+            duration = time.time() - start
+            print(f"Laufzeit von rerank_results: {duration:.3f} Sekunden")
+
+            reranked_ids = [result["chunk_id"] for result in results]
+            context = "\n".join([result["metadata"] for result in results])
+        else:
+            context = "\n".join([result["metadata"] for result in results])
+
 
         # Antwortgenerierung
         print("\nGeneriere Antwort basierend auf den gefundenen Texten...")
@@ -132,9 +197,14 @@ def main():
         print(answer)
 
         # Aufzählung der Chunks ausgeben
-        print("\nbenutzte Chunks:")
-        for i, element in enumerate(second_elements, start=1):
+        print("\nfound Chunks:")
+        for i, element in enumerate(retrieved_ids   , start=1):
              print(f"{i}. {element}")
+
+        if top_k > 0:
+            print("\nreranked Chunks:")
+            for i, element in enumerate(reranked_ids   , start=1):
+                print(f"{i}. {element}")
 
     except Exception as e:
         print(f"Fehler: {e}")
