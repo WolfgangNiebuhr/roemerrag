@@ -53,16 +53,16 @@ def count_chunks():
             else:
                 cur.execute("SELECT COUNT(*) FROM vectors")
             (cnt,) = cur.fetchone()
-        return jsonify({"count": cnt})
+        return jsonify({"chunks": cnt})
     except Exception as e:
         return jsonify({"error": str(e)}), 500
     finally:
         if conn:
             db_pool.putconn(conn)
 
-@app.route("/chunk/<chunk_id>", methods=["GET"])
+@app.route("/chunks/<chunk_id>", methods=["GET"])
 def get_chunk(chunk_id):
-    """GET /chunk/<chunk_id>[?embedding=...] -> eine Zeile"""
+    """GET /chunks/<chunk_id>[?embedding=...] -> eine Zeile"""
     if not db_pool:
         return jsonify({"error": "DB nicht verfügbar"}), 500
     embedding = request.args.get("embedding")
@@ -95,7 +95,7 @@ def get_chunk(chunk_id):
         if conn:
             db_pool.putconn(conn)
 
-@app.route("/chunk", methods=["POST"])
+@app.route("/vectors", methods=["POST"])
 def upsert_chunk():
     """
     Body (JSON): {chunk_id, embedding, vector, metadata}
@@ -169,7 +169,10 @@ def search_vectors():
     metric = data.get("metric", "euclidean")
     embedding_filter = data.get("embedding")
 
-    distance_op = "<->" if metric == "euclidean" else "<#>"
+    operators = {"euclidean": "<->", "cosine": "<=>"}
+    if metric not in operators:
+        return jsonify({"error": "Nur die Metriken 'euclidean' und 'cosine' werden unterstützt"}), 400
+    distance_op = operators[metric]
 
     conn = None
     try:
@@ -197,6 +200,27 @@ def search_vectors():
             cols = [d[0] for d in cur.description]
             rows = [dict(zip(cols, r)) for r in cur.fetchall()]
         return jsonify(rows)
+    except Exception as e:
+        return jsonify({"error": str(e)}), 500
+    finally:
+        if conn:
+            db_pool.putconn(conn)
+
+@app.route("/find", methods=["GET"])
+def find_chunks():
+    """Find chunk IDs whose metadata matches the ILIKE pattern in query."""
+    if not db_pool:
+        return jsonify({"error": "Datenbank nicht verfügbar"}), 500
+    search_query = request.args.get("query")
+    if not search_query:
+        return jsonify({"error": "Parameter 'query' fehlt"}), 400
+    conn = None
+    try:
+        conn = get_conn()
+        with conn.cursor() as cur:
+            cur.execute("SELECT chunk_id FROM vectors WHERE metadata ILIKE %s", (search_query,))
+            chunk_ids = [row[0] for row in cur.fetchall()]
+        return jsonify({"chunk_ids": chunk_ids})
     except Exception as e:
         return jsonify({"error": str(e)}), 500
     finally:

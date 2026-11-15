@@ -9,7 +9,7 @@ from chunking import split_text_into_chunks
 
 # Konfiguration
 OLLAMA_URL = "http://localhost:11434/api/embeddings"
-VECTOR_API_URL = "http://localhost:5500/chunk"
+VECTOR_API_URL = "http://localhost:5500/vectors"
 
 
 MODEL_NAME = "snowflake-arctic-embed2"

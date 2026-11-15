@@ -30,9 +30,10 @@ Die folgenden Fälle beschreiben das Testziel. Nicht jeder Fall ist bereits auto
 ### PostgreSQL und Vector-API
 
 - Beim frischen Datenbankstart sind `vector`, Tabelle `vectors`, Unique Constraint auf `(chunk_id, embedding)` und der vorgesehene Index vorhanden.
-- `POST /chunk` speichert einen Chunk; `GET /chunk/<chunk_id>` liefert ihn zurück, `GET /chunks` zählt die gespeicherten Zeilen im Feld `count`.
+- `POST /vectors` speichert einen Chunk; `GET /chunks/<chunk_id>` liefert ihn zurück, `GET /chunks` zählt die gespeicherten Zeilen im Feld `chunks`.
 - Erneutes Speichern desselben Schlüssels aktualisiert den Eintrag und erzeugt keine Duplikate.
 - `POST /search` liefert Treffer nach Distanz sortiert, sowohl mit Embedding-Filter als auch ohne Filter über mehrere Embedding-Werte hinweg, und begrenzt die Ergebnismenge über `num_results`.
+- `GET /find?query=...` durchsucht Metadaten case-insensitiv mit `ILIKE` und liefert passende Chunk-IDs.
 - `DELETE /chunk` entfernt den Eintrag; die anschließende Suche beziehungsweise Zählung findet ihn nicht mehr.
 - Ungültige Vektordimension, fehlende Felder, ungültiges JSON und nicht unterstützte Metriken werden kontrolliert beantwortet.
 - Nach Neustart beziehungsweise Neuerstellung des Datenbankcontainers bleiben Daten im Named Volume erhalten.

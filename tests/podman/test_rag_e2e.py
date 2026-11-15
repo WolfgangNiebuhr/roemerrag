@@ -33,16 +33,16 @@ def test_early_rome_question_end_to_end(vector_url, rag_url, test_id, e2e_ollama
             assert all(isinstance(value, (int, float)) and math.isfinite(value) for value in vector)
             norm = math.sqrt(sum(value * value for value in vector))
             assert norm > 0
-            request(vector_url, "/chunk", "POST", {
+            request(vector_url, "/vectors", "POST", {
                 "chunk_id": chunk_id,
                 "embedding": variant,
                 "vector": [value / norm for value in vector],
                 "metadata": text,
             }, expected=201)
 
-        assert request(vector_url, "/chunks?embedding=" + variant)["count"] == len(chunks)
+        assert request(vector_url, "/chunks?embedding=" + variant)["chunks"] == len(chunks)
         for chunk_id, text in zip(chunk_ids, chunks):
-            stored = request(vector_url, f"/chunk/{chunk_id}?embedding={variant}")
+            stored = request(vector_url, f"/chunks/{chunk_id}?embedding={variant}")
             assert stored["metadata"] == text
 
         result = request(rag_url, "/process", "POST", {

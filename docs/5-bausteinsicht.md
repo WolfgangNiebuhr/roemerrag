@@ -43,7 +43,7 @@ flowchart LR
 | Reranker | Frage-Dokument-Paare bewerten und sortieren | [app.py](../reranker/app.py), [Dockerfile](../reranker/Dockerfile) |
 | Lokale Werkzeuge | Direkte RAG-Abfragen und Analysen | [interact.py](../interact.py), [analyze.py](../analyze.py), `Vector/analyze_data.py` |
 
-Der Reranker ist eigenständig; die RAG-API ruft ihn nicht auf. Ältere Importvarianten sind keine austauschbaren Einstiegspunkte: `import.py` verwendet `/vectors` und enthält weitere Aufruffehler; `import2.py` und `import3.py` schreiben auf den aktuellen Endpunkt `/chunk`.
+Der Reranker ist eigenständig; die RAG-API ruft ihn nicht auf. Ältere Importvarianten sind keine austauschbaren Einstiegspunkte: `import.py` verwendet `/vectors` und enthält weitere Aufruffehler; `import2.py` und `import3.py` schreiben auf den aktuellen Endpunkt `/vectors`.
 
 ## 5.3 Ebene 2 – zentrale Bausteine
 
@@ -72,11 +72,12 @@ Die Vector-API erstellt beim Prozessstart einen PostgreSQL-Pool mit einer bis ze
 
 | Methode / Pfad | Aufgabe |
 |---|---|
-| `GET /chunks?embedding=...` | Zeilen zählen; Antwortfeld `count`, Filter optional |
-| `GET /chunk/<chunk_id>?embedding=...` | Einzelnen Chunk lesen; Filter optional |
-| `POST /chunk` | Datensatz anhand von `chunk_id` und `embedding` ersetzen; HTTP 201 |
+| `GET /chunks?embedding=...` | Zeilen zählen; Antwortfeld `chunks`, Filter optional |
+| `GET /chunks/<chunk_id>?embedding=...` | Einzelnen Chunk lesen; Filter optional |
+| `POST /vectors` | Datensatz anhand von `chunk_id` und `embedding` ersetzen; HTTP 201 |
+| `GET /find?query=...` | Chunk-IDs anhand eines case-insensitiven Metadatenmusters (`ILIKE`) finden |
 | `DELETE /chunk` | Datensatz anhand von `chunk_id` und `embedding` löschen |
-| `POST /search` | Suche mit `vector`, optional `embedding`, `metric`, `num_results`; Liste mit Distanzen |
+| `POST /search` | Suche mit `vector`, optional `embedding`, `metric`, `num_results`; `euclidean` (`<->`) und `cosine` (`<=>`) werden unterstützt, ungültige Metriken liefern HTTP 400 |
 
 Die Tabelle `vectors` enthält `id SERIAL PRIMARY KEY`, `chunk_id TEXT NOT NULL`, `embedding TEXT NOT NULL`, `vector VECTOR(1024)` und `metadata TEXT`. `embedding` ist die Variantenkennung, kein numerischer Vektor. `UNIQUE(chunk_id, embedding)` trennt Importvarianten. Schreiben erfolgt durch Löschen und Einfügen in einer Transaktion. Ein HNSW-Index mit `vector_l2_ops` unterstützt euklidische Suche. JSON-Vektorlisten werden in den Integrationstests und im E2E-Test verwendet; die alten String-Beispiele in den Python-Docstrings sind kein vollständiger API-Vertrag.
 
@@ -103,7 +104,7 @@ Die Testfixture baut einen eigenen Pod mit eindeutigen Container-/Image-Namen un
 | Befund | Auswirkung |
 |---|---|
 | Importkennung und RAG-Standardfilter unterscheiden sich | Für Import3-Daten im Request `filter: snowflake-arctic-embed2-v2` setzen. |
-| Suche verwendet für andere Metrikwerte als `euclidean` den Operator `<#>` | Das ist negatives inneres Produkt; eine eigenständige Cosinusdistanz und Metrikvalidierung fehlen. |
+| Nicht unterstützte Suchmetrik | Vector-Suche akzeptiert `euclidean` (`<->`) und `cosine` (`<=>`); andere Werte liefern HTTP 400. |
 | Fehlerbehandlung der Vector-API unvollständig | SQL-Fehler führen nicht systematisch zum Rollback vor Poolrückgabe; Requestvalidierung ist lückenhaft. |
 | Reranker nicht in RAG integriert | Kein Reranking im `/process`-Pfad. |
 | Modellantworten variabel, Generierung auch bei leeren Treffern | HTTP 200 garantiert weder brauchbaren Kontext noch korrekte Antwort. |

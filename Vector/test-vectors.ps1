@@ -67,14 +67,14 @@ $vectorData6 = @{
 } | ConvertTo-Json -Depth 10
 
 Write-Host "Teste POST /vectors..."
-$responsePost1 = Invoke-WebRequest -Uri "$baseUrl/chunk" -Method POST -Headers $headers -Body $vectorData1
-$responsePost2 = Invoke-WebRequest -Uri "$baseUrl/chunk" -Method POST -Headers $headers -Body $vectorData2
-$responsePost3 = Invoke-WebRequest -Uri "$baseUrl/chunk" -Method POST -Headers $headers -Body $vectorData3
-$responsePost4 = Invoke-WebRequest -Uri "$baseUrl/chunk" -Method POST -Headers $headers -Body $vectorData4
-$responsePost5 = Invoke-WebRequest -Uri "$baseUrl/chunk" -Method POST -Headers $headers -Body $vectorData5
-$responsePost6 = Invoke-WebRequest -Uri "$baseUrl/chunk" -Method POST -Headers $headers -Body $vectorData6
+$responsePost1 = Invoke-WebRequest -Uri "$baseUrl/vectors" -Method POST -Headers $headers -Body $vectorData1
+$responsePost2 = Invoke-WebRequest -Uri "$baseUrl/vectors" -Method POST -Headers $headers -Body $vectorData2
+$responsePost3 = Invoke-WebRequest -Uri "$baseUrl/vectors" -Method POST -Headers $headers -Body $vectorData3
+$responsePost4 = Invoke-WebRequest -Uri "$baseUrl/vectors" -Method POST -Headers $headers -Body $vectorData4
+$responsePost5 = Invoke-WebRequest -Uri "$baseUrl/vectors" -Method POST -Headers $headers -Body $vectorData5
+$responsePost6 = Invoke-WebRequest -Uri "$baseUrl/vectors" -Method POST -Headers $headers -Body $vectorData6
 
-Write-Host "Antwort von POST /chunk:"
+Write-Host "Antwort von POST /vectors:"
 Write-Host $responsePost1.Content
 Write-Host $responsePost2.Content
 Write-Host $responsePost3.Content

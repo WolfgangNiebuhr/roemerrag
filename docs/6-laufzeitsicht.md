@@ -31,7 +31,7 @@ Der Requestfilter muss zur Importkennung passen: `import3.py` speichert `snowfla
 
 ## 6.2 Dokumentimport und E2E-Test
 
-`Ingest/import3.py` liest eine UTF-8-Datei, zerlegt sie in Chunks, erzeugt Keywords mit `gemma3:4b`, stellt diese dem Text voran, erzeugt und normalisiert Embeddings mit `snowflake-arctic-embed2` und speichert sie über `POST /chunk`. IDs haben das Format `<Dateibasis>-<laufende Nummer>`. Ein Chunkfehler wird protokolliert; danach läuft der Import weiter. Die Importskripte laufen auf Windows und verwenden eigene, im Skript konfigurierte URLs.
+`Ingest/import3.py` liest eine UTF-8-Datei, zerlegt sie in Chunks, erzeugt Keywords mit `gemma3:4b`, stellt diese dem Text voran, erzeugt und normalisiert Embeddings mit `snowflake-arctic-embed2` und speichert sie über `POST /vectors`. Chunks lassen sich über `GET /chunks/<chunk_id>` lesen; `GET /chunks` zählt Datensätze und liefert das Feld `chunks`. `GET /find?query=...` sucht Chunk-IDs anhand eines case-insensitiven `ILIKE`-Musters in den Metadaten. Die Suche unterstützt `euclidean` und `cosine`; `DELETE /chunk` entfernt Test- oder Importdatensätze. IDs haben das Format `<Dateibasis>-<laufende Nummer>`. Ein Chunkfehler wird protokolliert; danach läuft der Import weiter. Die Importskripte laufen auf Windows und verwenden eigene, im Skript konfigurierte URLs.
 
 Der E2E-Test nutzt einen kleineren Ablauf ohne Keyword-Anreicherung: Modelle vom Host und Container prüfen → versionierte Textdatei zerlegen → echte Embeddings normalisieren → in die isolierte Testdatenbank importieren → `/process` aufrufen → Quellen, Antwortinhalt und Metriken prüfen → Testdaten löschen. Er führt `import3.py` nicht aus. Testgrenzen und Optionen stehen im [Testkonzept](8-1-testkonzept.md).
 

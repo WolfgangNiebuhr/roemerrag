@@ -49,7 +49,7 @@ def test_count_chunks_uses_embedding_filter_and_returns_count(database):
     response = vector_app.app.test_client().get("/chunks?embedding=embed-a")
 
     assert response.status_code == 200
-    assert response.get_json() == {"count": 7}
+    assert response.get_json() == {"chunks": 7}
     assert cursor.execute.call_args_list[0].args[0] == "SELECT 1"
     assert cursor.execute.call_args_list[1].args[1] == ("embed-a",)
     assert "WHERE embedding = %s" in cursor.execute.call_args_list[1].args[0]
@@ -70,7 +70,7 @@ def test_search_uses_cosine_operator_and_filter_parameters(database):
         "vector": "[1,0]", "metadata": "text", "distance": -0.9,
     }]
     sql, parameters = cursor.execute.call_args_list[1].args
-    assert "vector <#> %s::VECTOR" in sql
+    assert "vector <=> %s::VECTOR" in sql
     assert "WHERE embedding = %s" in sql
     assert parameters == ("[0.9,0.1]", "embed-a", "[0.9,0.1]", 4)
     pool.putconn.assert_called_once_with(connection)
@@ -83,3 +83,21 @@ def test_api_reports_unavailable_database_pool(vector_module, monkeypatch):
 
     assert response.status_code == 500
     assert "error" in response.get_json()
+
+
+def test_search_rejects_unsupported_metric_without_database_call(database):
+    vector_app, pool, _, _ = database
+    response = vector_app.app.test_client().post("/search", json={"vector": [1, 0], "metric": "inner_product"})
+    assert response.status_code == 400
+    pool.getconn.assert_not_called()
+
+def test_find_chunks_uses_parameterized_ilike_query(database):
+    vector_app, pool, connection, cursor = database
+    cursor.fetchall.return_value = [("chunk-1",), ("chunk-2",)]
+    response = vector_app.app.test_client().get("/find?query=%25rome%25")
+    assert response.status_code == 200
+    assert response.get_json() == {"chunk_ids": ["chunk-1", "chunk-2"]}
+    assert cursor.execute.call_args_list[1].args == (
+        "SELECT chunk_id FROM vectors WHERE metadata ILIKE %s", ("%rome%",)
+    )
+    pool.putconn.assert_called_once_with(connection)

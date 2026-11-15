@@ -9,7 +9,7 @@ from langchain.text_splitter import RecursiveCharacterTextSplitter
 
 # Konfiguration
 OLLAMA_URL = "http://localhost:11434/api/embeddings"
-VECTOR_API_URL = "http://localhost:5500/chunk"
+VECTOR_API_URL = "http://localhost:5500/vectors"
 GATEWAY_URL = "https://aigateway.api.dev.datev.de/datev/v1/openai/deployments/gpt-4o/chat/completions"
 
 MODEL_NAME = "snowflake-arctic-embed2"
