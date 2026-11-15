@@ -7,6 +7,11 @@ import pytest
 from rag import app as rag_app
 
 
+@pytest.fixture(autouse=True)
+def fixed_ollama_endpoint(monkeypatch):
+    monkeypatch.setattr(rag_app, "resolve_ollama_base_url", lambda: rag_app.OLLAMA_BASE_URL)
+
+
 def test_rag_api_success_with_mocked_dependencies():
     query = "Wer beherrschte das westliche Mittelmeer?"
     embedding = [3.0, 4.0]

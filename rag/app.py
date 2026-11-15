@@ -1,21 +1,27 @@
 from flask import Flask, request, jsonify
+import os
 import requests
 import numpy as np
+if __package__:
+    from .ollama_endpoint import resolve_ollama_base_url
+else:
+    from ollama_endpoint import resolve_ollama_base_url
 
 app = Flask(__name__)
 
 # Konfiguration
 
 ## Embedding
-OLLAMA_EMBEDDING_URL = "http://host.containers.internal:11434/api/embeddings"
+OLLAMA_BASE_URL = os.environ.get("OLLAMA_BASE_URL", "http://host.containers.internal:11434").rstrip("/")
+OLLAMA_EMBEDDING_URL = OLLAMA_BASE_URL + "/api/embeddings"
 EMBEDDING_MODEL_NAME = "snowflake-arctic-embed2"
 
 ## Retrieval
-VECTOR_API_URL = "http://host.containers.internal:5500/search"
+VECTOR_API_URL = os.environ.get("VECTOR_API_URL", "http://host.containers.internal:5500/search")
 NUM_RESULTS = 5
 
 ## Generation
-OLLAMA_ANSWER_URL = "http://host.containers.internal:11434/api/generate"
+OLLAMA_ANSWER_URL = OLLAMA_BASE_URL + "/api/generate"
 ANSWER_MODEL_NAME = "phi3:mini"
 
 QUERY = "Wer beherrschte die westliche Hälfte des Mittelmeeres?"
@@ -26,7 +32,7 @@ def generate_embedding(query):
         "model": EMBEDDING_MODEL_NAME,
         "prompt": query
     }
-    response = requests.post(OLLAMA_EMBEDDING_URL, json=payload, timeout=300)
+    response = requests.post(resolve_ollama_base_url() + "/api/embeddings", json=payload, timeout=300)
     if response.status_code == 200:
         vector = response.json().get("embedding")
         if not vector:
@@ -70,7 +76,7 @@ def generate_answer(context, question):
         "system": system_prompt,
         "prompt": f"Kontext:\n{context}\n\nFrage: {question}"
     }
-    response = requests.post(OLLAMA_ANSWER_URL, json=payload, timeout=600)
+    response = requests.post(resolve_ollama_base_url() + "/api/generate", json=payload, timeout=600)
     if response.status_code != 200:
         raise Exception(f"Fehler bei der Antwortgenerierung: {response.text}")
 

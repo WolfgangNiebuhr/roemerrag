@@ -37,8 +37,8 @@ def _wait_tcp(port, timeout=120):
     raise RuntimeError(f"Timed out waiting for localhost:{port}")
 
 
-def _wait_reranker_ready(timeout=600):
-    url = "http://localhost:5000/health"
+def _wait_reranker_ready(base_url, timeout=600):
+    url = base_url + "/health"
     deadline = time.monotonic() + timeout
     last_error = "no response yet"
     while time.monotonic() < deadline:
@@ -90,14 +90,29 @@ def podman_stack(request):
 
         _run("volume", "create", volume)
         volume_created = True
-        _run("pod", "create", "--name", pod,
-             "-p", "5432:5432", "-p", "5500:5500", "-p", "5600:5600", "-p", "5000:5000")
+        # Let Podman allocate host ports; a manually used stack may be running.
+        publish = ["-p", "5500"]
+        if include_rag:
+            publish.extend(["-p", "5600"])
+        if include_reranker:
+            publish.extend(["-p", "5000"])
+        _run("pod", "create", "--name", pod, *publish)
         pod_created = True
+        containers.append(db)
         _run("run", "-d", "--name", db, "--pod", pod,
              "-e", "POSTGRES_USER=admin", "-e", "POSTGRES_PASSWORD=admin",
              "-e", "POSTGRES_DB=vector_db", "-e", "PGDATA=/var/lib/postgresql/data/pgdata",
              "-v", f"{volume}:/var/lib/postgresql/data", db_image)
-        containers.append(db)
+
+        infra = _run("pod", "inspect", "--format", "{{.InfraContainerID}}", pod, capture=True).stdout.strip()
+
+        def host_port(container_port):
+            binding = _run("port", infra, f"{container_port}/tcp", capture=True).stdout
+            return int(binding.splitlines()[0].rsplit(":", 1)[1])
+
+        vector_port = host_port(5500)
+        rag_port = host_port(5600) if include_rag else None
+        reranker_port = host_port(5000) if include_reranker else None
 
         deadline = time.monotonic() + 120
         while time.monotonic() < deadline:
@@ -118,23 +133,26 @@ def podman_stack(request):
         containers.append(vector)
         if include_rag:
             name = f"rag-test-app-{test_id}"
-            _run("run", "-d", "--name", name, "--pod", pod, rag_image)
+            _run("run", "-d", "--name", name, "--pod", pod,
+                 "-e", "VECTOR_API_URL=http://127.0.0.1:5500/search",
+                 "-e", "OLLAMA_BASE_URL=" + os.environ.get("OLLAMA_CONTAINER_URL", ""), rag_image)
             containers.append(name)
         if include_reranker:
             name = f"rag-test-reranker-{test_id}"
             _run("run", "-d", "--name", name, "--pod", pod, reranker_image)
             containers.append(name)
 
-        _wait_tcp(5500)
+        _wait_tcp(vector_port)
         if include_rag:
-            _wait_tcp(5600)
+            _wait_tcp(rag_port)
         if include_reranker:
-            _wait_reranker_ready()
+            _wait_reranker_ready(f"http://localhost:{reranker_port}")
         yield {
             "id": test_id,
-            "vector_url": "http://localhost:5500",
-            "rag_url": "http://localhost:5600",
-            "reranker_url": "http://localhost:5000",
+            "rag_container": f"rag-test-app-{test_id}" if include_rag else None,
+            "vector_url": f"http://localhost:{vector_port}",
+            "rag_url": f"http://localhost:{rag_port}" if include_rag else None,
+            "reranker_url": f"http://localhost:{reranker_port}" if include_reranker else None,
         }
     except Exception:
         if pod_created:
@@ -152,6 +170,45 @@ def podman_stack(request):
                 subprocess.run(["podman", "volume", "rm", volume], cwd=ROOT, capture_output=True)
             if images:
                 subprocess.run(["podman", "image", "rm", *images], cwd=ROOT, capture_output=True)
+
+
+@pytest.fixture(scope="session")
+def e2e_ollama_url(podman_stack):
+    """Fail before ingestion if either side cannot reach the real models."""
+    host_url = os.environ.get("OLLAMA_HOST_URL", "http://localhost:11434").rstrip("/")
+    container_url = os.environ.get("OLLAMA_CONTAINER_URL") or "automatic host/WSL gateway detection"
+    required = {"snowflake-arctic-embed2:latest", "phi3:mini"}
+    try:
+        with urllib.request.urlopen(host_url + "/api/tags", timeout=10) as response:
+            models = json.load(response)
+        missing = required - {model["name"] for model in models["models"]}
+        if missing:
+            pytest.fail(f"Host Ollama is missing models: {sorted(missing)}; run ollama pull for each model")
+    except (OSError, ValueError, KeyError) as exc:
+        pytest.fail(f"Host Ollama is not available at {host_url}: {exc}")
+
+    script = (
+        "import json, urllib.request; "
+        "from ollama_endpoint import resolve_ollama_base_url; "
+        "url = resolve_ollama_base_url(); print('Ollama endpoint:', url, flush=True); "
+        "r = urllib.request.urlopen(url + '/api/tags', timeout=10); "
+        "models = {m['name'] for m in json.load(r)['models']}; "
+        f"missing = {required!r} - models; "
+        "assert not missing, f'Missing Ollama models: {missing}'"
+    )
+    result = subprocess.run(
+        ["podman", "exec", podman_stack["rag_container"], "python", "-c", script],
+        cwd=ROOT, text=True, capture_output=True, timeout=30,
+    )
+    if result.returncode:
+        pytest.fail(
+            f"RAG container cannot access the required Ollama models at {container_url}. "
+            "Check the container's host resolution and the Windows/WSL gateway; "
+            "host.containers.internal may point to the Linux VM rather than Windows. Set "
+            "OLLAMA_CONTAINER_URL and OLLAMA_HOST_URL to the same server's respective addresses. "
+            f"Container diagnostic: {result.stderr}"
+        )
+    return host_url
 
 
 @pytest.fixture(scope="session")
