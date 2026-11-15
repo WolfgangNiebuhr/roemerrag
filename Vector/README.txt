@@ -58,3 +58,4 @@ phi4-mini:3.8b
 granite3.2:2b !
 granite3.1-dense:2b !  für summyrite, text classification u.a.
 llama-guard3:1b mal testen
+gemma4:e4b prüfen
