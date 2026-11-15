@@ -15,6 +15,14 @@
 - Befehle aus dem Projektstamm ausführen.
 - Setup und Startbefehle stehen in README.md.
 
+# Git
+- Vom Agenten neu angelegte Projektdateien mit `git add -- <Dateipfad>`
+  zur Versionsverwaltung vormerken.
+- Durch `.gitignore` ausgeschlossene Dateien nicht hinzufügen.
+- Nur die im Rahmen der Aufgabe neu angelegten Dateien gezielt vormerken;
+  kein pauschales `git add .` verwenden.
+- Commits nur auf ausdrückliche Anweisung erstellen.
+
 # Tests
 - Testkonzept: docs/8-1-testkonzept.md.
 - Containerfreie Unit-Tests: tests/unit.
