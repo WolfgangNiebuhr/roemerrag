@@ -1,6 +1,7 @@
 from flask import Flask, request, jsonify
 import os
 import json
+from threading import Lock
 import psycopg2
 from psycopg2 import pool, OperationalError
 
@@ -13,16 +14,28 @@ DB_PORT = int(os.getenv("DB_PORT", "5432"))
 app = Flask(__name__)
 
 db_pool = None
-try:
-    db_pool = psycopg2.pool.SimpleConnectionPool(
-        minconn=1, maxconn=10,
-        dbname=DB_NAME, user=DB_USER, password=DB_PASSWORD,
-        host=DB_HOST, port=DB_PORT
-    )
-    if db_pool:
-        app.logger.info("DB-Connection-Pool erstellt")
-except OperationalError as e:
-    app.logger.error(f"DB-Pool Fehler: {e}")
+pool_init_lock = Lock()
+
+
+def ensure_db_pool():
+    """Retry initialization on later requests if PostgreSQL starts after the API."""
+    global db_pool
+    with pool_init_lock:
+        if db_pool is not None:
+            return
+        try:
+            db_pool = psycopg2.pool.SimpleConnectionPool(
+                minconn=1, maxconn=10,
+                dbname=DB_NAME, user=DB_USER, password=DB_PASSWORD,
+                host=DB_HOST, port=DB_PORT, connect_timeout=3
+            )
+            app.logger.info("DB-Connection-Pool erstellt")
+        except OperationalError as e:
+            app.logger.error(f"DB-Pool Fehler: {e}")
+
+
+ensure_db_pool()
+app.before_request(ensure_db_pool)
 
 def get_conn():
     global db_pool

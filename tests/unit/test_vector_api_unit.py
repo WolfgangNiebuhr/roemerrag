@@ -101,3 +101,22 @@ def test_find_chunks_uses_parameterized_ilike_query(database):
         "SELECT chunk_id FROM vectors WHERE metadata ILIKE %s", ("%rome%",)
     )
     pool.putconn.assert_called_once_with(connection)
+
+
+def test_api_recovers_when_database_becomes_available(vector_module, monkeypatch):
+    client = vector_module.app.test_client()
+    assert client.get("/chunks").status_code == 500
+    cursor = MagicMock()
+    cursor.__enter__.return_value = cursor
+    cursor.fetchone.return_value = (7,)
+    connection = MagicMock()
+    connection.cursor.return_value = cursor
+    recovered_pool = MagicMock()
+    recovered_pool.getconn.return_value = connection
+    factory = MagicMock(return_value=recovered_pool)
+    monkeypatch.setattr(vector_module.psycopg2.pool, "SimpleConnectionPool", factory)
+    response = client.get("/chunks")
+    assert response.status_code == 200
+    assert response.get_json() == {"chunks": 7}
+    assert client.get("/chunks").status_code == 200
+    factory.assert_called_once()
