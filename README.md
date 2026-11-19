@@ -140,10 +140,10 @@ Der Test prüft vor dem Import die Modellverfügbarkeit über `/api/tags` vom Ho
 Der Standardstart benötigt keine GPU. Für einen optionalen NVIDIA-GPU-Start unter WSL2 werden ein passender Windows-NVIDIA-Treiber, `/dev/dxg` und die WSL-Treiberbibliotheken benötigt. Bei einem Neuaufbau kann der Reranker statt des CPU-Starts so gestartet werden:
 
 ```powershell
-podman run -d --name reranker -p 5000:5000 --device /dev/dxg -v /usr/lib/wsl/lib:/usr/lib/wsl/lib:ro -e LD_LIBRARY_PATH=/usr/lib/wsl/lib localhost/reranker:local
+podman run -d --name reranker -p 5000:5000 --device /dev/dxg -v /usr/lib/wsl/lib:/usr/lib/wsl/lib:ro -v /usr/lib/wsl/drivers:/usr/lib/wsl/drivers:ro -e LD_LIBRARY_PATH=/usr/lib/wsl/lib localhost/reranker:local
 ```
 
-Die Geräteweitergabe allein garantiert keine CUDA-Inferenz; auch die installierte torch-Variante muss CUDA unterstützen. Diese optionale Konfiguration ist kein Bestandteil der Standard-Testfixture und wurde bei der Dokumentationsbereinigung nicht erneut auf Hardware geprüft.
+Die Geräteweitergabe allein garantiert keine CUDA-Inferenz; auch die installierte torch-Variante muss CUDA unterstützen. Diese optionale Konfiguration ist kein Bestandteil der Standard-Testfixture. Die zusätzliche Einbindung von `/usr/lib/wsl/drivers` ist erforderlich: Fehlen diese Treiberdateien, kann CUDA trotz sichtbarem `/dev/dxg` mit `cuInit: 100` scheitern. Die Konfiguration wurde auf einer NVIDIA GeForce RTX 4060 mit CUDA-Berechnung geprüft.
 
 Voraussetzungen und Prüfung:
 
