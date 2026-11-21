@@ -80,7 +80,7 @@ Die Tests sind nach Art getrennt: echte Unit-Tests liegen unter `tests/unit`; Po
 | `tests/unit/test_rag_components.py` | RAG-Erfolgspfad mit gemockten Ollama-/Vector-Antworten sowie Embedding-, Retrieval- und Generierungsfehlerfälle. |
 | `tests/unit/test_reranker_unit.py` | Reranker-Route mit Fake-Modell: Validierung, leere Dokumente, Rangfolge und Inferenzfehler. |
 | `tests/unit/test_vector_api_unit.py` | Vector-API-Routen mit gemocktem PostgreSQL-Pool und Cursor. |
-| `tests/unit/test_import3.py` | Tats?chlicher Aufruf von `import3.process_file` einschlie?lich Keyword-Gateway und Chunking; nur HTTP wird gemockt. Pr?ft Keyword-Pr?fix in Embedding und Metadaten, Normalisierung, Chunk-IDs, Variante und Wiederaufnahme mit `start=2`. |
+| `tests/unit/test_import3.py` | Tats?chlicher Aufruf von `import3.process_file` einschlie?lich Keyword-Gateway und Chunking; nur HTTP wird gemockt. Pr?ft Keyword-Präfix in Embedding und Metadaten, Normalisierung, Chunk-IDs, Variante und Wiederaufnahme mit `start=2`. |
 | `tests/unit/test_chunking.py` | UTF-8-Dateieinlesen, Splitter-Konfiguration, Unicode-Inhalt sowie konkrete Absatzgrenzen, Reihenfolge und Overlap mit und ohne ?berlappung. |
 | `tests/unit/test_ollama_endpoint.py` | Explizite Adresse, WSL-Gateway-Dekodierung, Fallback, Cache und erneuter Versuch nach fehlgeschlagener Ermittlung. |
 | `tests/unit/test_podman_stack_config.py` | Dynamische Hostports und podinterne Retrievaladresse ohne Container prüfen. |
@@ -141,7 +141,7 @@ Der vorhandene E2E-Test wurde am 15.11.2026 mit der Ollama-Hintergrund-App und a
 
 ### Integration des realen Importpfads
 
-`tests/podman/test_import3_integration.py` ruft `import3.process_file` mit realem Chunking, Keyword-Gateway (`gemma3:4b`), Embedding (`snowflake-arctic-embed2`) und Vector-API im isolierten Podman-Teststack auf. Nur Endpunkte und die eindeutige Importvariante werden konfiguriert. Der Test kontrolliert Chunkanzahl, nicht leeres Keyword-Pr?fix, unver?nderten Quelltext und Retrieval des gespeicherten Vektors durch erneutes Embedding der angereicherten Metadaten. Modellantworten werden nicht wortgenau verglichen. Testchunks werden im finally-Block entfernt. Aktivierung: `--include-ollama` oder `--all`; Host-Adresse ?ber `OLLAMA_HOST_URL`. Der RAG-Container ist nicht erforderlich. Der CLI-Argumentparser ist nicht Teil dieser Pr?fung.
+`tests/podman/test_import3_integration.py` ruft `import3.process_file` mit realem Chunking, Keyword-Gateway (`gemma3:4b`), Embedding (`snowflake-arctic-embed2`) und Vector-API im isolierten Podman-Teststack auf. Nur Endpunkte und die eindeutige Importvariante werden konfiguriert. Der Test kontrolliert Chunkanzahl, nicht leeres Keyword-Präfix, unver?nderten Quelltext und Retrieval des gespeicherten Vektors durch erneutes Embedding der angereicherten Metadaten. Modellantworten werden nicht wortgenau verglichen. Testchunks werden im finally-Block entfernt. Aktivierung: `--include-ollama` oder `--all`; Host-Adresse ?ber `OLLAMA_HOST_URL`. Der RAG-Container ist nicht erforderlich. Der CLI-Argumentparser ist nicht Teil dieser Pr?fung.
 
 ## Set-Kennung und Bestandsmigration (TS-01)
 

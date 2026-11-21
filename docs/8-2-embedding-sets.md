@@ -1,6 +1,6 @@
 # 8.2 Zuordnung von Embedding-Sets und Verarbeitungsparametern
 
-Stand: 21.11.2026. Dieses manuell gepflegte Verzeichnis ordnet `embedding_set_id` den Parametern der Datenaufbereitung zu. Die Entscheidung zur manuellen Pflege steht in [Abschnitt 9.3](9-architekturentscheidungen.md#93-set-konfiguration-manuell-dokumentieren-21112026); das bewusst verbleibende Risiko beschreibt [TS-04](11-risiken-und-technische-schulden.md#ts-04--manuelle-zuordnung-von-importvarianten--akzeptiertes-risiko).
+Stand: 21.11.2026. Dieses manuell gepflegte Verzeichnis ordnet `embedding_set_id` den Parametern der Datenaufbereitung zu. Die Entscheidung zur manuellen Pflege steht in [Abschnitt 9.3](9-architekturentscheidungen.md#93-set-konfiguration-manuell-dokumentieren-21112026); das bewusst verbleibende Risiko beschreibt [R-01](11-1-risiken.md#r-01--manuelle-zuordnung-von-importvarianten--akzeptiertes-risiko).
 
 ## Pflege und Aussagekraft
 
