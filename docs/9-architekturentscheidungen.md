@@ -2,7 +2,7 @@
 
 ## 9.1 Modell und Embedding-Set trennen (21.11.2026, TS-01)
 
-`embedding_set_id` bezeichnet die Menge zusammengehöriger Vektoren aus einer gemeinsamen Verarbeitungslogik. Die Kennung bezeichnet keinen einzelnen Ausführungslauf und ist unabhängig vom Modellnamen. Wiederholte Imports dürfen dasselbe Set verwenden. Vollständige Konfigurationsidentität und Importlaufverwaltung bleiben TS-04/TS-05.
+`embedding_set_id` bezeichnet die Menge zusammengehöriger Vektoren aus einer gemeinsamen Verarbeitungslogik. Die Kennung bezeichnet keinen einzelnen Ausführungslauf und ist unabhängig vom Modellnamen. Wiederholte Imports dürfen dasselbe Set verwenden. Die Konfiguration wird gemäß Abschnitt 9.3 manuell dokumentiert; Importlaufverwaltung bleibt TS-05.
 
 Import3, CLI und RAG lesen Modell und Set aus `rag/embedding_config.py`. Beide Einstellungen sind unabhängig über Umgebungsvariablen überschreibbar. Der Standard verweist auf das bestehende Set `snowflake-arctic-embed2-v2`; das Modell bleibt `snowflake-arctic-embed2`.
 
@@ -19,3 +19,9 @@ Die Spalte `metadata` enthält den zur Kontextbildung verwendeten Text und heiß
 `002_chunktext.sql` benennt nur die Spalte um. Inhalte einschließlich NULL, Vektoren, Schlüssel und Index bleiben erhalten. Der vorhandene Backup-Migrationsmechanismus führt die Migration mit `--migration 002_chunktext.sql` erst nach einem geprüften vollständigen Dump aus. Migration und API-Aktualisierung erfolgen bei gestoppten APIs. Ein erneutes Embedding ist nicht erforderlich.
 
 Nachweis am 21.11.2026: 45 Unit-Tests und 7 Podman-Integrationstests mit `--include-rag --include-ollama` bestanden, einschließlich Backup-Wiederherstellung, Migration, echtem Keyword-/Embedding-Import und RAG-E2E. Die optionale Reranker-Integration wurde nicht aktiviert; die Umstellung der CLI-Rerankingdaten auf `chunktext` ist durch einen Unit-Test abgesichert. Die Bestandsmigration erhielt alle 10.378 Zeilen mit identischen Prüfsummen über IDs, Set-Kennungen, Vektoren und Text. Backup vor der Migration: `backups/20261121-145838-030786.dump`.
+
+## 9.3 Set-Konfiguration manuell dokumentieren (21.11.2026)
+
+Die Zuordnung von Verarbeitungsparametern zu `embedding_set_id` wird auf ausdrückliche Projektentscheidung ausschließlich im [Set-ID-Verzeichnis, Abschnitt 8.2](8-2-embedding-sets.md) gepflegt. Eine zusätzliche technische Speicherung, Konfigurationsprüfung oder automatische Vergabe von Set-Identitäten ist nicht vorgesehen. Der bisherige technische Abbauvorschlag aus TS-04 wird damit ersetzt.
+
+Vor neuen Imports werden Set-ID und tatsächliche Parameter manuell dokumentiert; bei geänderter Verarbeitung wird eine neue Kennung gewählt. Historisch unbekannte Angaben bleiben als unbekannt gekennzeichnet. Vorhandene Daten bleiben erhalten. Die Möglichkeit einer versehentlichen Vermischung oder Überschreibung bei falsch gewählter Kennung wird als [Risiko TS-04](11-risiken-und-technische-schulden.md#ts-04--manuelle-zuordnung-von-importvarianten--akzeptiertes-risiko) bewusst akzeptiert. Die Dokumentation verhindert solche Fehler nicht technisch.

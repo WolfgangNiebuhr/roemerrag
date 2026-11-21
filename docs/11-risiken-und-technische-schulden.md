@@ -1,6 +1,6 @@
 # 11 Risiken und technische Schulden
 
-Stand: 15.11.2026. Dieses Kapitel nach arc42 dokumentiert die im Projekt untersuchten technischen Schulden und einen vorgeschlagenen Abbauplan. TS-01 ist abgeschlossen (Nachweis siehe Eintrag); die weiteren Einträge sind offen; die beschriebenen Maßnahmen sind Zielzustände und noch nicht umgesetzt.
+Stand: 21.11.2026. Dieses Kapitel nach arc42 dokumentiert die im Projekt untersuchten technischen Schulden und einen vorgeschlagenen Abbauplan. TS-01 ist abgeschlossen (Nachweis siehe Eintrag). TS-04 wird durch manuelle Dokumentation behandelt; das verbleibende Risiko ist bewusst akzeptiert. Die übrigen Einträge sind offen; ihre beschriebenen Maßnahmen sind Zielzustände und noch nicht umgesetzt.
 
 Die [Bausteinsicht](5-bausteinsicht.md) beschreibt die betroffenen Komponenten, die [Laufzeitsicht](6-laufzeitsicht.md) deren Zusammenspiel und das [Testkonzept](8-1-testkonzept.md) die vorhandenen Prüfungen. Verzeichnisse namens `k8s` sind ausgeschlossen. Bewertungsmaßstab ist der lokale Podman-Betrieb eines Systems zum Vergleich von RAG-Strategien, kein bereits zugesagter Produktionsbetrieb.
 
@@ -36,11 +36,12 @@ Die Analyse umfasst Python-Code, SQL, Dockerfiles und Tests. Die 24 containerfre
 - **Risiko:** Eingabefehler erscheinen als Serverdefekte; Clients können Fehler nicht einheitlich auswerten. Ungültige Anfragen verursachen vermeidbare Modellarbeit.
 - **Abbau und Abschluss:** Gemeinsame Regeln für JSON-Objekte, Textfelder, Dokumentelemente, Metriken und begrenzte Trefferzahlen dokumentieren und vor Dienstaufrufen prüfen. Fehler liefern ein stabiles JSON-Schema mit vereinbarten 4xx-/5xx-Statuscodes. Regressionstests decken die genannten Fälle sowie ungültiges JSON ab.
 
-### TS-04 – Unzureichende Identität von Importvarianten · P1
+### TS-04 – Manuelle Zuordnung von Importvarianten · Akzeptiertes Risiko
 
-- **Befund:** [Import3](../Ingest/import3.py) schreibt die feste Kennung `snowflake-arctic-embed2-v2`, ohne Modell- und Promptkonfiguration vollst?ndig abzubilden. Das [Schema](../Vector/init.sql) speichert keine vollständige Verarbeitungskonfiguration.
-- **Risiko:** Inhaltlich verschiedene Verfahren überschreiben dieselben Schlüssel. Ergebnisse lassen sich Chunking, Prompts und Modellständen nicht zuverlässig zuordnen.
-- **Abbau und Abschluss:** Eine persistierte Variantenkonfiguration für Chunking, Keyword-Verfahren, Prompts, Modelle und Normalisierung einführen. Konfigurationsänderungen erzeugen eine andere Identität; Versuchsergebnisse referenzieren sie. Tests weisen die Isolation zweier Varianten nach. Modellrevisionen und Buildstände ergänzt TS-15.
+- **Befund:** `embedding_set_id` ist eine frei gewählte Kennung. Import3 und Retrieval können Modell und Set unabhängig konfigurieren; die Datenbank speichert und prüft keine vollständige Verarbeitungskonfiguration. Eine Set-ID allein belegt daher weder Chunking, Anreicherung und Prompts noch das tatsächlich verwendete Modell und die Normalisierung.
+- **Entscheidung vom 21.11.2026:** Keine zusätzliche technische Speicherung oder Absicherung dieser Konfiguration. Stattdessen wird die Zuordnung manuell im [Set-ID-Verzeichnis, arc42-Abschnitt 8.2](8-2-embedding-sets.md) gepflegt. Die [Architekturentscheidung 9.3](9-architekturentscheidungen.md#93-set-konfiguration-manuell-dokumentieren-21112026) ersetzt den bisherigen Vorschlag einer persistierten Variantenkonfiguration.
+- **Manuelle Behandlung:** Vor einem Import die tatsächlichen Parameter zum Set dokumentieren; bei geänderter Verarbeitung eine neue Set-ID verwenden. Evaluationen nennen die verwendete Set-ID. Unbekannte historische Angaben bleiben ausdrücklich unbekannt; der aktuelle Codezustand ist kein vollständiger Herkunftsnachweis für Bestandsvektoren. Ein erneutes Embedding ist hierfür nicht erforderlich.
+- **Akzeptiertes Restrisiko:** Eine falsche Kennung oder veraltete Dokumentation kann unterschiedliche Verarbeitungen unter derselben Set-ID vermischen. Gleiche `(chunk_id, embedding_set_id)` können überschrieben werden; Vergleiche werden dadurch schwer erklärbar oder nicht wiederholbar. Das Verzeichnis unterstützt die Nachvollziehbarkeit, verhindert solche Fehler aber nicht technisch. Es besteht kein offener Implementierungsauftrag für die ursprünglich vorgeschlagene Konfigurationspersistenz. Importlaufprobleme bleiben TS-05; Modellrevisionen und Buildstände behandelt TS-15.
 
 ### TS-05 – Kollidierende Chunk-IDs und unvollständige Wiederholungsimporte · P1
 
@@ -137,13 +138,13 @@ Die Reihenfolge ist ein Vorschlag für aufeinander aufbauende Arbeitspakete. P1 
 | 2 | **Fehlerpfade verlässlich machen:** TS-03, TS-08 | Einheitliche JSON-Fehler, frühe Validierung, definierter Umgang mit leerem Kontext und robusten Metriken; Regressionstests bestehen. | Keine harte Abhängigkeit von 1. Bestehende API-Namen zunächst erhalten. |
 | 3 | **Datenbankzugriffe stabilisieren:** TS-06, TS-07 | Atomare Updates, geeigneter Pool, Erholung nach verzögertem DB-Start; isolierte Parallelitäts- und Fehlerpfadtests bestehen. | Bestehende Schlüssel bleiben erhalten; keine fachliche Datenmigration erforderlich. |
 | 4 | **Reproduzierbare Änderungsbasis schaffen:** TS-15 | Versionierte Abhängigkeitsstände und getesteter Migrationsmechanismus stehen bereit. | Vor Umsetzung der Schemaänderungen aus 5 und gegebenenfalls 6. |
-| 5 | **Experiment- und Importidentität sichern:** TS-04, TS-05 | Variantenkonfiguration, kollisionsfreie Dokumentidentität, eindeutiger Importabschluss und Resume; Migrations-/Neuimportweg für Bestandsdaten geprüft. | Paket 3 und Migrationsbasis aus 4. Vorher entscheiden, wie Bestandsvarianten zugeordnet werden. |
+| 5 | **Importidentität sichern:** TS-05; manuelle Begleitpflege gemäß TS-04 | Set-Zuordnung in Abschnitt 8.2 pflegen; keine technische Konfigurationspersistenz vorgesehen. Kollisionsfreie Dokumentidentität, eindeutiger Importabschluss und Resume; Migrations-/Neuimportweg für Bestandsdaten geprüft. | Paket 3 und Migrationsbasis aus 4 für technische Änderungen aus TS-05. |
 | 6 | **Schnittstellen konsolidieren:** TS-10, TS-11 | Dokumentierter Ressourcen-, Identitäts- und JSON-Vertrag mit kompatibler Umstellung oder ausdrücklich versioniertem Bruch. | Identitätsentscheidungen aus 5; Migrationsbasis aus 4 bei Schemaänderungen. |
 | 7 | **Gemeinsame Verarbeitung nutzen:** TS-09, TS-12, verbleibende Konsolidierung aus TS-14 | CLI, HTTP und Analyse verwenden denselben Kern bei expliziten Parametern; Providerdetails sind gekapselt, wirkungslose Optionen entfernt, Timeouts gesetzt. | Stabile Verträge aus 6. Bestehende Unterschiede zuerst durch Tests sichtbar machen. |
 | 8 | **Dienstlebenszyklus abschließen:** TS-13 | Synchronisierte Modellinitialisierung und getrennte, getestete Liveness-/Readiness-Zustände. | Keine harte Abhängigkeit von 4 bis 7; bei Startproblemen vorziehbar. |
 | 9 | **Performance und erweiterten Betrieb absichern:** TS-16, TS-18 | Gemessene und dokumentierte Indexstrategie; Betriebsmaßnahmen entsprechend dem tatsächlichen Einsatz. | Für belastbare Vergleiche stabile Varianten und Builds aus 4/5; Indexmigration über 4. Exponierter Betrieb darf TS-18 nicht aufschieben. |
 
-Für Paket 5 ist vor der Umsetzung eine Entscheidung über die Behandlung vorhandener Daten nötig: Historische Varianten dürfen nicht nachträglich mit unbekannten Konfigurationen als reproduzierbar ausgegeben werden. Unbekannte Herkunft wird explizit markiert oder durch einen kontrollierten Neuimport ersetzt. Keine Migration darf bestehende manuell genutzte Volumes stillschweigend löschen.
+Für TS-04 gilt die manuelle Zuordnung aus Abschnitt 8.2: Historische Varianten dürfen nicht nachträglich mit unbekannten Konfigurationen als reproduzierbar ausgegeben werden. Unbekannte Herkunft wird im Verzeichnis ausdrücklich markiert; daraus folgt keine Pflicht zum Neuimport. Für technische Änderungen aus TS-05 bleibt ein gesonderter Umgang mit Bestandsdaten festzulegen. Keine Migration darf bestehende manuell genutzte Volumes stillschweigend löschen.
 
 ## 11.4 Verifikation und Fortschreibung
 
