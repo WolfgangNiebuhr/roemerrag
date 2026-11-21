@@ -13,7 +13,7 @@ def test_reranker(reranker_url):
     health = request(reranker_url, "/health")
     assert health["status"] == "ok" and health["model_loaded"] is True, health
     bad = request(reranker_url, "/rerank", "POST", {"query": "hello"}, 400)
-    assert "documents" in bad["error"]
+    assert bad["type"] == "urn:rag:problem:invalid-request"
     result = request(reranker_url, "/rerank", "POST", {
         "query": "Wie funktioniert maschinelles Lernen?",
         "documents": [

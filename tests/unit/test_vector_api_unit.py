@@ -61,7 +61,7 @@ def test_search_uses_cosine_operator_and_filter_parameters(database):
     cursor.fetchall.return_value = [(1, "chunk-1", "embed-a", "[1,0]", "text", -0.9)]
 
     response = vector_app.app.test_client().post("/search", json={
-        "vector": "[0.9,0.1]", "embedding": "embed-a", "metric": "cosine", "num_results": 4,
+        "vector": [0.9, 0.1] + [0.0] * 1022, "embedding": "embed-a", "metric": "cosine", "num_results": 4,
     })
 
     assert response.status_code == 200
@@ -72,7 +72,7 @@ def test_search_uses_cosine_operator_and_filter_parameters(database):
     sql, parameters = cursor.execute.call_args_list[1].args
     assert "vector <=> %s::VECTOR" in sql
     assert "WHERE embedding_set_id = %s" in sql
-    assert parameters == ("[0.9,0.1]", "embed-a", "[0.9,0.1]", 4)
+    assert parameters == ([0.9, 0.1] + [0.0] * 1022, "embed-a", [0.9, 0.1] + [0.0] * 1022, 4)
     pool.putconn.assert_called_once_with(connection)
 
 
@@ -81,8 +81,8 @@ def test_api_reports_unavailable_database_pool(vector_module, monkeypatch):
 
     response = vector_module.app.test_client().get("/chunks")
 
-    assert response.status_code == 500
-    assert "error" in response.get_json()
+    assert response.status_code == 503
+    assert response.json["type"] == "urn:rag:problem:dependency-unavailable"
 
 
 def test_search_rejects_unsupported_metric_without_database_call(database):
@@ -105,7 +105,7 @@ def test_find_chunks_uses_parameterized_ilike_query(database):
 
 def test_api_recovers_when_database_becomes_available(vector_module, monkeypatch):
     client = vector_module.app.test_client()
-    assert client.get("/chunks").status_code == 500
+    assert client.get("/chunks").status_code == 503
     cursor = MagicMock()
     cursor.__enter__.return_value = cursor
     cursor.fetchone.return_value = (7,)
@@ -134,7 +134,7 @@ def test_conflicting_aliases_rejected_before_sql(database, path, method):
 @pytest.mark.parametrize("key", ["embedding", "embedding_set_id"])
 def test_set_aliases_write_same_database_column(database, key):
     module, _, connection, cursor = database
-    response = module.app.test_client().post("/vectors", json={"chunk_id": "c", key: "set", "vector": [1]})
+    response = module.app.test_client().post("/vectors", json={"chunk_id": "c", key: "set", "vector": [1] * 1024})
     assert response.status_code == 201
     assert "embedding_set_id" in cursor.execute.call_args.args[0]
     assert cursor.execute.call_args.args[1][:2] == ("c", "set")

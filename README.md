@@ -38,10 +38,10 @@ Die Bindung nimmt Verbindungen auf allen IPv4-Schnittstellen an; den Zugriff üb
 ```powershell
 podman machine start
 podman build -t vectordb:local -f Vector/Dockerfile Vector
-podman build -t vectorapi:local -f Vector/Dockerfile.api Vector
-podman build -t rag-api:local -f rag/Dockerfile rag
+python scripts/build_image.py vectorapi --tag vectorapi:local
+python scripts/build_image.py rag-api --tag rag-api:local
 # Optional:
-podman build -t reranker:local -f reranker/Dockerfile reranker
+python scripts/build_image.py reranker --tag reranker:local
 ```
 
 ### Vector-Datenbank und API starten
@@ -62,7 +62,7 @@ Warum Windows-`localhost` im Container nicht genügt, wozu der WSL-Gateway dient
 Das aktuelle RAG-Image ermittelt Ollama beim ersten Modellaufruf automatisch. Im vorhandenen Vector-Pod nutzt es die lokale Vector-API:
 
 ```powershell
-podman build -t rag-api:local -f rag/Dockerfile rag
+python scripts/build_image.py rag-api --tag rag-api:local
 podman run -d --name rag-api --pod vectorpod -e VECTOR_API_URL=http://127.0.0.1:5500/search localhost/rag-api:local
 ```
 
@@ -95,8 +95,8 @@ Kein Neuimport und kein erneutes Embedding: Die Migration benennt nur `vectors.e
 Zuerst neue API-Images bauen, externe schreibende Clients anhalten und beide APIs stoppen:
 
 ```powershell
-podman build -t vectorapi:local -f Vector/Dockerfile.api Vector
-podman build -t rag-api:local -f rag/Dockerfile rag
+python scripts/build_image.py vectorapi --tag vectorapi:local
+python scripts/build_image.py rag-api --tag rag-api:local
 podman stop rag-api vector-api
 python scripts/migrate_embedding_set_id.py
 # Nur nach Erfolg: API-Container mit den Startbefehlen oben neu erstellen.
@@ -210,7 +210,7 @@ Bei erfolgreicher GPU-Einrichtung liefert die Prüfung `CUDA verfügbar: True` u
 Nach Änderungen an der API muss das Image neu gebaut und der API-Container neu erstellt werden; ein blo?es `podman restart` ?bernimmt kein neues Image:
 
 ```powershell
-podman build -t vectorapi:local -f Vector/Dockerfile.api Vector
+python scripts/build_image.py vectorapi --tag vectorapi:local
 podman stop vector-api
 podman rm vector-api
 podman run -d --name vector-api --pod vectorpod -e DB_HOST=127.0.0.1 -e DB_PORT=5432 -e DB_USER=admin -e DB_PASSWORD=admin -e POSTGRES_DB=vector_db localhost/vectorapi:local
@@ -223,3 +223,11 @@ Der Import-Integrationstest ruft `import3.process_file` mit echter Keyword-Anrei
 ```powershell
 python -m pytest -c tests/pytest.ini tests/podman/test_import3_integration.py --include-ollama
 ```
+
+## HTTP-Fehlervertrag (TS-03)
+
+RAG-, Vector- und Reranker-API liefern Fehler als RFC-9457-Problemobjekte direkt im Body mit `Content-Type: application/problem+json`. Das bisherige Feld `error` entfaellt. Clients verwenden `type` und den HTTP-Status; `detail` dient der Anzeige. Unbekannte Erweiterungen ignorieren. `instance` identifiziert das Fehlerereignis, `request_id` korreliert Aufrufe und entspricht dem Antwortheader `X-Request-ID`. Eigene Kennungen sind auf 1 bis 128 Zeichen aus Buchstaben, Zahlen, Punkt, Unterstrich und Bindestrich begrenzt. Interne Exceptiontexte werden nicht ausgegeben.
+
+Vor Dienstzugriffen werden JSON-Objekte, nichtleere Textfelder, Set-Aliase, Metriken (`euclidean`, `cosine`) und Trefferzahlen (ganze Zahl 1 bis 100, keine Booleans oder Zahlenstrings) validiert. Reranker-Dokumente sind nichtleere Strings; eine leere Liste bleibt erlaubt. Vector-Eingaben enthalten genau 1024 endliche Zahlen; JSON-Zahlenlisten und bestehende JSON-Listenstrings bleiben erlaubt. Cosine verbietet Nullvektoren. `chunktext` darf String oder null sein beziehungsweise fehlen. Ungueltige Eingaben liefern 400 vor Modell-/DB-Arbeit, fehlende Chunks 404, nicht verfuegbare Datenbanken oder Rerankermodelle 503 und unerwartete Fehler neutrale 500-Antworten. HTTP-Fehler wie 405 behalten erforderliche Header.
+
+Die API-Images werden mit `scripts/build_image.py` aus einem temporaeren Build-Kontext gebaut (siehe Befehle oben). Das Skript kopiert ausschliesslich die pro Dienst aufgelisteten Quelldateien und das gemeinsame Paket `rag_common`; es durchsucht weder Tests noch historische Verzeichnisse. Dies umgeht den Windows-Podman-Fehler beim Lesen gesperrter Verzeichnisse trotz Ignore-Regeln. Der temporaere Kontext wird auch bei Buildfehlern entfernt. Neue Laufzeitdateien muessen in der Eingabeliste des Skripts ergaenzt werden. Nach Codeaenderungen Images neu bauen und Container neu erstellen. Weitergehende Adapterklassifikation, Retrybudgets, Importabschluss und Readiness sind noch Zielkonzept: [Kapitel 8.3](docs/8-3-error-handling.md).

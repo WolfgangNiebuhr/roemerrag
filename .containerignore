@@ -1,0 +1,13 @@
+.git
+.git/**
+.idea
+.idea/**
+**/__pycache__
+**/__pycache__/**
+**/k8s
+**/k8s/**
+tests
+tests/**
+backups
+backups/**
+*.log

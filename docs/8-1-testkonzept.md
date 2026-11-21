@@ -152,3 +152,9 @@ Die Migrationsintegration prueft auch `002_chunktext.sql`: Erhalt von Chunktext 
 ## Reranker-Modellwahl (TS-02)
 
 Unit-Tests pruefen Request-Modell und Default, Wiederverwendung und Wechsel, parallele Anfragen, unveraenderten Default nach expliziter Auswahl, Ladefehler ohne Fallback, Wiederholung und Validierung vor Modellarbeit. Der isolierte Podman-Test `test_reranker.py --include-reranker` verwendet MiniLM-L6 und TinyBERT-L2 nacheinander im selben Container und wechselt zum Default zurueck. Alle Antworten weisen das verwendete Modell aus. Der erste Download des Zusatzmodells benoetigt Netzwerkzugriff.
+
+## Fehlervertrag TS-03
+
+Tests in tests/unit/test_http_errors.py prüfen frühe Validierung vor Modell-/Poolzugriff, RFC-9457-Felder und Medientyp, sichere interne Fehler, Request-Korrelation sowie HTTP-Status und Allow-Header. Vector-Erfolgstests verwenden dimensionsgültige Eingaben. Podman-Fehlerprüfungen verwenden type statt des bisherigen error-Felds. API-Builds verwenden scripts/build_image.py mit temporären Kontexten aus explizit aufgelisteten Dateien und rag_common. Vier Unit-Tests in tests/unit/test_build_image.py sichern Dateiauswahl und Bereinigung auch bei Buildfehlern ab. Der Podman-Test tests/podman/test_http_errors.py prüft den tatsächlichen RFC-9457-Vertrag aller drei APIs einschließlich Status, Medientyp, Typ-URI, Request-ID und Allow-Header.
+
+Prüfnachweis vom 21.11.2026: 99 Unit-Tests bestanden. Podman-Lauf mit --include-rag --include-reranker: 6 bestanden, 3 optionale Ollama-/Import-/RAG-E2E-Tests nicht aktiviert. Die API-Builds und der RFC-9457-Vertrag sind damit integriert geprüft; für TS-03 ist keine echte Generierung oder Ingestion erforderlich.

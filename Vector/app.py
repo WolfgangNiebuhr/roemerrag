@@ -1,3 +1,7 @@
+import sys
+from pathlib import Path
+sys.path.insert(0, str(Path(__file__).resolve().parents[1]))
+from rag_common.http_errors import install, Problem
 from flask import Flask, request, jsonify
 import os
 import json
@@ -12,6 +16,7 @@ DB_HOST = os.getenv("DB_HOST", "127.0.0.1")
 DB_PORT = int(os.getenv("DB_PORT", "5432"))
 
 app = Flask(__name__)
+install(app, "vector")
 
 db_pool = None
 pool_init_lock = Lock()
@@ -34,8 +39,13 @@ def ensure_db_pool():
             app.logger.error(f"DB-Pool Fehler: {e}")
 
 
-ensure_db_pool()
-app.before_request(ensure_db_pool)
+
+
+@app.before_request
+def initialize_database():
+    if request.routing_exception is None:
+        ensure_db_pool()
+
 
 def get_conn():
     global db_pool
@@ -64,11 +74,6 @@ def resolve_set_id(data, required=False):
     return value
 
 
-@app.errorhandler(400)
-def invalid_set_id(error):
-    return jsonify({"error": error.description}), 400
-
-
 def compatible_row(row):
     row["embedding"] = row["embedding_set_id"]
     return row
@@ -78,7 +83,7 @@ def compatible_row(row):
 def count_chunks():
     """Optionaler Filter: ?embedding_set_id=...  -> zählt Zeilen"""
     if not db_pool:
-        return jsonify({"error": "DB nicht verfügbar"}), 500
+        raise Problem("dependency-unavailable", "Database is unavailable.")
     embedding_set_id = resolve_set_id(request.args)
     conn = None
     try:
@@ -91,7 +96,7 @@ def count_chunks():
             (cnt,) = cur.fetchone()
         return jsonify({"chunks": cnt})
     except Exception as e:
-        return jsonify({"error": str(e)}), 500
+        raise
     finally:
         if conn:
             db_pool.putconn(conn)
@@ -100,7 +105,7 @@ def count_chunks():
 def get_chunk(chunk_id):
     """GET /chunks/<chunk_id>[?embedding_set_id=...] -> eine Zeile"""
     if not db_pool:
-        return jsonify({"error": "DB nicht verfügbar"}), 500
+        raise Problem("dependency-unavailable", "Database is unavailable.")
     embedding_set_id = resolve_set_id(request.args)
     conn = None
     try:
@@ -122,11 +127,11 @@ def get_chunk(chunk_id):
                 """, (chunk_id,))
             row = cur.fetchone()
             if not row:
-                return jsonify({"error": "nicht gefunden"}), 404
+                raise Problem("not-found", "Der angefragte Chunk wurde nicht gefunden.")
             cols = [d[0] for d in cur.description]
             return jsonify(compatible_row(dict(zip(cols, row))))
     except Exception as e:
-        return jsonify({"error": str(e)}), 500
+        raise
     finally:
         if conn:
             db_pool.putconn(conn)
@@ -138,7 +143,7 @@ def upsert_chunk():
     - vector: String im pgvector-Format, z.B. '[0.1, 0.2, 0.3]'
     """
     if not db_pool:
-        return jsonify({"error": "DB nicht verfügbar"}), 500
+        raise Problem("dependency-unavailable", "Database is unavailable.")
     data = request.get_json(force=True)
     chunk_id = data["chunk_id"]
     embedding_set_id = resolve_set_id(data, required=True)
@@ -160,7 +165,7 @@ def upsert_chunk():
         conn.commit()
         return jsonify({"message": "Vector stored"}), 201
     except Exception as e:
-        return jsonify({"error": str(e)}), 500
+        raise
     finally:
         if conn:
             db_pool.putconn(conn)
@@ -171,7 +176,7 @@ def delete_chunk():
     Body (JSON): {chunk_id, embedding_set_id}
     """
     if not db_pool:
-        return jsonify({"error": "DB nicht verfügbar"}), 500
+        raise Problem("dependency-unavailable", "Database is unavailable.")
     data = request.get_json(force=True)
     chunk_id = data["chunk_id"]
     embedding_set_id = resolve_set_id(data, required=True)
@@ -186,7 +191,7 @@ def delete_chunk():
         conn.commit()
         return jsonify({"message": "deleted"}), 200
     except Exception as e:
-        return jsonify({"error": str(e)}), 500
+        raise
     finally:
         if conn:
             db_pool.putconn(conn)
@@ -198,7 +203,7 @@ def search_vectors():
     - vector: String im pgvector-Format, z.B. '[0.1, 0.2, 0.3]'
     """
     if not db_pool:
-        return jsonify({"error": "DB nicht verfügbar"}), 500
+        raise Problem("dependency-unavailable", "Database is unavailable.")
     data = request.get_json(force=True)
     query_vector = data["vector"]
     num_results = int(data.get("num_results", 10))
@@ -237,7 +242,7 @@ def search_vectors():
             rows = [compatible_row(dict(zip(cols, r))) for r in cur.fetchall()]
         return jsonify(rows)
     except Exception as e:
-        return jsonify({"error": str(e)}), 500
+        raise
     finally:
         if conn:
             db_pool.putconn(conn)
@@ -246,7 +251,7 @@ def search_vectors():
 def find_chunks():
     """Find chunk IDs whose chunktext matches the ILIKE pattern in query."""
     if not db_pool:
-        return jsonify({"error": "Datenbank nicht verfügbar"}), 500
+        raise Problem("dependency-unavailable", "Database is unavailable.")
     search_query = request.args.get("query")
     if not search_query:
         return jsonify({"error": "Parameter 'query' fehlt"}), 400
@@ -258,7 +263,7 @@ def find_chunks():
             chunk_ids = [row[0] for row in cur.fetchall()]
         return jsonify({"chunk_ids": chunk_ids})
     except Exception as e:
-        return jsonify({"error": str(e)}), 500
+        raise
     finally:
         if conn:
             db_pool.putconn(conn)

@@ -117,3 +117,7 @@ Das zentrale Register mit Nachweisen, Prioritäten und Abschlusskriterien steht 
 Beschrieben sind aktuelle Repository-Implementierung und dokumentierte Podman-Konfiguration. Der E2E-Test wurde am 15.11.2026 erfolgreich mit Windows-Ollama als Hintergrund-App und automatischer Gateway-Ermittlung ausgeführt. Diese Dokumentationsbereinigung umfasst keine erneute Deployment- oder Lastprüfung. Historische Dateien und das separate Structurizr-Modell können vom aktuellen Podman-Aufbau abweichen.
 
 Die Vector-API akzeptiert weiterhin `embedding` als Alias und liefert beide Namen in Einzelchunk- und Suchantworten. Konflikte ergeben HTTP 400. Import3, CLI und RAG verwenden `rag/embedding_config.py` mit unabhaengigen Modell- und Set-Defaults. Bestandsmigration mit Backup: siehe README.
+
+## Ergänzung TS-03 (21.11.2026)
+
+Die APIs verwenden gemeinsame frühe Requestvalidierung und RFC-9457-Problemantworten aus rag_common/http_errors.py; Einzelheiten und verbleibende Zielzustände stehen in Kapitel 8.3. Die Vector-API initialisiert den Pool erst nach erfolgreicher Eingangsvalidierung und versucht es bei späteren Anfragen erneut. Die zuvor genannten Lücken bei Requestvalidierung und JSON-Fehlerausgabe sind damit behoben; Transaktions- und Poolnebenläufigkeit bleiben offen. API-Images werden über scripts/build_image.py aus temporären Kontexten mit explizit aufgelisteten Quelldateien und rag_common gebaut; gesperrte lokale Testverzeichnisse werden nicht durchsucht.

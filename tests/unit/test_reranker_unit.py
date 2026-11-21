@@ -57,7 +57,8 @@ def test_reranker_component_returns_error_when_model_prediction_fails(monkeypatc
     response = client.post("/rerank", json={"query": "q", "documents": ["doc"]})
 
     assert response.status_code == 500
-    assert "inference failed" in response.get_json()["error"]
+    assert response.json["type"] == "urn:rag:problem:internal-error"
+    assert "inference failed" not in response.text
 
 @pytest.fixture
 def model_factory(monkeypatch):

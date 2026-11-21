@@ -1,4 +1,4 @@
-﻿# 8.3 Übergreifendes Error-Handling
+# 8.3 Übergreifendes Error-Handling
 
 Stand: 21.11.2026. Dieses Querschnittskonzept beschreibt den **Zielzustand**, keine bereits implementierte Schnittstelle. Es gilt für RAG-API, Vector-API, Reranker sowie unterstützte Import- und Analysewerkzeuge. Die Umsetzung betrifft insbesondere TS-03, TS-05 bis TS-09, TS-13 und TS-17 aus [Kapitel 11.2](11-2-technische-schulden.md). Bausteine und Teststufen beschreiben die [Bausteinsicht](5-bausteinsicht.md) und das [Testkonzept](8-1-testkonzept.md).
 
@@ -112,3 +112,15 @@ Liveness prüft nur, ob der Prozess lebt, und löst keine Modellinitialisierung 
 Containerfreie Tests prüfen Medientyp, Top-Level-Problemobjekt, Typidentität, Feldtypen, Übereinstimmung von HTTP- und Bodystatus, Erhalt von HTTP-Fehlern und Headern, sichere Meldungen sowie Validierung vor Dienstzugriff. Weitere Tests prüfen Fehlerübersetzung, ungültige Upstreamantworten, Budget-/Retrygrenzen, Korrelationskennungen, leeren Kontext und Import-Teilfehler.
 
 Isolierte Podman-Tests prüfen Rollback und Wiederverwendung nach SQL-Fehlern, atomare parallele Upserts, Pool-/Dienstausfälle, verzögerten Datenbankstart und Readiness. Bestehende Datenbestände und manuell genutzte Volumes bleiben erhalten. Teststufen und Ausführungsoptionen folgen [Kapitel 8.1](8-1-testkonzept.md). Die genannten Maßnahmen und Abnahmekriterien sind bis zu ihrer Umsetzung offene Zielzustände.
+
+## Umsetzungsstand TS-03 (21.11.2026)
+
+Frühe Requestvalidierung und zentrale RFC-9457-Fehlerantworten der drei APIs sind in rag_common/http_errors.py umgesetzt. Eingangsregeln und Build-Umstellung beschreibt das README. 99 Unit-Tests und 6 isolierte Podman-Integrationstests mit RAG/Reranker bestehen. Drei optionale Ollama-/Import-/RAG-E2E-Tests wurden nicht aktiviert, da TS-03 keine echte Generierung oder Ingestion ändert. scripts/build_image.py erstellt temporäre Kontexte aus expliziten Quelldateien und umgeht den zuvor bestätigten Windows-Podman-Zugriffsfehler auf tests/.pytest-tmp. Der HTTP-Vertrag aller drei APIs in der isolierten Testumgebung ist durch tests/podman/test_http_errors.py nachgewiesen. Die übrigen Maßnahmen dieses Kapitels bleiben Zielzustände; insbesondere erfolgt noch keine vollständige Adapterfehlerklassifikation oder Readiness-Trennung. Details siehe TS-03 in Kapitel 11.2.
+
+### Ausrollen und anschließende API-Prüfungen (21.11.2026)
+
+Die regulären Images `localhost/vectorapi:local`, `localhost/rag-api:local` und `localhost/reranker:local` wurden mit `scripts/build_image.py` neu gebaut. Die Container `vector-api`, `rag-api` und `reranker` laufen seit dem Update mit diesen Images. An den regulären Ports 5500, 5600 und 5000 wurden anschließend ungültige Requests erfolgreich mit HTTP 400 und RFC-9457-Problemantworten beantwortet; geprüft wurden Medientyp, Typ-URI, HTTP-/Bodystatus und Request-Korrelation.
+
+Zusätzlich bestanden folgende Betriebsprüfungen: Vector-Zählung über `GET /chunks` (10.378 Datensätze), Reranker-Health mit geladenem `cross-encoder/ms-marco-MiniLM-L6-v2`, echte Bewertung zweier Dokumente sowie eine vollständige RAG-Abfrage mit Embedding, Retrieval und Generierung. Die RAG-Antwort enthielt zwei Quellchunks (`pg3060-552`, `pg3061-301`). Diese lesenden Prüfungen im regulären Betrieb ergänzen die isolierten Integrationstests und ersetzen keinen vollständigen Import-/E2E-Testlauf.
+
+Der Datenbankcontainer wurde weder ersetzt noch neu gestartet; das Volume `pgvector-data` blieb unverändert eingebunden. Vorherige und anschließende SQL-Zählung ergaben jeweils 10.378 Zeilen. Ports, Pod-Zuordnung, Geräte einschließlich GPU, Mounts und Startkonfiguration der APIs wurden erhalten und abgeglichen; lediglich automatisch vergebene Container-Hostnamen änderten sich. Die bisherigen API-Container bleiben gestoppt mit dem Suffix `-before-ts03-20261121` als Rückweg erhalten. Den ausführlichen Prüfnachweis führt [TS-03 in Kapitel 11.2](11-2-technische-schulden.md#ts-03--requestvalidierung-und-fehlerverträge--p1--abgeschlossen). Die weiteren Zielmaßnahmen dieses Konzepts bleiben davon unberührt.

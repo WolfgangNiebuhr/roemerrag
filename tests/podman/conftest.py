@@ -78,15 +78,19 @@ def podman_stack(request):
 
     def build(tag, dockerfile, context):
         image = f"localhost/{tag}:test-{test_id}"
-        _run("build", "-t", image, "-f", dockerfile, context)
+        if context == ".":
+            from scripts.build_image import build_image
+            build_image(tag, image)
+        else:
+            _run("build", "-t", image, "-f", dockerfile, context)
         images.append(image)
         return image
 
     try:
         db_image = build("vectordb", "Vector/Dockerfile", "Vector")
-        vector_image = build("vectorapi", "Vector/Dockerfile.api", "Vector")
-        rag_image = build("rag-api", "rag/Dockerfile", "rag") if include_rag else None
-        reranker_image = build("reranker", "reranker/Dockerfile", "reranker") if include_reranker else None
+        vector_image = build("vectorapi", "Vector/Dockerfile.api", ".")
+        rag_image = build("rag-api", "rag/Dockerfile", ".") if include_rag else None
+        reranker_image = build("reranker", "reranker/Dockerfile", ".") if include_reranker else None
 
         _run("volume", "create", volume)
         volume_created = True

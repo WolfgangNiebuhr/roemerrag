@@ -1,3 +1,7 @@
+import sys
+from pathlib import Path
+sys.path.insert(0, str(Path(__file__).resolve().parents[1]))
+from rag_common.http_errors import install, Problem
 from flask import Flask, request, jsonify
 import os
 import requests
@@ -8,6 +12,7 @@ else:
     from ollama_endpoint import resolve_ollama_base_url
 
 app = Flask(__name__)
+install(app, "rag")
 
 # Konfiguration
 
@@ -101,17 +106,11 @@ def generate_answer(context, question):
 def process_request():
     try:
         data = request.get_json(silent=True)
-        if not isinstance(data, dict):
-            return jsonify({"error": "JSON-Objekt mit query ist erforderlich"}), 400
         query = data.get("query")
-        if "embedding_set_id" in data and "filter" in data and data["embedding_set_id"] != data["filter"]:
-            return jsonify({"error": "embedding_set_id und filter widersprechen sich"}), 400
         filter = data.get("embedding_set_id", data.get("filter", EMBEDDING_SET_ID))
         metric = data.get("metric", "euclidean")
         num_results = data.get("num_results", 5)
 
-        if not query:
-            return jsonify({"error": "Query ist erforderlich"}), 400
 
         embedding = generate_embedding(query)
         results = search_vectors(embedding, filter, metric, num_results)
@@ -129,7 +128,7 @@ def process_request():
         return jsonify(response), 200
 
     except Exception as e:
-        return jsonify({"error": str(e)}), 500
+        raise
 
 if __name__ == '__main__':
     app.run(host='0.0.0.0', port=5600)

@@ -38,7 +38,7 @@ def test_vector_api(vector_url, test_id):
     assert len(cosine) == 1 and cosine[0]["chunk_id"] == ids[0], cosine
     found = request(vector_url, "/find?query=%25alpha-updated%25")
     assert ids[0] in found["chunk_ids"], found
-    assert request(vector_url, "/chunks/missing-" + test_id, expected=404)["error"] == "nicht gefunden"
+    assert request(vector_url, "/chunks/missing-" + test_id, expected=404)["type"] == "urn:rag:problem:not-found"
 
     for chunk_id, embedding in zip(ids, (embedding_a, embedding_b)):
         assert request(vector_url, "/chunk", "DELETE", {"chunk_id": chunk_id, "embedding": embedding})["message"] == "deleted"

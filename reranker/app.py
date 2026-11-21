@@ -1,3 +1,7 @@
+import sys
+from pathlib import Path
+sys.path.insert(0, str(Path(__file__).resolve().parents[1]))
+from rag_common.http_errors import install, Problem
 from flask import Flask, request, jsonify
 import os
 import logging
@@ -6,6 +10,7 @@ from threading import Lock
 logging.basicConfig(level=logging.INFO, format='%(asctime)s - %(levelname)s - %(message)s')
 
 app = Flask(__name__)
+install(app, "reranker")
 
 MODEL_NAME = os.getenv("RERANK_MODEL", "cross-encoder/ms-marco-MiniLM-L6-v2")
 MODEL = None
@@ -31,18 +36,9 @@ def load_model(model_name):
 @app.route('/rerank', methods=['POST'])
 def rerank():
     data = request.get_json(silent=True)
-    if not isinstance(data, dict) or 'query' not in data or 'documents' not in data:
-        return jsonify({"error": "Ungültiges Request-Format. Erwartet 'query' und 'documents'."}), 400
-
-    model_name = data.get("model", MODEL_NAME)
-    if not isinstance(model_name, str) or not model_name.strip():
-        return jsonify({"error": "model muss ein nichtleerer String sein"}), 400
-    model_name = model_name.strip()
+    model_name = data.get("model", MODEL_NAME).strip()
     query = data['query']
     documents = data['documents']
-
-    if not isinstance(query, str) or not isinstance(documents, list) or not all(isinstance(doc, str) for doc in documents):
-        return jsonify({"error": "'query' muss ein String und 'documents' eine Liste sein."}), 400
 
     if not documents:
         return jsonify({"ranked_documents": [], "model": model_name})
@@ -53,7 +49,7 @@ def rerank():
             try:
                 model = load_model(model_name)
             except RuntimeError:
-                return jsonify({"error": "Rerank model is not available. Check server logs for details.", "model": model_name}), 503
+                raise Problem("model-unavailable", "Rerank-Modell ist nicht verf?gbar.", model=model_name)
             scores = model.predict(sentences)
 
         results = []
@@ -65,12 +61,11 @@ def rerank():
             })
 
         ranked_results = sorted(results, key=lambda x: x['score'], reverse=True)
-        logging.info(f"Rerank-Anfrage verarbeitet. Query: '{query}', Dokumente: {len(documents)}")
+        logging.info("Rerank request processed: documents=%s", len(documents))
         return jsonify({"ranked_documents": ranked_results, "model": model_name})
 
     except Exception as e:
-        logging.error(f"Fehler beim Reranking: {e}", exc_info=True)
-        return jsonify({"error": f"Interner Serverfehler beim Reranking: {e}"}), 500
+        raise
 
 @app.route('/health', methods=['GET'])
 def health_check():
@@ -79,7 +74,7 @@ def health_check():
             if MODEL is None:
                 load_model(MODEL_NAME)
         except RuntimeError:
-            return jsonify({"status": "unavailable", "model_loaded": False, "model_name": MODEL_NAME}), 503
+            raise Problem("model-unavailable", "Rerank-Modell ist nicht verf?gbar.")
         return jsonify({"status": "ok", "model_loaded": True, "model_name": ACTIVE_MODEL_NAME}), 200
 
 if __name__ == '__main__':
