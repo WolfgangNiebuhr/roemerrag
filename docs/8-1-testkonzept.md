@@ -148,3 +148,7 @@ Der vorhandene E2E-Test wurde am 15.11.2026 mit der Ollama-Hintergrund-App und a
 Unit-Tests sichern gemeinsame Import-/Retrievaldefaults, API-Aliase und Konflikte vor SQL-/Modellzugriff ab. `tests/podman/test_embedding_migration.py` verwendet eigene Testdatenbanken und prueft unveraenderte Zeilen/Vektoren, Unique Constraint, Wiederholbarkeit und Wiederherstellung des Backups. Vector-Integration mischt alte und neue Feldnamen; echte Modelle bleiben den optionalen Ollama-/RAG-Tests vorbehalten.
 
 Die Migrationsintegration prueft auch `002_chunktext.sql`: Erhalt von Chunktext und Vektoren, Wiederholbarkeit und Wiederherstellung des vorherigen Schemas aus dem Backup. API-Tests erwarten ausschliesslich `chunktext`; der alte Antwortname `metadata` ist entfernt.
+
+## Reranker-Modellwahl (TS-02)
+
+Unit-Tests pruefen Request-Modell und Default, Wiederverwendung und Wechsel, parallele Anfragen, unveraenderten Default nach expliziter Auswahl, Ladefehler ohne Fallback, Wiederholung und Validierung vor Modellarbeit. Der isolierte Podman-Test `test_reranker.py --include-reranker` verwendet MiniLM-L6 und TinyBERT-L2 nacheinander im selben Container und wechselt zum Default zurueck. Alle Antworten weisen das verwendete Modell aus. Der erste Download des Zusatzmodells benoetigt Netzwerkzugriff.

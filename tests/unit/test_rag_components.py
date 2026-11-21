@@ -160,7 +160,7 @@ def test_process_rejects_conflicting_aliases_before_embedding(monkeypatch):
 def test_cli_reranking_keeps_chunktext_and_chunk_identity(monkeypatch):
     import interact
     response = Mock(status_code=200)
-    response.json.return_value = {"ranked_documents": [{"text": "second", "original_index": 1}]}
+    response.json.return_value = {"model": "model", "ranked_documents": [{"text": "second", "original_index": 1}]}
     post = Mock(return_value=response)
     monkeypatch.setattr(interact.requests, "post", post)
     rows = [{"chunk_id": "a", "chunktext": "first"}, {"chunk_id": "b", "chunktext": "second"}]

@@ -115,6 +115,19 @@ Invoke-RestMethod http://localhost:5000/health
 
 Der erste Health-Aufruf lädt das Modell in den Prozess und kann dauern. Das Image lädt `cross-encoder/ms-marco-MiniLM-L6-v2` bereits beim Build herunter. Der Standardstart reicht keine GPU durch; Hinweise für einen optionalen GPU-Start stehen unten.
 
+Das Rerankermodell lässt sich pro Anfrage ohne erneuten Containerstart auswählen:
+
+```powershell
+Invoke-RestMethod http://localhost:5000/rerank -Method Post -ContentType application/json -Body '{"model":"cross-encoder/ms-marco-TinyBERT-L2-v2","query":"Was ist Rom?","documents":["Rom ist eine Stadt.","Ein Fisch schwimmt."]}'
+python interact.py --query "Was ist Rom?" --reranker cross-encoder/ms-marco-TinyBERT-L2-v2
+```
+
+`model` ist optional; ohne Angabe gilt das beim Start konfigurierte `RERANK_MODEL`. Ein expliziter Wert ändert diesen Default nicht. Die Antwort nennt das ausgewählte Modell als `model`; die CLI zeigt es an. Erwartet wird ein CrossEncoder mit einem skalaren Score pro Frage-Dokument-Paar. Modelle, die eigenen Remote-Code benötigen, sind nicht unterstützt. Siehe den [CrossEncoder-Vertrag](https://www.sbert.net/docs/package_reference/cross_encoder/model.html).
+
+Der Dienst hält ein Modell aktiv. Gleiche Auswahl verwendet es erneut, ein Wechsel lädt ein anderes Modell; ein Rückwechsel lädt die Modellinstanz erneut aus dem lokalen Cache. Noch nicht vorhandene Gewichte benötigen beim ersten Aufruf einen Download. Laden und Inferenz laufen nacheinander unter einer gemeinsamen Sperre. Der Wechsel kann daher dauern und vorübergehend Speicher für beide Modelle benötigen. Ladefehler liefern HTTP 503 mit der angefragten Modellkennung, ohne auf ein anderes Modell auszuweichen; das vorher aktive Modell bleibt verfügbar. Ungültige Modellparameter liefern HTTP 400. Leere Dokumentlisten liefern eine leere Ergebnisliste mit der ausgewählten Kennung, ohne ein Modell zu laden. `/health` zeigt das aktive Modell und lädt nur bei noch ungeladenem Dienst den Default.
+
+Für diese neue Fähigkeit muss die geänderte App einmal ausgerollt werden. Anschließend erfordern Modellwechsel weder einen Image-Build noch einen Neustart. Der isolierte Integrationstest `python -m pytest -c tests/pytest.ini tests/podman/test_reranker.py --include-reranker` prüft zwei echte Modelle und den Rückwechsel; dafür muss der Download des zusätzlichen Testmodells möglich sein.
+
 ### Einzelne Dienste und Details
 
 Die Vector-spezifischen Hinweise stehen in [Vector/README.txt](Vector/README.txt). Für den aktuellen Gesamtaufbau gelten die Befehle oben. Verzeichnisse namens `k8s` sind historische Referenzen. Die [Bausteinsicht](docs/5-bausteinsicht.md), [Laufzeitsicht](docs/6-laufzeitsicht.md), [Verteilungssicht](docs/7-verteilungssicht.md) und das [Testkonzept](docs/8-1-testkonzept.md) beschreiben den Podman-Betrieb. Die Verteilungssicht zeigt Windows-/WSL-Grenzen, Pods, Container, Ports und persistente Speicher sowie die Unterschiede zwischen Neuaufbau, bestehendem Betrieb und Teststack.

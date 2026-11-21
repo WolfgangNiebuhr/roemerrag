@@ -1,6 +1,6 @@
 # 11 Risiken und technische Schulden
 
-Stand: 21.11.2026. Dieses Kapitel nach arc42 dokumentiert die im Projekt untersuchten technischen Schulden und einen vorgeschlagenen Abbauplan. TS-01 ist abgeschlossen (Nachweis siehe Eintrag). TS-04 wird durch manuelle Dokumentation behandelt; das verbleibende Risiko ist bewusst akzeptiert. Die übrigen Einträge sind offen; ihre beschriebenen Maßnahmen sind Zielzustände und noch nicht umgesetzt.
+Stand: 21.11.2026. Dieses Kapitel nach arc42 dokumentiert die im Projekt untersuchten technischen Schulden und einen vorgeschlagenen Abbauplan. TS-01 und TS-02 sind abgeschlossen (Nachweise siehe Eintraege). TS-04 wird durch manuelle Dokumentation behandelt; das verbleibende Risiko ist bewusst akzeptiert. Die übrigen Einträge sind offen; ihre beschriebenen Maßnahmen sind Zielzustände und noch nicht umgesetzt.
 
 Die [Bausteinsicht](5-bausteinsicht.md) beschreibt die betroffenen Komponenten, die [Laufzeitsicht](6-laufzeitsicht.md) deren Zusammenspiel und das [Testkonzept](8-1-testkonzept.md) die vorhandenen Prüfungen. Verzeichnisse namens `k8s` sind ausgeschlossen. Bewertungsmaßstab ist der lokale Podman-Betrieb eines Systems zum Vergleich von RAG-Strategien, kein bereits zugesagter Produktionsbetrieb.
 
@@ -26,9 +26,9 @@ Die Analyse umfasst Python-Code, SQL, Dockerfiles und Tests. Die 24 containerfre
 
 ### TS-02 – Wirkungslose Reranker-Modellwahl · P1
 
-- **Befund:** [interact.py](../interact.py), `rerank_results`, sendet den CLI-Parameter `--reranker` als `model`. [reranker/app.py](../reranker/app.py) ignoriert ihn und verwendet ausschließlich `RERANK_MODEL`.
-- **Risiko:** Vergleichsläufe behaupten unterschiedliche Modelle, führen aber dasselbe Modell aus.
-- **Abbau und Abschluss:** Einen verbindlichen Vertrag wählen: serverseitig festgelegtes Modell mit entfernten beziehungsweise zurückgewiesenen Auswahlparametern oder tatsächlich unterstützte Modellwahl. Antworten und Versuchsergebnisse nennen das verwendete Modell; ein Vertragstest prüft Abweichungen.
+- **Stand 21.11.2026:** Implementiert: `POST /rerank` waehlt das CrossEncoder-Modell ueber `model`; ohne Parameter gilt `RERANK_MODEL`. Die CLI reicht `--reranker` weiter und zeigt das verwendete Modell aus der Antwort an.
+- **Vertrag:** Antworten enthalten `model` und `ranked_documents`. Ungueltige Modellparameter liefern HTTP 400 vor dem Laden; Ladefehler liefern HTTP 503 ohne stillen Fallback. Bei leerer Dokumentliste wird kein Modell geladen. Ein Modell bleibt aktiv; Modellwechsel und Inferenz sind gemeinsam synchronisiert. Beim Wechsel wird das neue Modell zuerst geladen, sodass bei Ladefehlern das vorherige verfuegbar bleibt.
+- **Nachweis:** Unit-Tests pruefen explizite Auswahl, Default, Wiederverwendung, Wechsel, Ladefehler und Wiederholung. Der Podman-Test prueft zwei echte Modelle und den Wechsel zurueck ohne Containerneustart. Verifikation am 21.11.2026: 57 Unit-Tests bestanden, einschliesslich paralleler Modellwahl und Health-Verhalten; isolierter Podman-Rerankertest mit zwei echten Modellen bestanden (1 Test). Andere Integrationsgruppen wurden fuer diese Aenderung nicht ausgefuehrt, da Import, Vector-API und RAG unveraendert sind. Einmaliges Ausrollen der geaenderten App ist erforderlich; danach sind Modellwechsel reine Requestparameter.
 
 ### TS-03 – Lückenhafte Requestvalidierung und Fehlerverträge · P1
 
@@ -94,9 +94,9 @@ Die Analyse umfasst Python-Code, SQL, Dockerfiles und Tests. Die 24 containerfre
 
 ### TS-13 – Widersprüchlicher Modelllade- und Health-Lebenszyklus · P2
 
-- **Befund:** [Reranker](../reranker/app.py) lädt in `before_request`, auch vor `/health` und ungültigen Requests. Der Health-Zweig `initializing` ist dadurch im normalen Ablauf praktisch unerreichbar. Gleichzeitige erste Requests sind nicht gegen mehrfaches Laden abgesichert.
-- **Risiko:** Health-Aufrufe blockieren auf Modellinitialisierung; potenziell mehrfacher Speicherverbrauch und unklarer Bereitschaftszustand.
-- **Abbau und Abschluss:** Initialisierung synchronisieren und Liveness von Readiness trennen. Tests prüfen Ladefehler, parallele erste Requests und beobachtbare Zustände vor und nach dem Laden.
+- **Befund:** Seit TS-02 werden Modellladen und Inferenz synchronisiert; ungueltige Rerank-Anfragen loesen kein Modellladen mehr aus. `/health` laedt bei noch ungeladenem Dienst weiterhin das Defaultmodell und wartet auf laufende Modelloperationen. Getrennte Liveness-/Readiness-Endpunkte fehlen.
+- **Risiko:** Health-Aufrufe koennen durch Modellinitialisierung oder Inferenz blockieren; Prozesslebendigkeit und Modellbereitschaft sind nicht getrennt erkennbar.
+- **Abbau und Abschluss:** Getrennte Liveness-/Readiness-Zustaende mit Fehler-, Zustands- und Neustarttests einfuehren. Die Synchronisierung ist mit TS-02 umgesetzt; TS-13 bleibt fuer den Health-Vertrag offen.
 
 ### TS-14 – Fehlerhafte Analyse und unklare Alt-Einstiegspunkte · P1
 

@@ -109,12 +109,14 @@ def rerank_results(query, results, reranker, top_k):
         "query": query,
         "documents": [result["chunktext"] for result in results]
     }
-    response = requests.post("http://localhost:5000/rerank", json=payload)
+    response = requests.post("http://localhost:5000/rerank", json=payload, timeout=600)
 
     # print("Rohantwort der Rerank-API:", response.text)  # Debugging-Ausgabe
 
     if response.status_code == 200:
-        reranked = response.json()["ranked_documents"]
+        body = response.json()
+        print(f"Reranker-Modell: {body['model']}")
+        reranked = body["ranked_documents"]
 
         sorted_results = []
         for item in reranked[:top_k]:
