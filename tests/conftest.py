@@ -2,6 +2,9 @@
 
 import os
 import sys
+import tempfile
+from pathlib import Path
+from uuid import uuid4
 
 import pytest
 
@@ -20,7 +23,21 @@ def pytest_addoption(parser):
     parser.addoption("--no-podman", action="store_true", help="skip Podman tests")
 
 
+def external_temp_path(path):
+    """Reject private temporary directories anywhere inside the checkout."""
+    resolved = Path(path).resolve()
+    if resolved.is_relative_to(Path(ROOT).resolve()):
+        raise pytest.UsageError("Test temporary directories must be outside the project: " + str(resolved))
+    return resolved
+
+
 def pytest_configure(config):
+    temporary_root = external_temp_path(tempfile.gettempdir())
+    # Set an explicit base so PYTEST_DEBUG_TEMPROOT cannot redirect fixtures
+    # into the checkout. Do not create it: pytest owns its lifecycle.
+    requested = config.option.basetemp
+    config.option.basetemp = str(external_temp_path(requested) if requested
+        else temporary_root / ("rag-pytest-" + uuid4().hex))
     config.addinivalue_line("markers", "podman: requires Podman containers")
     config.addinivalue_line("markers", "rag: requires --include-rag or --all")
     config.addinivalue_line("markers", "reranker: requires --include-reranker or --all")

@@ -1,5 +1,4 @@
 """A failed backup or archive verification must never execute the migration."""
-from pathlib import Path
 import subprocess
 from tempfile import TemporaryDirectory
 import pytest
@@ -21,7 +20,7 @@ def test_backup_failure_prevents_schema_change(monkeypatch, failure, sql_migrati
         else:
             pytest.fail("SQL must not execute after failed backup")
     monkeypatch.setattr(migration, "run", run)
-    with TemporaryDirectory(dir=Path(__file__).parent) as directory:
+    with TemporaryDirectory(prefix="rag-migration-test-") as directory:
         with pytest.raises(subprocess.CalledProcessError):
             migration.migrate("test-db", "admin", "test", directory, sql_migration)
     assert not any("psql" in call for call in calls)

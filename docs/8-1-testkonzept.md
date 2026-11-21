@@ -93,7 +93,7 @@ Die Tests sind nach Art getrennt: echte Unit-Tests liegen unter `tests/unit`; Po
 | `tests/podman/conftest.py` | Podman-Fixture für Image-Build, Pod/Volume, Readiness und Teardown. |
 | `tests/pytest.ini` | Gemeinsame pytest-Konfiguration für beide Testgruppen. |
 
-Die pytest-Konfiguration deaktiviert den Cache-Provider (`-p no:cacheprovider`), sodass kein Zugriff auf `.pytest_cache` erforderlich ist. Die Chunking-Tests legen eindeutige temporäre UTF-8-Dateien direkt unter `tests/unit` an und löschen sie nach jedem Test. Sie verwenden daher weder das Benutzer-Temp-Verzeichnis noch pytest `tmp_path`.
+Die pytest-Konfiguration deaktiviert den Cache-Provider (`-p no:cacheprovider`), sodass kein Zugriff auf `.pytest_cache` erforderlich ist. Die Chunking-Tests legen eindeutige temporäre UTF-8-Dateien direkt unter `tests/unit` an und löschen sie nach jedem Test. Die Chunking-Tests benötigen daher keine Tempverzeichnisse. Andere Tests dürfen `tmp_path` verwenden: `tests/conftest.py` setzt einen eindeutigen Basispfad außerhalb des Checkouts und weist projektinterne `--basetemp`-Pfade sowie einen projektinternen System-/Benutzer-Tempbereich zurück. Migrationstests verwenden ebenfalls externe Tempverzeichnisse. Dadurch entstehen private Tempverzeichnis-ACLs unter Windows nicht mehr im Projekt. Der Cache-Provider bleibt deaktiviert.
 
 Ausführung aus dem Projektstamm:
 
@@ -158,3 +158,6 @@ Unit-Tests pruefen Request-Modell und Default, Wiederverwendung und Wechsel, par
 Tests in tests/unit/test_http_errors.py prüfen frühe Validierung vor Modell-/Poolzugriff, RFC-9457-Felder und Medientyp, sichere interne Fehler, Request-Korrelation sowie HTTP-Status und Allow-Header. Vector-Erfolgstests verwenden dimensionsgültige Eingaben. Podman-Fehlerprüfungen verwenden type statt des bisherigen error-Felds. API-Builds verwenden scripts/build_image.py mit temporären Kontexten aus explizit aufgelisteten Dateien und rag_common. Vier Unit-Tests in tests/unit/test_build_image.py sichern Dateiauswahl und Bereinigung auch bei Buildfehlern ab. Der Podman-Test tests/podman/test_http_errors.py prüft den tatsächlichen RFC-9457-Vertrag aller drei APIs einschließlich Status, Medientyp, Typ-URI, Request-ID und Allow-Header.
 
 Prüfnachweis vom 21.11.2026: 99 Unit-Tests bestanden. Podman-Lauf mit --include-rag --include-reranker: 6 bestanden, 3 optionale Ollama-/Import-/RAG-E2E-Tests nicht aktiviert. Die API-Builds und der RFC-9457-Vertrag sind damit integriert geprüft; für TS-03 ist keine echte Generierung oder Ingestion erforderlich.
+
+
+Prüfnachweis Tempverzeichnisse (21.11.2026): tests/.pytest-tmp wurde gezielt gelöscht. 105 Unit-Tests bestanden, darunter sechs Regressionstests für externe Tempverzeichnisse, eindeutige Basispfade, Zurückweisung projektinterner Pfade und eine echte tmp_path-Fixture. Podman-Integration nicht erneut ausgeführt, da ausschließlich lokale Testpfade geändert wurden.
