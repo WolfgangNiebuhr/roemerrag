@@ -11,7 +11,6 @@ Das System erschließt Texte zur römischen Geschichte und beantwortet Fragen an
 | Fragesteller über HTTP | Frage, Variantenfilter, Metrik, Trefferanzahl | Antwort, Chunk-IDs, Generierungsmetriken |
 | Importierender | UTF-8-Dateien, optional Start-Chunk | gespeicherte Chunks und Embeddings, Importprotokolle |
 | Experimentierender | Fragen, Texte und Trefferlisten | Retrievaldiagnose, Modell- und Reranking-Ergebnisse |
-| DATEV AI Gateway, optional | Text und Extraktionsprompt | Keywords als Alternative zu lokaler Ollama-Extraktion |
 | Modell- und Paketquellen | Downloads beim Build bzw. Modellbereitstellen | Python-Pakete, pgvector-Quellcode und Modellgewichte |
 
 Die zentrale Außenschnittstelle ist `POST /process` der RAG-API auf Containerport 5600. Lokale Import- und Analysewerkzeuge greifen auch direkt auf Ollama und Vector-API zu. Ollama läuft im beschriebenen Windows-Betrieb als Hintergrund-App außerhalb der Linux-Container.
@@ -30,7 +29,6 @@ flowchart LR
     tools[Lokale Analysewerkzeuge] --> ollama
     tools --> vector
     tools --> rerank[Reranker · 5000]
-    ingest -. optionale Keywords .-> gateway[DATEV AI Gateway]
 ```
 
 | Baustein | Verantwortung | Maßgebliche Implementierung |
@@ -43,13 +41,13 @@ flowchart LR
 | Reranker | Frage-Dokument-Paare bewerten und sortieren | [app.py](../reranker/app.py), [Dockerfile](../reranker/Dockerfile) |
 | Lokale Werkzeuge | Direkte RAG-Abfragen und Analysen | [interact.py](../interact.py), [analyze.py](../analyze.py), `Vector/analyze_data.py` |
 
-Der Reranker ist eigenständig; die RAG-API ruft ihn nicht auf. Ältere Importvarianten sind keine austauschbaren Einstiegspunkte: `import.py` verwendet `/vectors` und enthält weitere Aufruffehler; `import2.py` und `import3.py` schreiben auf den aktuellen Endpunkt `/vectors`.
+Der Reranker ist eigenständig; die RAG-API ruft ihn nicht auf. Ältere Importvarianten sind keine austauschbaren Einstiegspunkte: `import.py` verwendet `/vectors` und enthält weitere Aufruffehler; `import3.py` schreibt auf den aktuellen Endpunkt `/vectors`.
 
 ## 5.3 Ebene 2 – zentrale Bausteine
 
 ### 5.3.1 Dokumentimport
 
-`import3.py: process_file()` vergibt IDs `<Dateibasis>-<laufende Nummer>`, unterstützt `--start` und protokolliert Fehler pro Chunk. Das Chunking nutzt LangChains `RecursiveCharacterTextSplitter` mit 1000 Zeichen und 150 Zeichen Überlappung. `gateway.py` verwendet für lokale Keywords `gemma3:4b`; alternativ existiert eine DATEV-Gateway-Anbindung. Keywords werden dem Originaltext vorangestellt. Embeddings stammen aus `snowflake-arctic-embed2`, werden normalisiert und unter der Variantenkennung `snowflake-arctic-embed2-v2` gespeichert.
+`import3.py: process_file()` vergibt IDs `<Dateibasis>-<laufende Nummer>`, unterstützt `--start` und protokolliert Fehler pro Chunk. Das Chunking nutzt LangChains `RecursiveCharacterTextSplitter` mit 1000 Zeichen und 150 Zeichen Überlappung. `gateway.py` verwendet für lokale Keywords `gemma3:4b`. Keywords werden dem Originaltext vorangestellt. Embeddings stammen aus `snowflake-arctic-embed2`, werden normalisiert und unter der Variantenkennung `snowflake-arctic-embed2-v2` gespeichert.
 
 Die Importskripte verwenden eigene fest konfigurierte Dienstadressen. `OLLAMA_HOST_URL` ist eine Option des E2E-Testimports, keine allgemeine Konfiguration von `import3.py`.
 

@@ -38,7 +38,7 @@ Die Analyse umfasst Python-Code, SQL, Dockerfiles und Tests. Die 24 containerfre
 
 ### TS-04 – Unzureichende Identität von Importvarianten · P1
 
-- **Befund:** [Import2](../Ingest/import2.py) und [Import3](../Ingest/import3.py) schreiben dieselbe Kennung `snowflake-arctic-embed2-v2`, obwohl Keyword-Provider und Prompts abweichen. Das [Schema](../Vector/init.sql) speichert keine vollständige Verarbeitungskonfiguration.
+- **Befund:** [Import3](../Ingest/import3.py) schreibt die feste Kennung `snowflake-arctic-embed2-v2`, ohne Modell- und Promptkonfiguration vollst?ndig abzubilden. Das [Schema](../Vector/init.sql) speichert keine vollständige Verarbeitungskonfiguration.
 - **Risiko:** Inhaltlich verschiedene Verfahren überschreiben dieselben Schlüssel. Ergebnisse lassen sich Chunking, Prompts und Modellständen nicht zuverlässig zuordnen.
 - **Abbau und Abschluss:** Eine persistierte Variantenkonfiguration für Chunking, Keyword-Verfahren, Prompts, Modelle und Normalisierung einführen. Konfigurationsänderungen erzeugen eine andere Identität; Versuchsergebnisse referenzieren sie. Tests weisen die Isolation zweier Varianten nach. Modellrevisionen und Buildstände ergänzt TS-15.
 
@@ -99,7 +99,7 @@ Die Analyse umfasst Python-Code, SQL, Dockerfiles und Tests. Die 24 containerfre
 
 ### TS-14 – Fehlerhafte Analyse und unklare Alt-Einstiegspunkte · P1
 
-- **Befund:** In [analyze.py](../analyze.py) umfasst `GOLDCHUNK` nur die Keyword-Zeile; die folgenden Stringliterale sind eigenständige Ausdrücke. Dies wurde per AST-Auswertung bestätigt. [import.py](../Ingest/import.py) verwendet `np` ohne Import und übergibt ein nicht unterstütztes Argument `metadata` an die Speicherfunktion. [import2.py](../Ingest/import2.py) verwendet im Retry-Pfad `time.sleep` ohne `time`-Import. Der [lokale Reranker](../reranker/reranker-local.py) dupliziert Serverlogik mit anderem Standardmodell.
+- **Befund:** In [analyze.py](../analyze.py) umfasst `GOLDCHUNK` nur die Keyword-Zeile; die folgenden Stringliterale sind eigenständige Ausdrücke. Dies wurde per AST-Auswertung bestätigt. [import.py](../Ingest/import.py) verwendet `np` ohne Import und übergibt ein nicht unterstütztes Argument `metadata` an die Speicherfunktion. Der [lokale Reranker](../reranker/reranker-local.py) dupliziert Serverlogik mit anderem Standardmodell.
 - **Risiko:** Irreführende Ähnlichkeitsmessungen und erst im Fehlerpfad sichtbare Defekte; unklarer Wartungsumfang.
 - **Abbau und Abschluss:** Den Goldtext korrigieren und durch einen gezielten Regressionstest sichern. Unterstützte Einstiegspunkte festlegen; andere ausdrücklich archivieren oder entfernen. Für unterstützte Varianten Smoke- und Fehlerpfadtests vorsehen. P1 betrifft die Messkorrektheit; umfassende Codekonsolidierung folgt mit TS-09.
 

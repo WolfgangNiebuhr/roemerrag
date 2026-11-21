@@ -1,6 +1,5 @@
 import os
 import requests
-import json
 import argparse
 from langchain.text_splitter import RecursiveCharacterTextSplitter
 
