@@ -2,6 +2,8 @@
 
 Experimentelle KI-Komponenten lokal mit Podman ausführen.
 
+Die arc42-Dokumentation beginnt mit [Einführung und Zielen](docs/1-einfuehrung-und-ziele.md), [Randbedingungen](docs/2-randbedingungen.md) und [Kontextabgrenzung](docs/3-kontextabgrenzung.md).
+
 ## Voraussetzungen
 
 - Podman mit laufender Podman-Machine (unter Windows)
