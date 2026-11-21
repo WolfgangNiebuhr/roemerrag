@@ -28,42 +28,42 @@ $vectorData1 = @{
     chunk_id = "chunk1"
     embedding = "embedding1"
     vector = (Generate-RandomVector -dimensions $globalDimensions)
-    metadata = "Test-Metadaten 1"
+    chunktext = "Test-Metadaten 1"
 } | ConvertTo-Json -Depth 10
 
 $vectorData2 = @{
     chunk_id = "chunk2"
     embedding = "embedding2"
     vector = (Generate-RandomVector -dimensions $globalDimensions)
-    metadata = "Test-Metadaten 2"
+    chunktext = "Test-Metadaten 2"
 } | ConvertTo-Json -Depth 10
 
 $vectorData3 = @{
     chunk_id = "chunk3"
     embedding = "embedding1"
     vector = (Generate-RandomVector -dimensions $globalDimensions)
-    metadata = "Test-Metadaten 3"
+    chunktext = "Test-Metadaten 3"
 } | ConvertTo-Json -Depth 10
 
 $vectorData4 = @{
     chunk_id = "chunk4"
     embedding = "embedding1"
     vector = (Generate-RandomVector -dimensions $globalDimensions)
-    metadata = "Test-Metadaten 4"
+    chunktext = "Test-Metadaten 4"
 } | ConvertTo-Json -Depth 10
 
 $vectorData5 = @{
     chunk_id = "chunk5"
     embedding = "embedding2"
     vector = (Generate-RandomVector -dimensions $globalDimensions)
-    metadata = "Test-Metadaten 5"
+    chunktext = "Test-Metadaten 5"
 } | ConvertTo-Json -Depth 10
 
 $vectorData6 = @{
     chunk_id = "chunk5"
     embedding = "embedding2"
     vector = (Generate-RandomVector -dimensions $globalDimensions)
-    metadata = "Test-Metadaten 6"
+    chunktext = "Test-Metadaten 6"
 } | ConvertTo-Json -Depth 10
 
 Write-Host "Teste POST /vectors..."

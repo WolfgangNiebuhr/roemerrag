@@ -37,13 +37,13 @@ def test_early_rome_question_end_to_end(vector_url, rag_url, test_id, e2e_ollama
                 "chunk_id": chunk_id,
                 "embedding": variant,
                 "vector": [value / norm for value in vector],
-                "metadata": text,
+                "chunktext": text,
             }, expected=201)
 
         assert request(vector_url, "/chunks?embedding=" + variant)["chunks"] == len(chunks)
         for chunk_id, text in zip(chunk_ids, chunks):
             stored = request(vector_url, f"/chunks/{chunk_id}?embedding={variant}")
-            assert stored["metadata"] == text
+            assert stored["chunktext"] == text
 
         result = request(rag_url, "/process", "POST", {
             "query": "Wer beherrschte in der Frühzeit Roms das westliche Mittelmeer",

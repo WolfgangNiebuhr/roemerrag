@@ -123,7 +123,7 @@ Die Ollama-Ermittlung wird containerfrei in `tests/unit/test_ollama_endpoint.py`
 
 - Die RAG-API konfiguriert die Vector-Suchadresse über `VECTOR_API_URL` und beide Ollama-Endpunkte über `OLLAMA_BASE_URL`. Der E2E-Test prüft vor dem Import die erforderlichen Modelle vom Host und aus dem RAG-Container. Abweichende Zugriffsadressen werden über `OLLAMA_HOST_URL` und `OLLAMA_CONTAINER_URL` gesetzt (siehe README).
 - Die Vector-API validiert Metriken und Request-Schemata nicht vollständig.
-- Die RAG-API setzt voraus, dass Treffer `metadata` und `chunk_id` enthalten.
+- Die RAG-API setzt voraus, dass Treffer `chunktext` und `chunk_id` enthalten.
 - Es gibt keine einheitlichen Readiness-Endpunkte für alle Dienste.
 - Modellbasierte Ergebnisse sind variabel und können durch Modellversion, Hardware oder Sampling beeinflusst werden.
 - Der erste Image-Build kann durch Modell-Downloads oder externe Paketquellen zeitaufwendig sein; für reproduzierbare Läufe sollten Images und Modelle versioniert beziehungsweise zwischengespeichert werden.
@@ -142,3 +142,9 @@ Der vorhandene E2E-Test wurde am 15.11.2026 mit der Ollama-Hintergrund-App und a
 ### Integration des realen Importpfads
 
 `tests/podman/test_import3_integration.py` ruft `import3.process_file` mit realem Chunking, Keyword-Gateway (`gemma3:4b`), Embedding (`snowflake-arctic-embed2`) und Vector-API im isolierten Podman-Teststack auf. Nur Endpunkte und die eindeutige Importvariante werden konfiguriert. Der Test kontrolliert Chunkanzahl, nicht leeres Keyword-Pr?fix, unver?nderten Quelltext und Retrieval des gespeicherten Vektors durch erneutes Embedding der angereicherten Metadaten. Modellantworten werden nicht wortgenau verglichen. Testchunks werden im finally-Block entfernt. Aktivierung: `--include-ollama` oder `--all`; Host-Adresse ?ber `OLLAMA_HOST_URL`. Der RAG-Container ist nicht erforderlich. Der CLI-Argumentparser ist nicht Teil dieser Pr?fung.
+
+## Set-Kennung und Bestandsmigration (TS-01)
+
+Unit-Tests sichern gemeinsame Import-/Retrievaldefaults, API-Aliase und Konflikte vor SQL-/Modellzugriff ab. `tests/podman/test_embedding_migration.py` verwendet eigene Testdatenbanken und prueft unveraenderte Zeilen/Vektoren, Unique Constraint, Wiederholbarkeit und Wiederherstellung des Backups. Vector-Integration mischt alte und neue Feldnamen; echte Modelle bleiben den optionalen Ollama-/RAG-Tests vorbehalten.
+
+Die Migrationsintegration prueft auch `002_chunktext.sql`: Erhalt von Chunktext und Vektoren, Wiederholbarkeit und Wiederherstellung des vorherigen Schemas aus dem Backup. API-Tests erwarten ausschliesslich `chunktext`; der alte Antwortname `metadata` ist entfernt.

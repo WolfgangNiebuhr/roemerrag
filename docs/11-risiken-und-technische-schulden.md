@@ -1,6 +1,6 @@
 # 11 Risiken und technische Schulden
 
-Stand: 15.11.2026. Dieses Kapitel nach arc42 dokumentiert die im Projekt untersuchten technischen Schulden und einen vorgeschlagenen Abbauplan. Alle Einträge sind offen; die beschriebenen Maßnahmen sind Zielzustände und noch nicht umgesetzt.
+Stand: 15.11.2026. Dieses Kapitel nach arc42 dokumentiert die im Projekt untersuchten technischen Schulden und einen vorgeschlagenen Abbauplan. TS-01 ist abgeschlossen (Nachweis siehe Eintrag); die weiteren Einträge sind offen; die beschriebenen Maßnahmen sind Zielzustände und noch nicht umgesetzt.
 
 Die [Bausteinsicht](5-bausteinsicht.md) beschreibt die betroffenen Komponenten, die [Laufzeitsicht](6-laufzeitsicht.md) deren Zusammenspiel und das [Testkonzept](8-1-testkonzept.md) die vorhandenen Prüfungen. Verzeichnisse namens `k8s` sind ausgeschlossen. Bewertungsmaßstab ist der lokale Podman-Betrieb eines Systems zum Vergleich von RAG-Strategien, kein bereits zugesagter Produktionsbetrieb.
 
@@ -20,9 +20,9 @@ Die Analyse umfasst Python-Code, SQL, Dockerfiles und Tests. Die 24 containerfre
 
 ### TS-01 – Abweichende Import- und Retrievaldefaults · P1
 
-- **Befund:** [Import3](../Ingest/import3.py) schreibt `snowflake-arctic-embed2-v2`; [RAG](../rag/app.py), Funktion `process_request`, sucht standardmäßig `snowflake-arctic-embed2`. Der Workaround steht im README.
-- **Risiko:** Erfolgreich importierte Daten bleiben für Standardanfragen unsichtbar. Eine Antwort kann trotzdem erzeugt werden, siehe TS-08.
-- **Abbau und Abschluss:** Modell und Variantenkennung explizit trennen und die Defaults gemeinsam konfigurieren. Ein Vertragstest weist nach, dass ein Standardimport mit einer Standardanfrage gefunden wird; bewusst abweichende Varianten bleiben gezielt auswählbar.
+- **Stand 21.11.2026:** Abgeschlossen: gemeinsame Defaults in `rag/embedding_config.py` fuer Import3, CLI und RAG; Modell und Set-Kennung sind unabhaengig konfigurierbar.
+- **API und Migration:** `embedding_set_id` ersetzt die bisherige Spalte und den Vector-API-Parameter. `embedding` bleibt kompatibler Alias und Antwortfeld, `filter` bleibt RAG-Alias. Konflikte ergeben HTTP 400. Migration mit vorherigem geprueftem Backup ohne neue Vektorberechnung: `scripts/migrate_embedding_set_id.py`; Betrieb und Rueckweg im README.
+- **Nachweis:** Unit-Vertragstest importiert mit Modell-Mocks und findet die Chunks per Standardanfrage. Podman-Test prueft unveraenderte Daten, Unique Constraint, wiederholte Migration und echte Backup-Wiederherstellung. Verifikation: 42 Unit-Tests bestanden; 6 Podman-Tests mit `--include-rag --include-ollama` bestanden, einschliesslich echtem Import mit Keywords und RAG-E2E. Reranker-Gruppe nicht aktiviert, da unabhaengig von TS-01. Architekturentscheidung: [9.1](9-architekturentscheidungen.md). Bestandsmigration: 10.378 Zeilen vor/nach Migration mit identischem SHA-256 ueber geordnete Zeilenpruefsummen; Backup `backups/20261121-143748-053410.dump`. Beide API-Aliase liefern 10.373 Zeilen des Standardsets; Standard-RAG-Anfrage ohne Filter liefert 5 Quellchunks.
 
 ### TS-02 – Wirkungslose Reranker-Modellwahl · P1
 
@@ -63,7 +63,7 @@ Die Analyse umfasst Python-Code, SQL, Dockerfiles und Tests. Die 24 containerfre
 
 ### TS-08 – Ungesicherte Kontext- und Metrikverarbeitung · P1
 
-- **Befund:** [RAG](../rag/app.py) prüft Suchantworten nur auf den äußeren Listentyp und erwartet danach textuelles `metadata` sowie `chunk_id`. Auch bei leerer Trefferliste wird generiert. `generate_answer` dividiert bei `eval_duration: 0` durch null. Leerer Generierungskontext und `ZeroDivisionError` wurden lokal mit Mocks bestätigt.
+- **Befund:** [RAG](../rag/app.py) prüft Suchantworten nur auf den äußeren Listentyp und erwartet danach textuelles `chunktext` sowie `chunk_id`. Auch bei leerer Trefferliste wird generiert. `generate_answer` dividiert bei `eval_duration: 0` durch null. Leerer Generierungskontext und `ZeroDivisionError` wurden lokal mit Mocks bestätigt.
 - **Risiko:** Antworten ohne Quellenkontext; fehlerhafte Treffer oder optionale Metriken verhindern die Ausgabe einer vorhandenen Modellantwort.
 - **Abbau und Abschluss:** Treffereinträge prüfen, einen expliziten Antwortpfad für fehlenden Kontext definieren und fehlende beziehungsweise nullwertige Laufzeiten robust behandeln. Regressionstests prüfen leere Treffer, ungültige Metadaten und Nullzeiten. Ein echter Modelltest ergänzt eine nicht beantwortbare Frage; eine reine Promptvorgabe garantiert keine Faktentreue.
 
@@ -75,7 +75,7 @@ Die Analyse umfasst Python-Code, SQL, Dockerfiles und Tests. Die 24 containerfre
 
 ### TS-10 – Inkonsistentes Ressourcen- und Begriffsmodell · P2
 
-- **Befund:** [Vector](../Vector/app.py) verwendet `/vectors` zum Schreiben, `/chunks/<id>` zum Lesen und `/chunk` zum Löschen; `/chunks` zählt Zeilen. `embedding` ist eine Variantenkennung, `metadata` überwiegend Quelltext. Lesen ohne Variantenfilter nutzt `LIMIT 1` ohne eindeutige Auswahl; `/find` liefert IDs ohne Variantenkennung.
+- **Befund:** [Vector](../Vector/app.py) verwendet `/vectors` zum Schreiben, `/chunks/<id>` zum Lesen und `/chunk` zum Löschen; `/chunks` zählt Zeilen. Die Benennungen sind inzwischen präzisiert: `embedding_set_id` bezeichnet das Set, `chunktext` den Quelltext (zuvor `metadata`, Migration vom 21.11.2026). Lesen ohne Variantenfilter nutzt weiterhin `LIMIT 1` ohne eindeutige Auswahl; `/find` liefert IDs ohne Variantenkennung. TS-10 bleibt deshalb offen.
 - **Risiko:** Mehrdeutige Identitäten und überraschende Clientsemantik, sobald mehrere Varianten existieren.
 - **Abbau und Abschluss:** Ressourcen, Schlüssel und Feldbegriffe verbindlich beschreiben. Mehrdeutige Einzelabfragen entweder zurückweisen oder als Sammlung beantworten. Ein Umstellungsplan erhält bestehende Clients oder kennzeichnet einen Schnittstellenbruch. Tests decken dieselbe Chunk-ID in zwei Varianten ab.
 

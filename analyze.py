@@ -150,7 +150,7 @@ def main():
         # print(results)
 
         # Kontext aus den Textfeldern der Suchergebnisse erstellen
-        context = "\n".join([result["metadata"] for result in results])
+        context = "\n".join([result["chunktext"] for result in results])
         # print(context)
 
         # Chunk-IDs für die Aufzählung extrahieren

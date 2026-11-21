@@ -51,18 +51,41 @@ def get_conn():
         conn = db_pool.getconn()
     return conn
 
+def resolve_set_id(data, required=False):
+    new = data.get("embedding_set_id")
+    old = data.get("embedding")
+    if "embedding_set_id" in data and "embedding" in data and new != old:
+        from werkzeug.exceptions import BadRequest
+        raise BadRequest("embedding_set_id und embedding widersprechen sich")
+    value = new if "embedding_set_id" in data else old
+    if required and (not isinstance(value, str) or not value.strip()):
+        from werkzeug.exceptions import BadRequest
+        raise BadRequest("embedding_set_id ist erforderlich")
+    return value
+
+
+@app.errorhandler(400)
+def invalid_set_id(error):
+    return jsonify({"error": error.description}), 400
+
+
+def compatible_row(row):
+    row["embedding"] = row["embedding_set_id"]
+    return row
+
+
 @app.route("/chunks", methods=["GET"])
 def count_chunks():
-    """Optionaler Filter: ?embedding=...  -> zählt Zeilen"""
+    """Optionaler Filter: ?embedding_set_id=...  -> zählt Zeilen"""
     if not db_pool:
         return jsonify({"error": "DB nicht verfügbar"}), 500
-    embedding = request.args.get("embedding")
+    embedding_set_id = resolve_set_id(request.args)
     conn = None
     try:
         conn = get_conn()
         with conn.cursor() as cur:
-            if embedding:
-                cur.execute("SELECT COUNT(*) FROM vectors WHERE embedding = %s", (embedding,))
+            if embedding_set_id:
+                cur.execute("SELECT COUNT(*) FROM vectors WHERE embedding_set_id = %s", (embedding_set_id,))
             else:
                 cur.execute("SELECT COUNT(*) FROM vectors")
             (cnt,) = cur.fetchone()
@@ -75,24 +98,24 @@ def count_chunks():
 
 @app.route("/chunks/<chunk_id>", methods=["GET"])
 def get_chunk(chunk_id):
-    """GET /chunks/<chunk_id>[?embedding=...] -> eine Zeile"""
+    """GET /chunks/<chunk_id>[?embedding_set_id=...] -> eine Zeile"""
     if not db_pool:
         return jsonify({"error": "DB nicht verfügbar"}), 500
-    embedding = request.args.get("embedding")
+    embedding_set_id = resolve_set_id(request.args)
     conn = None
     try:
         conn = get_conn()
         with conn.cursor() as cur:
-            if embedding:
+            if embedding_set_id:
                 cur.execute("""
-                    SELECT id, chunk_id, embedding, vector, metadata
+                    SELECT id, chunk_id, embedding_set_id, vector, chunktext
                     FROM vectors
-                    WHERE chunk_id = %s AND embedding = %s
+                    WHERE chunk_id = %s AND embedding_set_id = %s
                     LIMIT 1
-                """, (chunk_id, embedding))
+                """, (chunk_id, embedding_set_id))
             else:
                 cur.execute("""
-                    SELECT id, chunk_id, embedding, vector, metadata
+                    SELECT id, chunk_id, embedding_set_id, vector, chunktext
                     FROM vectors
                     WHERE chunk_id = %s
                     LIMIT 1
@@ -101,7 +124,7 @@ def get_chunk(chunk_id):
             if not row:
                 return jsonify({"error": "nicht gefunden"}), 404
             cols = [d[0] for d in cur.description]
-            return jsonify(dict(zip(cols, row)))
+            return jsonify(compatible_row(dict(zip(cols, row))))
     except Exception as e:
         return jsonify({"error": str(e)}), 500
     finally:
@@ -111,16 +134,16 @@ def get_chunk(chunk_id):
 @app.route("/vectors", methods=["POST"])
 def upsert_chunk():
     """
-    Body (JSON): {chunk_id, embedding, vector, metadata}
+    Body (JSON): {chunk_id, embedding_set_id, vector, chunktext}
     - vector: String im pgvector-Format, z.B. '[0.1, 0.2, 0.3]'
     """
     if not db_pool:
         return jsonify({"error": "DB nicht verfügbar"}), 500
     data = request.get_json(force=True)
     chunk_id = data["chunk_id"]
-    embedding = data["embedding"]
+    embedding_set_id = resolve_set_id(data, required=True)
     vector = data["vector"]            # erwartetes String-Format
-    metadata = json.dumps(data.get("metadata")) if isinstance(data.get("metadata"), (dict, list)) else data.get("metadata")
+    chunktext = json.dumps(data.get("chunktext")) if isinstance(data.get("chunktext"), (dict, list)) else data.get("chunktext")
 
     conn = None
     try:
@@ -128,12 +151,12 @@ def upsert_chunk():
         with conn.cursor() as cur:
             # einfache „replace“-Semantik
             cur.execute("""
-                DELETE FROM vectors WHERE chunk_id = %s AND embedding = %s
-            """, (chunk_id, embedding))
+                DELETE FROM vectors WHERE chunk_id = %s AND embedding_set_id = %s
+            """, (chunk_id, embedding_set_id))
             cur.execute("""
-                INSERT INTO vectors (chunk_id, embedding, vector, metadata)
+                INSERT INTO vectors (chunk_id, embedding_set_id, vector, chunktext)
                 VALUES (%s, %s, %s::VECTOR, %s)
-            """, (chunk_id, embedding, vector, metadata))
+            """, (chunk_id, embedding_set_id, vector, chunktext))
         conn.commit()
         return jsonify({"message": "Vector stored"}), 201
     except Exception as e:
@@ -145,21 +168,21 @@ def upsert_chunk():
 @app.route("/chunk", methods=["DELETE"])
 def delete_chunk():
     """
-    Body (JSON): {chunk_id, embedding}
+    Body (JSON): {chunk_id, embedding_set_id}
     """
     if not db_pool:
         return jsonify({"error": "DB nicht verfügbar"}), 500
     data = request.get_json(force=True)
     chunk_id = data["chunk_id"]
-    embedding = data["embedding"]
+    embedding_set_id = resolve_set_id(data, required=True)
 
     conn = None
     try:
         conn = get_conn()
         with conn.cursor() as cur:
             cur.execute("""
-                DELETE FROM vectors WHERE chunk_id = %s AND embedding = %s
-            """, (chunk_id, embedding))
+                DELETE FROM vectors WHERE chunk_id = %s AND embedding_set_id = %s
+            """, (chunk_id, embedding_set_id))
         conn.commit()
         return jsonify({"message": "deleted"}), 200
     except Exception as e:
@@ -171,7 +194,7 @@ def delete_chunk():
 @app.route("/search", methods=["POST"])
 def search_vectors():
     """
-    Body (JSON): {vector, num_results?, metric?('euclidean'|'cosine'), embedding?}
+    Body (JSON): {vector, num_results?, metric?('euclidean'|'cosine'), embedding_set_id?}
     - vector: String im pgvector-Format, z.B. '[0.1, 0.2, 0.3]'
     """
     if not db_pool:
@@ -180,7 +203,7 @@ def search_vectors():
     query_vector = data["vector"]
     num_results = int(data.get("num_results", 10))
     metric = data.get("metric", "euclidean")
-    embedding_filter = data.get("embedding")
+    embedding_filter = resolve_set_id(data)
 
     operators = {"euclidean": "<->", "cosine": "<=>"}
     if metric not in operators:
@@ -193,17 +216,17 @@ def search_vectors():
         with conn.cursor() as cur:
             if embedding_filter:
                 sql = f"""
-                    SELECT id, chunk_id, embedding, vector, metadata,
+                    SELECT id, chunk_id, embedding_set_id, vector, chunktext,
                            vector {distance_op} %s::VECTOR AS distance
                     FROM vectors
-                    WHERE embedding = %s
+                    WHERE embedding_set_id = %s
                     ORDER BY vector {distance_op} %s::VECTOR
                     LIMIT %s
                 """
                 cur.execute(sql, (query_vector, embedding_filter, query_vector, num_results))
             else:
                 sql = f"""
-                    SELECT id, chunk_id, embedding, vector, metadata,
+                    SELECT id, chunk_id, embedding_set_id, vector, chunktext,
                            vector {distance_op} %s::VECTOR AS distance
                     FROM vectors
                     ORDER BY vector {distance_op} %s::VECTOR
@@ -211,7 +234,7 @@ def search_vectors():
                 """
                 cur.execute(sql, (query_vector, query_vector, num_results))
             cols = [d[0] for d in cur.description]
-            rows = [dict(zip(cols, r)) for r in cur.fetchall()]
+            rows = [compatible_row(dict(zip(cols, r))) for r in cur.fetchall()]
         return jsonify(rows)
     except Exception as e:
         return jsonify({"error": str(e)}), 500
@@ -221,7 +244,7 @@ def search_vectors():
 
 @app.route("/find", methods=["GET"])
 def find_chunks():
-    """Find chunk IDs whose metadata matches the ILIKE pattern in query."""
+    """Find chunk IDs whose chunktext matches the ILIKE pattern in query."""
     if not db_pool:
         return jsonify({"error": "Datenbank nicht verfügbar"}), 500
     search_query = request.args.get("query")
@@ -231,7 +254,7 @@ def find_chunks():
     try:
         conn = get_conn()
         with conn.cursor() as cur:
-            cur.execute("SELECT chunk_id FROM vectors WHERE metadata ILIKE %s", (search_query,))
+            cur.execute("SELECT chunk_id FROM vectors WHERE chunktext ILIKE %s", (search_query,))
             chunk_ids = [row[0] for row in cur.fetchall()]
         return jsonify({"chunk_ids": chunk_ids})
     except Exception as e:

@@ -27,7 +27,7 @@ sequenceDiagram
 
 Die Aufrufe erfolgen synchron. Die RAG-API verwendet Timeouts von 300 Sekunden für Embeddings, 60 Sekunden für die Suche und 600 Sekunden für die Generierung. Fehlendes oder leeres `query` ergibt HTTP 400; abgefangene Verarbeitungsfehler ergeben HTTP 500. Der Reranker wird in diesem Ablauf nicht aufgerufen.
 
-Der Requestfilter muss zur Importkennung passen: `import3.py` speichert `snowflake-arctic-embed2-v2`, während `/process` ohne Filter `snowflake-arctic-embed2` sucht. Auch bei leeren Treffern wird das Sprachmodell aufgerufen. Der Systemprompt verlangt eine kontextgebundene Antwort, garantiert sie aber nicht; eine erfolgreiche HTTP-Antwort allein belegt keine fachliche Richtigkeit.
+Import3 und RAG verwenden gemeinsam `EMBEDDING_SET_ID=snowflake-arctic-embed2-v2`. `embedding_set_id` ersetzt den RAG-Parameter `filter`, der kompatibel bleibt. Auch bei leeren Treffern wird weiterhin generiert (TS-08).
 
 ## 6.2 Dokumentimport und E2E-Test
 
@@ -120,3 +120,5 @@ Der zweite Befehl soll eine Basisadresse und Status `200` ausgeben. Er startet e
 | Prüfprozess funktioniert, laufende RAG-API verwendet noch ein altes Ziel | RAG-Container neu starten; explizite Containerkonfiguration ebenfalls prüfen. |
 
 „Connection refused“ allein beweist keine bestimmte Ursache. Im beobachteten Fehlerfall war der falsche Netzwerkweg entscheidend: Über den Windows-Gateway funktionierten Modellliste, Embeddings und anschließend der E2E-Test mit der Ollama-Hintergrund-App.
+
+Seit der Chunktext-Migration liest die Kontextbildung `chunktext` aus Suchtreffern. Import und Reranking reichen den Text unter diesem Namen weiter; `/find` durchsucht dieselbe Spalte. Der alte Feldname wird nicht als Alias angeboten.

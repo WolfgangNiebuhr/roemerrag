@@ -29,7 +29,7 @@ def test_import3_with_real_keywords_and_embeddings(monkeypatch, vector_url, test
     monkeypatch.setattr(importer, "VECTOR_API_URL", vector_url + "/vectors")
     monkeypatch.setattr(gateway, "OLLAMA_CHAT_URL", host + "/api/chat")
     variant = "import3-" + test_id
-    monkeypatch.setattr(importer, "EMBEDDING_VERSION", "-" + variant)
+    monkeypatch.setattr(importer, "EMBEDDING_SET_ID", importer.MODEL_NAME + "-" + variant)
     embedding = importer.MODEL_NAME + "-" + variant
     corpus = Path(__file__).parent / "fixtures" / "early_rome.txt"
     chunks = importer.split_text_into_chunks(str(corpus), importer.CHUNK_SIZE, importer.OVERLAP)
@@ -39,12 +39,12 @@ def test_import3_with_real_keywords_and_embeddings(monkeypatch, vector_url, test
         assert request(vector_url, "/chunks?embedding=" + embedding)["chunks"] == len(chunks)
         for chunk_id, chunk in zip(ids, chunks):
             stored = request(vector_url, f"/chunks/{chunk_id}?embedding={embedding}")
-            metadata = stored["metadata"]
-            assert metadata.endswith("\n" + chunk)
-            keywords = metadata[:-(len(chunk) + 1)]
+            chunktext = stored["chunktext"]
+            assert chunktext.endswith("\n" + chunk)
+            keywords = chunktext[:-(len(chunk) + 1)]
             assert keywords.strip(), "Keyword model returned no enrichment"
             # Re-embedding the persisted text must find the same stored vector.
-            vector = importer.generate_embedding(metadata)
+            vector = importer.generate_embedding(chunktext)
             assert len(vector) == 1024
             assert float(vector @ vector) == pytest.approx(1.0)
             hits = request(vector_url, "/search", "POST", {

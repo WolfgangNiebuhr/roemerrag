@@ -16,8 +16,8 @@ def test_rag_api_success_with_mocked_dependencies():
     query = "Wer beherrschte das westliche Mittelmeer?"
     embedding = [3.0, 4.0]
     retrieved = [
-        {"metadata": "Rom kontrollierte große Teile des westlichen Mittelmeers.", "chunk_id": "chunk-rome-1"},
-        {"metadata": "Karthago war Roms bedeutender Rivale.", "chunk_id": "chunk-carthage-2"},
+        {"chunktext": "Rom kontrollierte große Teile des westlichen Mittelmeers.", "chunk_id": "chunk-rome-1"},
+        {"chunktext": "Karthago war Roms bedeutender Rivale.", "chunk_id": "chunk-carthage-2"},
     ]
     ollama_embedding = Mock(status_code=200)
     ollama_embedding.json.return_value = {"embedding": embedding}
@@ -53,7 +53,7 @@ def test_rag_api_success_with_mocked_dependencies():
     assert vector_call.args[0] == rag_app.VECTOR_API_URL
     vector_payload = vector_call.kwargs["json"]
     assert vector_payload["vector"] == [0.6, 0.8]
-    assert vector_payload["embedding"] == "snowflake-arctic-embed2"
+    assert vector_payload["embedding_set_id"] == rag_app.EMBEDDING_SET_ID
     assert vector_payload["metric"] == "cosine" and vector_payload["num_results"] == 2
     assert answer_call.args[0] == rag_app.OLLAMA_ANSWER_URL
     answer_payload = answer_call.kwargs["json"]
@@ -108,7 +108,7 @@ def test_search_vectors_sends_filters_and_rejects_non_list(monkeypatch):
 
     post.assert_called_once_with(
         rag_app.VECTOR_API_URL,
-        json={"vector": [0.6, 0.8], "embedding": "embed-v1", "num_results": 3, "metric": "cosine"},
+        json={"vector": [0.6, 0.8], "embedding_set_id": "embed-v1", "num_results": 3, "metric": "cosine"},
         timeout=60,
     )
 
@@ -137,3 +137,32 @@ def test_generate_answer_converts_metrics_and_reports_http_error(monkeypatch):
     post.return_value = Mock(status_code=500, text="generation failed")
     with pytest.raises(Exception, match="generation failed"):
         rag_app.generate_answer("context", "question")
+
+@pytest.mark.parametrize("fields", [{"filter": "legacy"}, {"embedding_set_id": "new"}])
+def test_process_accepts_explicit_set_aliases(monkeypatch, fields):
+    monkeypatch.setattr(rag_app, "generate_embedding", Mock(return_value=[1]))
+    search = Mock(return_value=[{"chunktext": "text", "chunk_id": "c"}])
+    monkeypatch.setattr(rag_app, "search_vectors", search)
+    monkeypatch.setattr(rag_app, "generate_answer", Mock(return_value=("answer", {})))
+    response = rag_app.app.test_client().post("/process", json={"query": "q", **fields})
+    assert response.status_code == 200
+    assert search.call_args.args[1] == next(iter(fields.values()))
+
+
+def test_process_rejects_conflicting_aliases_before_embedding(monkeypatch):
+    embed = Mock()
+    monkeypatch.setattr(rag_app, "generate_embedding", embed)
+    response = rag_app.app.test_client().post("/process", json={"query": "q", "filter": "a", "embedding_set_id": "b"})
+    assert response.status_code == 400
+    embed.assert_not_called()
+
+
+def test_cli_reranking_keeps_chunktext_and_chunk_identity(monkeypatch):
+    import interact
+    response = Mock(status_code=200)
+    response.json.return_value = {"ranked_documents": [{"text": "second", "original_index": 1}]}
+    post = Mock(return_value=response)
+    monkeypatch.setattr(interact.requests, "post", post)
+    rows = [{"chunk_id": "a", "chunktext": "first"}, {"chunk_id": "b", "chunktext": "second"}]
+    assert interact.rerank_results("q", rows, "model", 1) == [{"chunk_id": "b", "chunktext": "second"}]
+    assert post.call_args.kwargs["json"]["documents"] == ["first", "second"]

@@ -14,7 +14,11 @@ app = Flask(__name__)
 ## Embedding
 OLLAMA_BASE_URL = os.environ.get("OLLAMA_BASE_URL", "http://host.containers.internal:11434").rstrip("/")
 OLLAMA_EMBEDDING_URL = OLLAMA_BASE_URL + "/api/embeddings"
-EMBEDDING_MODEL_NAME = "snowflake-arctic-embed2"
+if __package__:
+    from .embedding_config import EMBEDDING_MODEL, EMBEDDING_SET_ID
+else:
+    from embedding_config import EMBEDDING_MODEL, EMBEDDING_SET_ID
+EMBEDDING_MODEL_NAME = EMBEDDING_MODEL
 
 ## Retrieval
 VECTOR_API_URL = os.environ.get("VECTOR_API_URL", "http://host.containers.internal:5500/search")
@@ -46,11 +50,11 @@ def generate_embedding(query):
     else:
         raise Exception(f"Fehler beim Abrufen des Embeddings: {response.text}")
 
-def search_vectors(embedding, filter, metric, num_results):
+def search_vectors(embedding, embedding_set_id, metric, num_results):
     """Führt eine Suche über die Vektor-API aus und gibt die besten Treffer zurück."""
     payload = {
         "vector": embedding.tolist(),
-        "embedding": filter,
+        "embedding_set_id": embedding_set_id,
         "num_results": num_results,
         "metric": metric
     }
@@ -100,7 +104,9 @@ def process_request():
         if not isinstance(data, dict):
             return jsonify({"error": "JSON-Objekt mit query ist erforderlich"}), 400
         query = data.get("query")
-        filter = data.get("filter", "snowflake-arctic-embed2")
+        if "embedding_set_id" in data and "filter" in data and data["embedding_set_id"] != data["filter"]:
+            return jsonify({"error": "embedding_set_id und filter widersprechen sich"}), 400
+        filter = data.get("embedding_set_id", data.get("filter", EMBEDDING_SET_ID))
         metric = data.get("metric", "euclidean")
         num_results = data.get("num_results", 5)
 
@@ -110,7 +116,7 @@ def process_request():
         embedding = generate_embedding(query)
         results = search_vectors(embedding, filter, metric, num_results)
 
-        context = "\n".join([result["metadata"] for result in results])
+        context = "\n".join([result["chunktext"] for result in results])
         second_elements = [result["chunk_id"] for result in results]
 
         answer, metrics = generate_answer(context, query)

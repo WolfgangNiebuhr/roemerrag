@@ -7,7 +7,8 @@ import json
 
 ## Embedding
 OLLAMA_EMBEDDING_URL = "http://localhost:11434/api/embeddings"
-EMBEDDING_MODEL_NAME = "snowflake-arctic-embed2"
+from rag.embedding_config import EMBEDDING_MODEL, EMBEDDING_SET_ID
+EMBEDDING_MODEL_NAME = EMBEDDING_MODEL
 
 ## Retrieval
 VECTOR_API_URL = "http://localhost:5500/search"
@@ -42,7 +43,7 @@ def search_vectors(embedding, metric, key, num_results):
         "vector": embedding.tolist(),
         "num_results": num_results,
         "metric": metric,
-        "embedding": key
+        "embedding_set_id": key
     }
     response = requests.post(VECTOR_API_URL, json=payload)
     if response.status_code == 200:
@@ -106,7 +107,7 @@ def rerank_results(query, results, reranker, top_k):
     payload = {
         "model": reranker,
         "query": query,
-        "documents": [result["metadata"] for result in results]
+        "documents": [result["chunktext"] for result in results]
     }
     response = requests.post("http://localhost:5000/rerank", json=payload)
 
@@ -119,7 +120,7 @@ def rerank_results(query, results, reranker, top_k):
         for item in reranked[:top_k]:
             original = results[item["original_index"]]
             sorted_results.append({
-                "metadata": item["text"],
+                "chunktext": item["text"],
                 "chunk_id": original["chunk_id"]
             })
         return sorted_results
@@ -133,7 +134,7 @@ def export_results(query, results, filename="search_results.json"):
         # Erstelle das Export-Datenformat
         export_data = {
             "query": query,
-            "passages": [result["metadata"] for result in results]
+            "passages": [result["chunktext"] for result in results]
         }
 
         # Schreibe JSON-Datei mit UTF-8 Encoding und ensure_ascii=False für Sonderzeichen
@@ -148,7 +149,7 @@ def export_results(query, results, filename="search_results.json"):
 def main():
     parser = argparse.ArgumentParser(description="Interaktives KI-Tool für Embedding, Suche und Antwortgenerierung.")
     parser.add_argument("--metric", type=str, default="cosine", help="Die zu verwendende Metrik (z.B. 'euclidean', 'cosine').")
-    parser.add_argument("--embedding", type=str, default="snowflake-arctic-embed2-v2", help="Die Kennung der zu verwendenden Embeddings.")
+    parser.add_argument("--embedding-set-id", "--embedding", dest="embedding", type=str, default=EMBEDDING_SET_ID, help="Die Kennung der zu verwendenden Embeddings.")
     parser.add_argument("--num_results", type=int, default=5, help="Anzahl der zu suchenden Vektoren.")
     parser.add_argument("--query", type=str, required=True, help="Die Query, die verarbeitet werden soll.")
     parser.add_argument("--top_k", type=int, default=6, help="Anzahl der Top-Rerank-Ergebnisse.")
@@ -185,9 +186,9 @@ def main():
             print(f"Laufzeit von rerank_results: {duration:.3f} Sekunden")
 
             reranked_ids = [result["chunk_id"] for result in results]
-            context = "\n".join([result["metadata"] for result in results])
+            context = "\n".join([result["chunktext"] for result in results])
         else:
-            context = "\n".join([result["metadata"] for result in results])
+            context = "\n".join([result["chunktext"] for result in results])
 
 
         # Antwortgenerierung

@@ -72,7 +72,37 @@ podman run -d --name rag-api -p 5600:5600 localhost/rag-api:local
 
 Diese Variante nutzt `http://host.containers.internal:5500/search` für die bereits veröffentlichte Vector-API. Falls diese Adresse in der eigenen Netzwerkkonfiguration nicht erreichbar ist, `VECTOR_API_URL` beim Containerstart explizit setzen. Die automatische Gateway-Ermittlung gilt nur für Ollama.
 
-Für Daten aus `import3.py` muss der Request `"filter": "snowflake-arctic-embed2-v2"` enthalten. Der RAG-Standardfilter lautet `snowflake-arctic-embed2` und findet diese Importvariante nicht.
+Import3, CLI und RAG verwenden gemeinsame Defaults aus `rag/embedding_config.py`: `EMBEDDING_MODEL=snowflake-arctic-embed2` und `EMBEDDING_SET_ID=snowflake-arctic-embed2-v2`. Beide sind unabhängig über gleichnamige Umgebungsvariablen konfigurierbar (Windows vor dem Import; Container mit `-e`). Die Set-Kennung wählt gespeicherte Daten und legt kein Modell fest.
+
+Vector-API: `embedding_set_id` ersetzt den JSON-/Queryparameter `embedding`; der alte Name bleibt kompatibel. Einzelchunk- und Suchantworten enthalten beide Namen. Ohne Filter bleibt die Vector-API ungefiltert. RAG akzeptiert `embedding_set_id` und weiterhin `filter`. Gleiche Doppelangaben sind erlaubt, widersprüchliche liefern HTTP 400. Die CLI bietet `--embedding-set-id` und weiterhin `--embedding`.
+
+### Bestehende Datenbank migrieren
+
+Der Quelltext eines Chunks heißt in Datenbank und API jetzt `chunktext` (zuvor `metadata`). Importer, Retrieval, Reranking, Analyse und `/find` verwenden den neuen Namen. Es gibt keinen Alias für `metadata`; externe Clients müssen gleichzeitig aktualisiert werden.
+
+Für eine Datenbank, deren Set-Spalte bereits `embedding_set_id` heißt, nach dem Bauen der neuen API-Images und Stoppen beider APIs ausführen:
+
+```powershell
+python scripts/migrate_embedding_set_id.py --migration 002_chunktext.sql
+```
+
+Auch dieser Schritt erstellt und prüft zuerst einen neuen vollständigen Dump unter `backups/`. Die Migration benennt ausschließlich `metadata` in `chunktext` um, ist transaktional und wiederholbar und berechnet keine Embeddings neu. Danach die API-Container aus den neuen Images neu erstellen. Rückweg bei gestoppten APIs: `ALTER TABLE vectors RENAME COLUMN chunktext TO metadata;`, dann die vorherigen API-Versionen starten. Bei älteren Datenbanken zuerst die nachfolgende Set-Migration und anschließend die Chunktext-Migration ausführen; beide vor dem Start der aktuellen APIs.
+
+Kein Neuimport und kein erneutes Embedding: Die Migration benennt nur `vectors.embedding` in `embedding_set_id` um. Kennungen, Vektoren, IDs, Metadaten, Constraints und Index bleiben erhalten. Änderungen an `init.sql` allein aktualisieren keine vorhandene Datenbank.
+
+Zuerst neue API-Images bauen, externe schreibende Clients anhalten und beide APIs stoppen:
+
+```powershell
+podman build -t vectorapi:local -f Vector/Dockerfile.api Vector
+podman build -t rag-api:local -f rag/Dockerfile rag
+podman stop rag-api vector-api
+python scripts/migrate_embedding_set_id.py
+# Nur nach Erfolg: API-Container mit den Startbefehlen oben neu erstellen.
+```
+
+Das Werkzeug erstellt einen vollständigen binären `pg_dump -Fc` unter `backups/` (nicht versioniert) und prüft ihn mit `pg_restore --list`, bevor es `Vector/migrations/001_embedding_set_id.sql` ausführt. Bei Backupfehlern wird nicht migriert. Optionen: `--container`, `--user`, `--database`, `--backup-dir`. Die SQL-Migration ist transaktional und wiederholbar. Die Inhaltsverzeichnisprüfung ersetzt keinen Restore-Test; die Podman-Integration prüft zusätzlich die tatsächliche Wiederherstellung in eine eigene Datenbank.
+
+Rückweg: APIs stoppen, `ALTER TABLE vectors RENAME COLUMN embedding_set_id TO embedding;` ausführen und alte API-Versionen starten. Für eine vollständige Wiederherstellung das Dump mit `podman cp` in den DB-Container kopieren und dort `pg_restore -U admin -d <leere-zieldatenbank> <dump-pfad>` ausführen. Bestehende Volumes nicht löschen.
 
 Die Ollama-Ermittlung prüft zuerst `host.containers.internal:11434`. Unter WSL werden anschließend die IPv4-Default-Gateways aus `/proc/net/route` geprüft. Nur ein erreichbarer Endpunkt mit einer Ollama-Modellliste wird übernommen und für die Prozesslaufzeit gespeichert. Bei Nichterreichbarkeit versucht der nächste Request die Ermittlung erneut. Nach einem WSL-Neustart startet der Containerprozess mit einer neuen Ermittlung. Bei einer eigenen Bridge kann deren Gateway statt des Windows-Gateways sichtbar sein; dafür oder für entfernte Modellserver lässt sich `OLLAMA_BASE_URL` beim Containerstart ausdrücklich setzen. Diese Einstellung hat Vorrang vor der Automatik. Ollama muss weiterhin aus der WSL-Umgebung erreichbar sein.
 

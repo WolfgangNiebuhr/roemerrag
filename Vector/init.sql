@@ -4,10 +4,10 @@ CREATE EXTENSION IF NOT EXISTS vector;
 CREATE TABLE IF NOT EXISTS vectors (
   id SERIAL PRIMARY KEY,
   chunk_id TEXT NOT NULL,
-  embedding TEXT NOT NULL,
+  embedding_set_id TEXT NOT NULL,
   vector VECTOR(1024),
-  metadata TEXT,
-  UNIQUE (chunk_id, embedding)
+  chunktext TEXT,
+  UNIQUE (chunk_id, embedding_set_id)
 );
 
 -- HNSW-Index (euklidische Distanz)

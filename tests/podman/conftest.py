@@ -149,6 +149,7 @@ def podman_stack(request):
             _wait_reranker_ready(f"http://localhost:{reranker_port}")
         yield {
             "id": test_id,
+            "db_container": db,
             "rag_container": f"rag-test-app-{test_id}" if include_rag else None,
             "vector_url": f"http://localhost:{vector_port}",
             "rag_url": f"http://localhost:{rag_port}" if include_rag else None,

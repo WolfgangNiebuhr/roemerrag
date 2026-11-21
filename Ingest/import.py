@@ -42,7 +42,7 @@ def store_vector_in_db(chunk_id, vector, chunk):
         "chunk_id": chunk_id,
         "embedding": MODEL_NAME,  # Beispiel-Embedding-Name
         "vector": vector,
-        "metadata": chunk
+        "chunktext": chunk
     }
     response = requests.post(VECTOR_API_URL, json=payload)
     if response.status_code == 201:

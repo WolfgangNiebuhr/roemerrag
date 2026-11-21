@@ -33,7 +33,7 @@ def vector_module(monkeypatch):
 def database(monkeypatch, vector_module):
     cursor = MagicMock()
     cursor.__enter__.return_value = cursor
-    cursor.description = [(name,) for name in ("id", "chunk_id", "embedding", "vector", "metadata", "distance")]
+    cursor.description = [(name,) for name in ("id", "chunk_id", "embedding_set_id", "vector", "chunktext", "distance")]
     connection = MagicMock()
     connection.cursor.return_value = cursor
     pool = MagicMock()
@@ -52,7 +52,7 @@ def test_count_chunks_uses_embedding_filter_and_returns_count(database):
     assert response.get_json() == {"chunks": 7}
     assert cursor.execute.call_args_list[0].args[0] == "SELECT 1"
     assert cursor.execute.call_args_list[1].args[1] == ("embed-a",)
-    assert "WHERE embedding = %s" in cursor.execute.call_args_list[1].args[0]
+    assert "WHERE embedding_set_id = %s" in cursor.execute.call_args_list[1].args[0]
     pool.putconn.assert_called_once_with(connection)
 
 
@@ -66,12 +66,12 @@ def test_search_uses_cosine_operator_and_filter_parameters(database):
 
     assert response.status_code == 200
     assert response.get_json() == [{
-        "id": 1, "chunk_id": "chunk-1", "embedding": "embed-a",
-        "vector": "[1,0]", "metadata": "text", "distance": -0.9,
+        "id": 1, "chunk_id": "chunk-1", "embedding": "embed-a", "embedding_set_id": "embed-a",
+        "vector": "[1,0]", "chunktext": "text", "distance": -0.9,
     }]
     sql, parameters = cursor.execute.call_args_list[1].args
     assert "vector <=> %s::VECTOR" in sql
-    assert "WHERE embedding = %s" in sql
+    assert "WHERE embedding_set_id = %s" in sql
     assert parameters == ("[0.9,0.1]", "embed-a", "[0.9,0.1]", 4)
     pool.putconn.assert_called_once_with(connection)
 
@@ -98,7 +98,7 @@ def test_find_chunks_uses_parameterized_ilike_query(database):
     assert response.status_code == 200
     assert response.get_json() == {"chunk_ids": ["chunk-1", "chunk-2"]}
     assert cursor.execute.call_args_list[1].args == (
-        "SELECT chunk_id FROM vectors WHERE metadata ILIKE %s", ("%rome%",)
+        "SELECT chunk_id FROM vectors WHERE chunktext ILIKE %s", ("%rome%",)
     )
     pool.putconn.assert_called_once_with(connection)
 
@@ -120,3 +120,22 @@ def test_api_recovers_when_database_becomes_available(vector_module, monkeypatch
     assert response.get_json() == {"chunks": 7}
     assert client.get("/chunks").status_code == 200
     factory.assert_called_once()
+
+@pytest.mark.parametrize("path,method", [("/chunks", "get"), ("/chunks/c", "get"), ("/vectors", "post"), ("/chunk", "delete"), ("/search", "post")])
+def test_conflicting_aliases_rejected_before_sql(database, path, method):
+    module, pool, _, _ = database
+    client = module.app.test_client()
+    fields = {"embedding_set_id": "a", "embedding": "b", "chunk_id": "c", "vector": [1]}
+    response = getattr(client, method)(path, **({"query_string": fields} if method == "get" else {"json": fields}))
+    assert response.status_code == 400
+    pool.getconn.assert_not_called()
+
+
+@pytest.mark.parametrize("key", ["embedding", "embedding_set_id"])
+def test_set_aliases_write_same_database_column(database, key):
+    module, _, connection, cursor = database
+    response = module.app.test_client().post("/vectors", json={"chunk_id": "c", key: "set", "vector": [1]})
+    assert response.status_code == 201
+    assert "embedding_set_id" in cursor.execute.call_args.args[0]
+    assert cursor.execute.call_args.args[1][:2] == ("c", "set")
+    connection.commit.assert_called_once()

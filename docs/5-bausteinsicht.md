@@ -59,7 +59,7 @@ Die Importskripte verwenden eigene fest konfigurierte Dienstadressen. `OLLAMA_HO
 | Ollama-Resolver | `OLLAMA_BASE_URL` hat Vorrang. Sonst Prüfung des Podman-Hostnamens und unter WSL der sichtbaren IPv4-Default-Gateways über `/api/tags`. Erfolgreiche Auswahl wird pro Prozess gespeichert. |
 | Embeddingadapter | `/api/embeddings`, Modell `snowflake-arctic-embed2`, Normalisierung des Fragevektors. |
 | Retrievaladapter | `VECTOR_API_URL`, Standard `http://host.containers.internal:5500/search`. Im gemeinsamen Pod explizit `http://127.0.0.1:5500/search` setzen. |
-| Kontextbildung | Verknüpft `metadata` der Treffer und sammelt `chunk_id`. |
+| Kontextbildung | Verknüpft `chunktext` der Treffer und sammelt `chunk_id`. |
 | Generierungsadapter | `/api/generate`, Modell `phi3:mini`, ohne Streaming; liefert Antwort und Laufzeit-/Tokenmetriken. |
 
 Die Antwort enthält `response`, `chunks` und `metrics`. Der Prompt verlangt Antworten nur aus dem Kontext; eine technische Garantie für Faktentreue besteht nicht. Resolvergrenzen, Wiederholungsverhalten und Netzwerkdiagnose stehen in der [Laufzeitsicht](6-laufzeitsicht.md).
@@ -70,14 +70,14 @@ Die Vector-API erstellt beim Prozessstart einen PostgreSQL-Pool mit einer bis ze
 
 | Methode / Pfad | Aufgabe |
 |---|---|
-| `GET /chunks?embedding=...` | Zeilen zählen; Antwortfeld `chunks`, Filter optional |
-| `GET /chunks/<chunk_id>?embedding=...` | Einzelnen Chunk lesen; Filter optional |
-| `POST /vectors` | Datensatz anhand von `chunk_id` und `embedding` ersetzen; HTTP 201 |
+| `GET /chunks?embedding_set_id=...` | Zeilen zählen; Antwortfeld `chunks`, Filter optional |
+| `GET /chunks/<chunk_id>?embedding_set_id=...` | Einzelnen Chunk lesen; Filter optional |
+| `POST /vectors` | Datensatz anhand von `chunk_id` und `embedding_set_id` ersetzen; HTTP 201 |
 | `GET /find?query=...` | Chunk-IDs anhand eines case-insensitiven Metadatenmusters (`ILIKE`) finden |
-| `DELETE /chunk` | Datensatz anhand von `chunk_id` und `embedding` löschen |
-| `POST /search` | Suche mit `vector`, optional `embedding`, `metric`, `num_results`; `euclidean` (`<->`) und `cosine` (`<=>`) werden unterstützt, ungültige Metriken liefern HTTP 400 |
+| `DELETE /chunk` | Datensatz anhand von `chunk_id` und `embedding_set_id` löschen |
+| `POST /search` | Suche mit `vector`, optional `embedding_set_id`, `metric`, `num_results`; `euclidean` (`<->`) und `cosine` (`<=>`) werden unterstützt, ungültige Metriken liefern HTTP 400 |
 
-Die Tabelle `vectors` enthält `id SERIAL PRIMARY KEY`, `chunk_id TEXT NOT NULL`, `embedding TEXT NOT NULL`, `vector VECTOR(1024)` und `metadata TEXT`. `embedding` ist die Variantenkennung, kein numerischer Vektor. `UNIQUE(chunk_id, embedding)` trennt Importvarianten. Schreiben erfolgt durch Löschen und Einfügen in einer Transaktion. Ein HNSW-Index mit `vector_l2_ops` unterstützt euklidische Suche. JSON-Vektorlisten werden in den Integrationstests und im E2E-Test verwendet; die alten String-Beispiele in den Python-Docstrings sind kein vollständiger API-Vertrag.
+Die Tabelle `vectors` enthält `id SERIAL PRIMARY KEY`, `chunk_id TEXT NOT NULL`, `embedding_set_id TEXT NOT NULL`, `vector VECTOR(1024)` und `chunktext TEXT`. `embedding_set_id` ist die Variantenkennung, kein numerischer Vektor. `UNIQUE(chunk_id, embedding_set_id)` trennt Importvarianten. Schreiben erfolgt durch Löschen und Einfügen in einer Transaktion. Ein HNSW-Index mit `vector_l2_ops` unterstützt euklidische Suche. JSON-Vektorlisten werden in den Integrationstests und im E2E-Test verwendet; die alten String-Beispiele in den Python-Docstrings sind kein vollständiger API-Vertrag.
 
 ### 5.3.4 Ollama und Reranker
 
@@ -115,3 +115,5 @@ Das zentrale Register mit Nachweisen, Prioritäten und Abschlusskriterien steht 
 ## Quellen und Prüfumfang
 
 Beschrieben sind aktuelle Repository-Implementierung und dokumentierte Podman-Konfiguration. Der E2E-Test wurde am 15.11.2026 erfolgreich mit Windows-Ollama als Hintergrund-App und automatischer Gateway-Ermittlung ausgeführt. Diese Dokumentationsbereinigung umfasst keine erneute Deployment- oder Lastprüfung. Historische Dateien und das separate Structurizr-Modell können vom aktuellen Podman-Aufbau abweichen.
+
+Die Vector-API akzeptiert weiterhin `embedding` als Alias und liefert beide Namen in Einzelchunk- und Suchantworten. Konflikte ergeben HTTP 400. Import3, CLI und RAG verwenden `rag/embedding_config.py` mit unabhaengigen Modell- und Set-Defaults. Bestandsmigration mit Backup: siehe README.
