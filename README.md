@@ -162,7 +162,7 @@ Bei erfolgreicher GPU-Einrichtung liefert die Prüfung `CUDA verfügbar: True` u
 
 `podman pod start vectorpod` startet die Container, wartet aber nicht auf die Datenbankbereitschaft. Die Vector-API versucht nach einem fehlgeschlagenen Pool-Aufbau bei jeder sp?teren Anfrage erneut eine Verbindung aufzubauen (Verbindungs-Timeout: 3 Sekunden). Sobald PostgreSQL bereit ist, erholt sie sich ohne Containerneustart. W?hrenddessen k?nnen Anfragen mit HTTP 500 fehlschlagen.
 
-Nach ?nderungen an der API muss das Image neu gebaut und der API-Container neu erstellt werden; ein blo?es `podman restart` ?bernimmt kein neues Image:
+Nach Änderungen an der API muss das Image neu gebaut und der API-Container neu erstellt werden; ein blo?es `podman restart` ?bernimmt kein neues Image:
 
 ```powershell
 podman build -t vectorapi:local -f Vector/Dockerfile.api Vector
@@ -172,3 +172,9 @@ podman run -d --name vector-api --pod vectorpod -e DB_HOST=127.0.0.1 -e DB_PORT=
 ```
 
 Der Datenbankcontainer und sein Volume bleiben dabei erhalten.
+
+Der Import-Integrationstest ruft `import3.process_file` mit echter Keyword-Anreicherung und echten Embeddings auf. Er verwendet die Vector-API im isolierten Test-Pod, einen eindeutigen Variantenfilter und entfernt seine Chunks auch bei Fehlern. Voraussetzung: Host-Ollama (`OLLAMA_HOST_URL`, Standard `http://localhost:11434`) mit `gemma3:4b` und `snowflake-arctic-embed2`; kein RAG-Container erforderlich. Modelle vorher mit `ollama pull gemma3:4b` und `ollama pull snowflake-arctic-embed2` bereitstellen.
+
+```powershell
+python -m pytest -c tests/pytest.ini tests/podman/test_import3_integration.py --include-ollama
+```

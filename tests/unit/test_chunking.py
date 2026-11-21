@@ -5,6 +5,7 @@ from unittest.mock import Mock
 from pathlib import Path
 
 import Ingest.chunking as chunking
+import pytest
 
 
 def write_temp_text(text):
@@ -14,6 +15,20 @@ def write_temp_text(text):
     ) as file:
         file.write(text)
         return Path(file.name)
+
+
+@pytest.mark.parametrize("overlap, expected", [
+    (0, ["RomaAA\n\nCapuaB", "OstiaC\n\nGallia"]),
+    (8, ["RomaAA\n\nCapuaB", "CapuaB\n\nOstiaC", "OstiaC\n\nGallia"]),
+])
+def test_paragraph_boundaries_order_and_overlap(overlap, expected):
+    source = write_temp_text("RomaAA\n\nCapuaB\n\nOstiaC\n\nGallia")
+    try:
+        chunks = chunking.split_text_into_chunks(str(source), size=18, overlap=overlap)
+    finally:
+        source.unlink()
+    assert chunks == expected
+    assert all(len(chunk) <= 18 for chunk in chunks)
 
 
 def test_chunking_reads_utf8_and_passes_size_overlap_and_separators(monkeypatch):
