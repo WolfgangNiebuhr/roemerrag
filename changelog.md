@@ -14,6 +14,16 @@ agent_instructions:
 Aus README und docs übernommene Änderungshistorie. Gleichdatierte Einträge folgen der umgekehrten Reihenfolge der dortigen Nachträge. Nicht datierbare Einträge stehen am Ende. Anleitungen: [README](README.md). Fachkonzepte: [Testkonzept](docs/8-1-testkonzept.md) und [Error-Handling](docs/8-3-error-handling.md).
 
 ## 2026-11-22
+### Schuldenregister gegen Code und Testbestand abgeglichen
+
+Alle TS-01 bis TS-18 anhand aktueller Implementierung, Tests, Dockerfiles und Migrationsskripte geprueft; k8s-Verzeichnisse ausgeschlossen. TS-01/02/03/06/07/09 bleiben abgeschlossen, TS-08 jetzt konsistent als abgeschlossen ausgewiesen. R-01 unveraendert akzeptiertes Risiko. TS-05 und TS-10 bis TS-18 bleiben mit praezisiertem Restumfang offen.
+
+Ueberholte Befunde entfernt: Vektoreingangsvalidierung, echte Chunking-Grenz-/Overlaptests, Import3-Integration inklusive Keywords, Parallelitaet/Rollback/DB-Erholung sowie versionierte SQL-Migrationen mit Backup-/Restoretests existieren bereits. TS-11 auf Ausgabevertrag, Providerdimension und Importvektoren begrenzt; TS-15 auf Build-/Modellrevisionen und Fortschreibung vorhandener Migrationen. TS-12 grenzt vorhandene RAG-Adapter von Keyword-/Resolver-/Budget-/Logresten ab. TS-17 benennt konkrete Resttests statt pauschal fehlender Import-/Chunkingabdeckung. tmpfs-Erholungstest nicht als Volume-Persistenznachweis gewertet.
+
+AST-Pruefung bestaetigt weiterhin fehlerhaften GOLDCHUNK in analyze.py: 46 Zeichen, 14 eigenstaendige Textliterale. Importidentitaet/Fehlerabschluss, mehrdeutige Chunkabfragen, Reranker-Health und ungepinnte Builds bleiben im Code offen. Abbauplan auf Restarbeiten umgestellt: TS-14, TS-05, Health, Identitaets-/Vektorvertraege, Adapterreste; Build-Reproduzierbarkeit parallel, Suchplaene/erweiterter Betrieb nach Bedarf. Bereits umgesetzte Infrastruktur nicht erneut eingeplant. Goldvergleich bleibt trotz /evaluate ein noch zu definierender fachlicher Schritt.
+
+Pruefung: `python -m pytest -c tests/pytest.ini tests/unit -q`: **221 passed in 8.22s**; `git diff --check` erfolgreich. Keine Produktionscode-/Container-/Datenaenderungen. Podman-, Modell-, Last- und Persistenztests bei dieser Dokumentationspruefung nicht erneut ausgefuehrt; vorhandene Tests gelesen und historische Nachweise getrennt von der aktuellen Codepruefung behandelt.
+
 ### Evaluationsendpunkte ausgerollt und live verkettet
 
 RAG-Image mit `python scripts/build_image.py rag-api --tag localhost/rag-api:evaluate-20261122` gebaut, Image-ID `e5c5e1d44286f0107b3442de9934e9e7c7296d6bc67b50abe1783d6e9a6fbf2e`, ebenfalls als localhost/rag-api:local markiert. Container rag-api mit bisheriger Konfiguration (Port 5600:5600, keine zusaetzlichen Umgebungsvariablen) ersetzt. Vorheriger Container bleibt gestoppt als rag-api-before-evaluate erhalten. Quellhash app.py im Container entspricht Workspace: `7a70f9a93405927425f57ec76191e5db49badf85be3b0ef941b486c1e6327ab2`. Datenbank, Vector-API, Reranker und Volumes unveraendert.
