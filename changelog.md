@@ -15,6 +15,11 @@ Aus README und docs übernommene Änderungshistorie. Gleichdatierte Einträge fo
 
 ## 2026-11-22
 
+### Architektur- und Verhaltensbeschreibungen abgeglichen
+
+README und docs mit dem aktuellen API-/CLI-Code zu TS-03 und TS-08 abgeglichen: Validierung, leerer Kontext, robuste Metriken, Poolinitialisierung und Fehlerstatus korrigiert. Das Sequenzdiagramm enthält den no_context-Pfad. Implementierte Verträge sind von offenen Budgets, Retries, Adapterklassifikation und Readiness abgegrenzt. Keine Tests erneut ausgeführt (nur Dokumentation); Format- und lokale Linkprüfung erfolgreich.
+
+
 ### Dokumentationsverweise bereinigt
 
 Lokale Dateilinks und Abschnittsanker in README, docs und Changelog geprueft; Verweise auf das ehemalige kombinierte Kapitel 11 und den verschobenen TS-08-Ausrollnachweis korrigiert. Verweise auf historische Pruefergebnisse zeigen auf das Changelog. Datumsgruppen stehen absteigend; explizit datierte Detailnachweise wurden aus dem undatierten Bereich einsortiert. Beschaedigten Umlaut in der README korrigiert. Keine Code-Tests erforderlich (nur Dokumentation).

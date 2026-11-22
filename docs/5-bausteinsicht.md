@@ -66,7 +66,7 @@ Die Antwort enthält `response`, `chunks` und `metrics`. Der Prompt verlangt Ant
 
 ### 5.3.3 Vector-API und Datenhaltung
 
-Die Vector-API erstellt beim Prozessstart einen PostgreSQL-Pool mit einer bis zehn Verbindungen. Einstellungen: `POSTGRES_DB`, `DB_HOST`, `DB_PORT`, `DB_USER`, `DB_PASSWORD`. PostgreSQL muss vor ihrem Start bereit sein.
+Die Vector-API initialisiert bei gültigen Anfragen bei Bedarf einen PostgreSQL-Pool mit einer bis zehn Verbindungen; fehlgeschlagene Initialisierung wird bei späteren gültigen Anfragen erneut versucht. Einstellungen: `POSTGRES_DB`, `DB_HOST`, `DB_PORT`, `DB_USER`, `DB_PASSWORD`. Bis PostgreSQL bereit ist, liefern gültige Datenbankanfragen HTTP 503 Problem Details.
 
 | Methode / Pfad | Aufgabe |
 |---|---|
@@ -105,12 +105,12 @@ Das zentrale Register mit Status, Prioritäten und Abschlusskriterien steht in [
 |---|---|
 | Importkennung und RAG-Standardfilter unterscheiden sich | Für Import3-Daten im Request `filter: snowflake-arctic-embed2-v2` setzen. |
 | Nicht unterstützte Suchmetrik | Vector-Suche akzeptiert `euclidean` (`<->`) und `cosine` (`<=>`); andere Werte liefern HTTP 400. |
-| Fehlerbehandlung und Nebenläufigkeit der Vector-API unvollständig | Requestvalidierung ist lückenhaft; Poolnutzung und atomare Schreibsemantik sind zu überarbeiten. Transaktionsbereinigung hängt teilweise von der Poolimplementierung ab (TS-03, TS-06, TS-07). |
+| Nebenläufigkeit und Transaktionsbereinigung der Vector-API offen | Frühe Requestvalidierung und RFC-9457-Fehlerantworten sind umgesetzt. Poolnutzung, atomare Schreibsemantik und explizite Transaktionsbereinigung bleiben unter TS-06 offen. |
 | Reranker nicht in RAG integriert | Kein Reranking im `/process`-Pfad. |
-| Modellantworten variabel, Generierung auch bei leeren Treffern | HTTP 200 garantiert weder brauchbaren Kontext noch korrekte Antwort. |
+| Modellantworten variabel | Leerer Kontext liefert ohne Generierung HTTP 200 mit `no_context`, leeren Chunks und `metrics: null`. Bei vorhandenem Kontext garantiert HTTP 200 keine Faktentreue. |
 | Pakete und pgvector-Quellstand nicht vollständig fixiert | Builds können variieren; pgvector wird beim Image-Build aus dem aktuellen Repositorystand gebaut. |
 | Experimentelle Betriebsabsicherung | Flask-Entwicklungsserver, keine API-Authentifizierung, Beispiel-DB-Zugangsdaten; kein einheitlicher Readiness-Endpunkt aller Dienste. |
-| Ältere Import-/Analysevarianten | Eigene feste URLs, teils veraltete Aufrufe und fehlende HTTP-Timeouts; nicht durch den kleinen E2E-Test vollständig abgesichert. |
+| Import-/Analysevarianten und CLI-Konfiguration | Eigene feste URLs und teils veraltete Aufrufe. Import-/Analysepfade haben teilweise keine HTTP-Timeouts; interact.py verwendet feste Verbindungs-/Lesezeitlimits. |
 
 ## Quellen und Prüfumfang
 

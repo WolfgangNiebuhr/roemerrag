@@ -215,9 +215,9 @@ Bei erfolgreicher GPU-Einrichtung liefert die Prüfung `CUDA verfügbar: True` u
 
 ### Vector-API nach Pod-Neustart
 
-`podman pod start vectorpod` startet die Container, wartet aber nicht auf die Datenbankbereitschaft. Die Vector-API versucht nach einem fehlgeschlagenen Pool-Aufbau bei jeder sp?teren Anfrage erneut eine Verbindung aufzubauen (Verbindungs-Timeout: 3 Sekunden). Sobald PostgreSQL bereit ist, erholt sie sich ohne Containerneustart. W?hrenddessen k?nnen Anfragen mit HTTP 500 fehlschlagen.
+`podman pod start vectorpod` startet die Container, wartet aber nicht auf die Datenbankbereitschaft. Die Vector-API versucht nach einem fehlgeschlagenen Pool-Aufbau bei jeder späteren gültigen Anfrage erneut eine Verbindung aufzubauen (Verbindungs-Timeout: 3 Sekunden). Sobald PostgreSQL bereit ist, erholt sie sich ohne Containerneustart. Solange die Datenbank nicht verfügbar ist, liefern gültige Anfragen HTTP 503 mit Problem Details. Ungültige Requests werden vorher mit HTTP 400 zurückgewiesen.
 
-Nach Änderungen an der API muss das Image neu gebaut und der API-Container neu erstellt werden; ein blo?es `podman restart` ?bernimmt kein neues Image:
+Nach Änderungen an der API muss das Image neu gebaut und der API-Container neu erstellt werden; ein bloßes `podman restart` übernimmt kein neues Image:
 
 ```powershell
 python scripts/build_image.py vectorapi --tag vectorapi:local

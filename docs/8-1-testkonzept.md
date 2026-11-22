@@ -51,7 +51,7 @@ Die bestehende Tabelle speichert Vektoren mit 1024 Dimensionen. CRUD-/Suchtests 
 
 ### Reranker
 
-- Ziel ist die Prüfung von Health und Modellladefehlern. Die aktuelle App lädt vor jeder ersten Anfrage, auch vor `/health`; ein sichtbarer HTTP-Health-Zustand vor dem Laden ist daher im aktuellen Ablauf nicht gewährleistet.
+- Health- und Modellladefehler prüfen: Gültige nichtleere Rerank-Anfragen und der erste `/health`-Aufruf laden das Modell bei Bedarf. Ungültige Requests und leere Dokumentlisten lösen kein Modellladen aus. Getrennte Liveness-/Readiness-Endpunkte bleiben offen.
 - Eine gültige Anfrage liefert jeden Eingabetext genau einmal, erhält `original_index`, gibt endliche numerische Scores zurück und sortiert absteigend nach Score.
 - Fehlende Felder, falsche Typen und eine leere Dokumentliste werden geprüft.
 - Modelllade- und Inferenzfehler liefern kontrollierte Fehlerantworten.
@@ -122,8 +122,8 @@ Die Standardintegration deckt PostgreSQL/pgvector und Vector-API ab. Der RAG-HTT
 Die Ollama-Ermittlung wird containerfrei in `tests/unit/test_ollama_endpoint.py` geprüft (explizite Konfiguration, WSL-Routingtabelle, Gateway-Fallback, Cache und erneuter Versuch nach Fehler). Der E2E-Test verwendet ohne `OLLAMA_CONTAINER_URL` dieselbe automatische Ermittlung wie der reguläre RAG-Prozess. Sie erkennt nur Gateways der sichtbaren Netzwerkumgebung; bei eigenen Bridge-Netzen kann eine explizite Serveradresse erforderlich sein.
 
 - Die RAG-API konfiguriert die Vector-Suchadresse über `VECTOR_API_URL` und beide Ollama-Endpunkte über `OLLAMA_BASE_URL`. Der E2E-Test prüft vor dem Import die erforderlichen Modelle vom Host und aus dem RAG-Container. Abweichende Zugriffsadressen werden über `OLLAMA_HOST_URL` und `OLLAMA_CONTAINER_URL` gesetzt (siehe README).
-- Die Vector-API validiert Metriken und Request-Schemata nicht vollständig.
-- Die RAG-API setzt voraus, dass Treffer `chunktext` und `chunk_id` enthalten.
+- Die Vector-API validiert Eingabefelder, Aliase, Metriken, Trefferzahlen und Vektoren früh; Nebenläufigkeit und Transaktionsbereinigung bleiben offen.
+- Die RAG-API prüft Trefferobjekte einschließlich String-Chunktext und nichtleerer String-ID; ungültige Antworten liefern 502, leerer Kontext führt nicht zur Generierung.
 - Es gibt keine einheitlichen Readiness-Endpunkte für alle Dienste.
 - Modellbasierte Ergebnisse sind variabel und können durch Modellversion, Hardware oder Sampling beeinflusst werden.
 - Der erste Image-Build kann durch Modell-Downloads oder externe Paketquellen zeitaufwendig sein; für reproduzierbare Läufe sollten Images und Modelle versioniert beziehungsweise zwischengespeichert werden.

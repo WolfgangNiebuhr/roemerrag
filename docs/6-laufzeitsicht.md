@@ -20,14 +20,19 @@ sequenceDiagram
     Vector->>DB: Ähnlichkeitssuche
     DB-->>Vector: Treffer
     Vector-->>RAG: Texte und Chunk-IDs
-    RAG->>Ollama: POST /api/generate (phi3:mini, Kontext und Frage)
-    Ollama-->>RAG: Antwort und Generierungsmetriken
-    RAG-->>Client: response, chunks, metrics
+    Note over RAG: Treffervertrag validieren, leere Texte entfernen
+    alt Kontext vorhanden
+        RAG->>Ollama: POST /api/generate (phi3:mini, Kontext und Frage)
+        Ollama-->>RAG: Antwort und Generierungsmetriken
+        RAG-->>Client: response, chunks, metrics (fehlende Einzelwerte null)
+    else Kein Kontext
+        RAG-->>Client: HTTP 200, no_context, chunks [], metrics null
+    end
 ```
 
-Die Aufrufe erfolgen synchron. Die RAG-API verwendet Timeouts von 300 Sekunden für Embeddings, 60 Sekunden für die Suche und 600 Sekunden für die Generierung. Fehlendes oder leeres `query` ergibt HTTP 400; abgefangene Verarbeitungsfehler ergeben HTTP 500. Der Reranker wird in diesem Ablauf nicht aufgerufen.
+Die Aufrufe erfolgen synchron. Die RAG-API verwendet Timeouts von 300 Sekunden für Embeddings, 60 Sekunden für die Suche und 600 Sekunden für die Generierung. Ungültige Requestfelder ergeben vor Modellzugriff HTTP 400 Problem Details. Ungültige Retrievalantworten ergeben HTTP 502; eine fehlerhafte HTTP-Antwort der Vector-API wird derzeit als 503 eingeordnet. Sonstige unerwartete Verarbeitungsfehler ergeben neutrale HTTP-500-Problemantworten; eine vollständige Adapterklassifikation ist noch offen. Der Reranker wird in diesem Ablauf nicht aufgerufen.
 
-Import3 und RAG verwenden gemeinsam `EMBEDDING_SET_ID=snowflake-arctic-embed2-v2`. `embedding_set_id` ersetzt den RAG-Parameter `filter`, der kompatibel bleibt. Auch bei leeren Treffern wird weiterhin generiert (TS-08).
+Import3 und RAG verwenden gemeinsam `EMBEDDING_SET_ID=snowflake-arctic-embed2-v2`. `embedding_set_id` ersetzt den RAG-Parameter `filter`, der kompatibel bleibt. Treffer werden vor der Kontextbildung validiert; leere Texte werden danach entfernt. Bleibt kein Kontext, endet die Anfrage ohne Generierung mit HTTP 200, `status: no_context`, `chunks: []` und `metrics: null`. Einzelne nicht verfügbare oder ungültige Generierungsmetriken sind bei vorhandener Antwort null.
 
 ## 6.2 Dokumentimport und E2E-Test
 
