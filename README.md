@@ -1,6 +1,14 @@
-# knowledge-experimental-ki
+# Römer-RAG
 
-Experimentelle KI-Komponenten lokal mit Podman ausführen.
+Das RAG-System dient dazu, unterschiedliche Parameter und Strategien für Retrieval Augmented Generation experimentell zu untersuchen und ihre Ergebnisse zu vergleichen. Texte zur römischen Geschichte bilden den Beispielkorpus. Der Experimentator importiert Texte, variiert Verarbeitung und Modelle, stellt Fragen und beurteilt die gefundenen Textstellen, generierten Antworten und verfügbaren Metriken.
+
+Das System unterstützt folgende Aufgaben:
+
+- Texte in Chunks zerlegen, optional mit Keywords anreichern, Embeddings erzeugen und zusammen mit dem Quelltext speichern.
+- Importvarianten über Set-Kennungen auswählen und Retrieval mit unterschiedlichen Suchparametern untersuchen.
+- Antworten aus gefundenen Textabschnitten generieren und Quell-Chunk-IDs sowie Generierungsmetriken ausgeben.
+- Modelle und Reranking über lokale Werkzeuge beziehungsweise HTTP-Schnittstellen erproben. Der eigenständige Reranker ist derzeit nicht in den Ablauf der RAG-API eingebunden.
+
 
 Die arc42-Dokumentation beginnt mit [Einführung und Zielen](docs/1-einfuehrung-und-ziele.md), [Randbedingungen](docs/2-randbedingungen.md) und [Kontextabgrenzung](docs/3-kontextabgrenzung.md).
 
