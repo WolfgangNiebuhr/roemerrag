@@ -166,3 +166,66 @@ def test_cli_reranking_keeps_chunktext_and_chunk_identity(monkeypatch):
     rows = [{"chunk_id": "a", "chunktext": "first"}, {"chunk_id": "b", "chunktext": "second"}]
     assert interact.rerank_results("q", rows, "model", 1) == [{"chunk_id": "b", "chunktext": "second"}]
     assert post.call_args.kwargs["json"]["documents"] == ["first", "second"]
+
+@pytest.mark.parametrize('results', [None, {}, [None], [{}], [{'chunk_id': 1, 'chunktext': 'text'}], [{'chunk_id': 'c', 'chunktext': None}]])
+def test_invalid_retrieval_is_502_without_generation(monkeypatch, results):
+    monkeypatch.setattr(rag_app, 'generate_embedding', Mock(return_value=[1]))
+    monkeypatch.setattr(rag_app, 'search_vectors', Mock(return_value=results))
+    generate = Mock()
+    monkeypatch.setattr(rag_app, 'generate_answer', generate)
+    response = rag_app.app.test_client().post('/process', json={'query': 'q'})
+    assert response.status_code == 502
+    assert response.json['type'] == 'urn:rag:problem:upstream-invalid-response'
+    assert response.json['stage'] == 'retrieval'
+    generate.assert_not_called()
+
+
+@pytest.mark.parametrize('results', [[], [{'chunk_id': 'c', 'chunktext': '  '}]])
+def test_no_context_skips_generation(monkeypatch, results):
+    monkeypatch.setattr(rag_app, 'generate_embedding', Mock(return_value=[1]))
+    monkeypatch.setattr(rag_app, 'search_vectors', Mock(return_value=results))
+    generate = Mock()
+    monkeypatch.setattr(rag_app, 'generate_answer', generate)
+    response = rag_app.app.test_client().post('/process', json={'query': 'q'})
+    assert response.status_code == 200
+    assert response.json['status'] == 'no_context'
+    assert response.json['chunks'] == []
+    assert response.json['metrics'] is None
+    generate.assert_not_called()
+
+
+@pytest.mark.parametrize('value', [None, 0, -1, 'bad', True, float('nan'), float('inf')])
+def test_invalid_optional_metrics_preserve_answer(monkeypatch, value):
+    response = Mock(status_code=200)
+    response.json.return_value = {'response': 'answer', 'eval_duration': value, 'eval_count': 2}
+    monkeypatch.setattr(rag_app.requests, 'post', Mock(return_value=response))
+    answer, metrics = rag_app.generate_answer('context', 'question')
+    assert answer == 'answer'
+    assert metrics['answer_rate'] is None
+    assert metrics['total_duration'] is None
+
+def test_invalid_retrieval_json_maps_to_problem(monkeypatch):
+    response = Mock(status_code=200)
+    response.json.side_effect = ValueError('private upstream body')
+    monkeypatch.setattr(rag_app.requests, 'post', Mock(return_value=response))
+    from rag_common.http_errors import Problem
+    with pytest.raises(Problem) as caught:
+        rag_app.search_vectors(rag_app.np.array([1]), 'set', 'cosine', 1)
+    assert caught.value.kind == 'upstream-invalid-response'
+    assert 'private' not in caught.value.detail
+
+
+def test_unavailable_retrieval_does_not_become_no_context(monkeypatch):
+    monkeypatch.setattr(rag_app, 'generate_embedding', Mock(return_value=rag_app.np.array([1])))
+    monkeypatch.setattr(rag_app.requests, 'post', Mock(return_value=Mock(status_code=503)))
+    generate = Mock()
+    monkeypatch.setattr(rag_app, 'generate_answer', generate)
+    response = rag_app.app.test_client().post('/process', json={'query': 'q'})
+    assert response.status_code == 503
+    generate.assert_not_called()
+
+
+def test_metrics_zero_tokens_and_invalid_counts():
+    metrics = rag_app.generation_metrics({'eval_duration': 1000000000, 'eval_count': 0, 'prompt_eval_count': 1.5})
+    assert metrics['answer_rate'] == 0
+    assert metrics['prompt_tokens'] is None

@@ -7,6 +7,7 @@ from flask import g, request, jsonify
 from werkzeug.exceptions import HTTPException
 
 TYPES = {
+    'upstream-invalid-response': (502, 'Invalid upstream response'),
     'invalid-request': (400, 'Ungültige Anfrage'),
     'not-found': (404, 'Ressource nicht gefunden'),
     'dependency-unavailable': (503, 'Abhängigkeit nicht verfügbar'),

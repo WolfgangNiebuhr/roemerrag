@@ -31,8 +31,12 @@ def external_temp_path(path):
     return resolved
 
 
+@pytest.hookimpl(tryfirst=True)
 def pytest_configure(config):
     temporary_root = external_temp_path(tempfile.gettempdir())
+    # Also protect calls that override addopts or explicitly enable cacheprovider.
+    # Run before its configure hook creates config.cache.
+    config._inicache["cache_dir"] = str(temporary_root / "rag-pytest-cache")
     # Set an explicit base so PYTEST_DEBUG_TEMPROOT cannot redirect fixtures
     # into the checkout. Do not create it: pytest owns its lifecycle.
     requested = config.option.basetemp
