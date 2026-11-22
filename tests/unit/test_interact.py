@@ -28,23 +28,30 @@ def test_network_errors_and_exit_code(monkeypatch, capsys, error, message):
     assert message in capsys.readouterr().err
 
 
-@pytest.mark.parametrize('results', [[], [{'chunk_id':'c','chunktext':'  '}]])
-def test_no_context_skips_models_and_export(monkeypatch, capsys, results):
+def test_no_context_skips_export(monkeypatch, capsys):
     arguments(monkeypatch)
-    monkeypatch.setattr(cli, 'generate_embedding', Mock(return_value=[1]))
-    monkeypatch.setattr(cli, 'search_vectors', Mock(return_value=results))
-    for name in ('generate_answer','rerank_results','export_results'):
-        monkeypatch.setattr(cli, name, Mock(side_effect=AssertionError(name)))
+    monkeypatch.setattr(cli, 'post_json', Mock(return_value={
+        'status': 'no_context', 'response': 'Keine Antwort',
+        'retrieved_results': [], 'selected_results': []}))
+    export = Mock()
+    monkeypatch.setattr(cli, 'export_results', export)
     assert cli.main() == 0
-    assert 'no_context' in capsys.readouterr().out
+    export.assert_not_called()
 
 
-@pytest.mark.parametrize('value', [None, 0, -1, 'bad', True, float('nan'), float('inf')])
-def test_bad_metrics_keep_answer(monkeypatch, value):
-    monkeypatch.setattr(cli, 'post_json', Mock(return_value={'response':'answer', 'eval_duration':value, 'eval_count':2}))
-    answer = cli.generate_answer('text', 'q')
-    assert answer.startswith('answer')
-    assert 'nicht verfuegbar' in answer
+def test_cli_calls_only_rag_api(monkeypatch):
+    arguments(monkeypatch, '--answer-model', 'model', '--top_k', '1')
+    response = Mock(status_code=200)
+    rows = [{'chunk_id': 'c', 'chunktext': 'text'}]
+    response.json.return_value = {'status':'ok', 'response':'answer',
+        'retrieved_results':rows, 'selected_results':rows, 'metrics':{}}
+    post = Mock(return_value=response)
+    monkeypatch.setattr(cli.requests, 'post', post)
+    monkeypatch.setattr(cli, 'export_results', Mock())
+    assert cli.main() == 0
+    post.assert_called_once()
+    assert post.call_args.args == (cli.RAG_API_URL,)
+    assert post.call_args.kwargs['json']['answer_model'] == 'model'
 
 
 @pytest.mark.parametrize('extra', [('--metric','bad'),('--num_results','0'),('--top_k','-1')])
@@ -57,14 +64,12 @@ def test_invalid_cli_has_exit_two(monkeypatch, extra):
 
 def test_export_failure_aborts(monkeypatch, capsys):
     arguments(monkeypatch)
-    monkeypatch.setattr(cli, 'generate_embedding', Mock(return_value=[1]))
-    monkeypatch.setattr(cli, 'search_vectors', Mock(return_value=[{'chunk_id':'c','chunktext':'text'}]))
+    rows = [{'chunk_id':'c','chunktext':'text'}]
+    monkeypatch.setattr(cli, 'post_json', Mock(return_value={'status':'ok',
+        'response':'answer', 'retrieved_results':rows, 'selected_results':rows}))
     monkeypatch.setattr(cli, 'export_results', Mock(side_effect=OSError('disk full')))
-    generate = Mock()
-    monkeypatch.setattr(cli, 'generate_answer', generate)
     assert cli.main() == 1
     assert 'disk full' in capsys.readouterr().err
-    generate.assert_not_called()
 
 
 def test_non_json_error_does_not_print_raw_body(monkeypatch):

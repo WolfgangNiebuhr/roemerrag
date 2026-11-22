@@ -41,7 +41,7 @@ def generate_embedding(chunk):
         "model": MODEL_NAME,
         "prompt": chunk
     }
-    response = requests.post(OLLAMA_URL, json=payload)
+    response = requests.post(OLLAMA_URL, json=payload, timeout=(float(os.getenv("IMPORT_CONNECT_TIMEOUT", "5")), float(os.getenv("IMPORT_EMBED_TIMEOUT", "300"))))
     if response.status_code == 200:
         vec = np.array(response.json().get("embedding"))
         vec = vec / np.linalg.norm(vec)  # Normalisierung des Embeddings
@@ -57,7 +57,7 @@ def store_vector_in_db(chunk_id, embedding_set_id, vector, chunk):
         "vector": vector,
         "chunktext": chunk
     }
-    response = requests.post(VECTOR_API_URL, json=payload)
+    response = requests.post(VECTOR_API_URL, json=payload, timeout=(float(os.getenv("IMPORT_CONNECT_TIMEOUT", "5")), float(os.getenv("IMPORT_STORE_TIMEOUT", "60"))))
     if response.status_code == 201:
         print(f"Chunk {chunk_id} erfolgreich gespeichert.")
     else:

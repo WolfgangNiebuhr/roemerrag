@@ -5,22 +5,6 @@ import argparse
 from scipy.spatial.distance import cosine
 import numpy as np
 
-# Konfiguration
-
-## Embedding
-OLLAMA_EMBEDDING_URL = "http://localhost:11434/api/embeddings"
-EMBEDDING_MODEL_NAME = "snowflake-arctic-embed2"
-
-## Retrieval
-VECTOR_API_URL = "http://localhost:5500/search"
-NUM_RESULTS = 5
-
-## Generation
-OLLAMA_ANSWER_URL = "http://localhost:11434/api/generate"
-ANSWER_MODEL_NAME = "phi3:mini"
-
-QUERY = "Wer war König Italus?"
-
 GOLDCHUNK = "Vesta, Italus, Ackerbau, Stammsagen, Volk     "
 " .                                                                      "
 " Das Haus und der feste Herd, den der Ackerbauer sich gruendet anstatt  "
@@ -38,84 +22,19 @@ GOLDCHUNK = "Vesta, Italus, Ackerbau, Stammsagen, Volk     "
 " Feldarbeiter (Opsci)"
 
 
-def generate_embedding(query):
-    """Erzeugt ein Embedding für die vordefinierte Frage über die Ollama-API."""
-    payload = {
-        "model": EMBEDDING_MODEL_NAME,
-        "prompt": query
-    }
-    response = requests.post(OLLAMA_EMBEDDING_URL, json=payload)
-    if response.status_code == 200:
-        # print(json.dumps(response.json(), indent=4))  # Ausgabe
-        vec = np.array(response.json().get("embedding"))
-        vec = vec / np.linalg.norm(vec)  # Normalisierung des Embeddings
-        return vec
-    else:
-        raise Exception(f"Fehler beim Abrufen des Embeddings: {response.text}")
+# Use the same provider adapters, validation and prompt as the RAG API.
+from rag.app import generate_embedding, generate_answer as _generate_answer, search_vectors as _search_vectors
+from rag.embedding_config import EMBEDDING_SET_ID
+
 
 def search_vectors(embedding, metric, num_results):
-    """Führt eine Suche über die Vektor-API aus und gibt die besten Treffer als Objekte zurück."""
-    payload = {
-        "vector": embedding.tolist(),  # Konvertierung in eine Liste für die JSON-Serialisierung
-        "num_results": num_results,
-        "metric": metric
-    }
-    response = requests.post(VECTOR_API_URL, json=payload)
-    if response.status_code == 200:
-        # print(json.dumps(response.json(), indent=4))  # Ausgabe der vollständigen JSON-Antwort
-        results = response.json()
-        # Überprüfen, ob die Antwort eine Liste ist
-        if isinstance(results, list):
-            return results
-        else:
-            raise Exception("Unerwartetes Antwortformat: Erwartet wurde eine Liste.")
-    else:
-        raise Exception(f"Fehler bei der Suche in der Vektor-API: {response.text}")
+    return _search_vectors(embedding, EMBEDDING_SET_ID, metric, num_results)
 
 
 def generate_answer(context, question):
-    """Generiert eine Antwort basierend auf dem Kontext und der Frage über die Ollama-API."""
-    system_prompt = (
-        "Du bist ein Experte für römische Geschichte. Beantworte Fragen nur basierend auf den "
-        "als Kontext übergebenen Dokumenten. Wenn die Frage nicht beantwortet werden kann, "
-        "antworte mit 'Die Frage kann basierend auf dem gegebenen Kontext nicht beantwortet werden.'"
-    )
-    payload = {
-        # "model": "llama3.1",
-        "model": ANSWER_MODEL_NAME,
-        "stream": False,
-        "system": system_prompt,
-        "prompt": f"Kontext:\n{context}\n\nFrage: {question}"
-    }
-    response = requests.post(OLLAMA_ANSWER_URL, json=payload)
-    # print("Rohantwort der API:", response.text)  # Debugging-Ausgabe
+    answer, metrics = _generate_answer(context, question)
+    return answer + "\n" + json.dumps(metrics, ensure_ascii=False)
 
-    if response.status_code != 200:
-        raise Exception(f"Fehler bei der Antwortgenerierung: {response.text}")
-
-    data = response.json()
-    answer = data.get("response", "Keine Antwort erhalten.")
-
-    # Performance-Metriken extrahieren (in ns → s oder ms umrechnen)
-    total_duration = data.get("total_duration", 0) / 1e9  # Sekunden
-    load_duration = data.get("load_duration", 0) / 1e6    # Millisekunden
-    prompt_eval_duration = data.get("prompt_eval_duration", 0) / 1e9
-    eval_duration = data.get("eval_duration", 0) / 1e9
-
-    prompt_tokens = data.get("prompt_eval_count", 0)
-    answer_tokens = data.get("eval_count", 0)
-
-    # Ausgabe formatieren
-    metrics_report = (
-        f"\n\n--- [Ausführungs-Metriken] ---\n"
-        f"Gesamtdauer:        {total_duration:.2f} s\n"
-        f"Modell-Ladezeit:    {load_duration:.2f} ms\n"
-        f"Prompt-Token:       {prompt_tokens} Token, Dauer: {prompt_eval_duration:.2f} s\n"
-        f"Antwort-Token:      {answer_tokens} Token, Dauer: {eval_duration:.2f} s\n"
-        f"Antwort-Rate:       {answer_tokens / eval_duration:.2f} Token/s"
-    )
-
-    return answer + metrics_report
 
 def main():
     parser = argparse.ArgumentParser(description="Interaktives KI-Tool für Embedding, Suche und Antwortgenerierung.")

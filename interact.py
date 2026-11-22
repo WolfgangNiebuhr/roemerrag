@@ -1,15 +1,11 @@
 import sys
-from rag_common.rag_results import validate_results, generation_metrics
+from rag_common.rag_results import validate_results
 import requests
 import argparse
-import numpy as np
-import time
 import json
-CONNECT_TIMEOUT = 5
-EMBED_TIMEOUT = 300
-SEARCH_TIMEOUT = 60
-GENERATE_TIMEOUT = 600
-RERANK_TIMEOUT = 600
+import os
+CONNECT_TIMEOUT = float(os.getenv("RAG_CONNECT_TIMEOUT", "5"))
+REQUEST_TIMEOUT = float(os.getenv("RAG_CLI_TIMEOUT", "1800"))
 
 
 def post_json(url, payload, operation, timeout):
@@ -43,108 +39,9 @@ def post_json(url, payload, operation, timeout):
         raise RuntimeError(operation + ": Ungueltige JSON-Antwort.") from error
 
 
-# Konfiguration
-
-## Embedding
-OLLAMA_EMBEDDING_URL = "http://localhost:11434/api/embeddings"
-from rag.embedding_config import EMBEDDING_MODEL, EMBEDDING_SET_ID
-EMBEDDING_MODEL_NAME = EMBEDDING_MODEL
-
-## Retrieval
-VECTOR_API_URL = "http://localhost:5500/search"
-NUM_RESULTS = 5
-
-## Generation
-OLLAMA_ANSWER_URL = "http://localhost:11434/api/generate"
-# ANSWER_MODEL_NAME = "gemma3:4b"
-# ANSWER_MODEL_NAME = "phi3:mini"
-ANSWER_MODEL_NAME = "gemma4:e4b"
-
-QUERY = "Wer beherrschte die westliche Hälfte des Mittelmeeres?"
-
-def generate_embedding(query):
-    """Erzeugt ein Embedding für die vordefinierte Frage über die Ollama-API."""
-    payload = {
-        "model": EMBEDDING_MODEL_NAME,
-        "prompt": query
-    }
-    data = post_json(OLLAMA_EMBEDDING_URL, payload, "Embedding", EMBED_TIMEOUT)
-    if not isinstance(data, dict) or not isinstance(data.get("embedding"), list):
-        raise RuntimeError("Embedding: Ungueltige Antwort.")
-    try:
-        raw = data["embedding"]
-        if any(type(value) not in (int, float) for value in raw):
-            raise ValueError()
-        vec = np.array(raw, dtype=float)
-        norm = np.linalg.norm(vec)
-        if vec.ndim != 1 or not vec.size or not np.isfinite(vec).all() or not np.isfinite(norm) or norm <= 0:
-            raise ValueError()
-        return vec / norm
-    except (ValueError, TypeError, OverflowError) as error:
-        raise RuntimeError("Embedding: Ungueltiger Vektor.") from error
-
-
-def search_vectors(embedding, metric, key, num_results):
-    """Führt eine Suche über die Vektor-API aus und gibt die besten Treffer zurück."""
-    payload = {
-        "vector": embedding.tolist(),
-        "num_results": num_results,
-        "metric": metric,
-        "embedding_set_id": key
-    }
-    return validate_results(post_json(VECTOR_API_URL, payload, "Retrieval", SEARCH_TIMEOUT))
-
-
-def generate_answer(context, question):
-    """Generiert eine Antwort basierend auf dem Kontext und der Frage über die Ollama-API."""
-    system_prompt = (
-        "Du bist ein Experte für römische Geschichte. Beantworte Fragen nur basierend auf den "
-        "als Kontext übergebenen Dokumenten. Wenn die Frage nicht beantwortet werden kann, "
-        "antworte mit 'Die Frage kann basierend auf dem gegebenen Kontext nicht beantwortet werden.'"
-    )
-    payload = {
-        # "model": "llama3.1",
-        "model": ANSWER_MODEL_NAME,
-        "stream": False,
-        "system": system_prompt,
-        "prompt": f"Kontext:\n{context}\n\nFrage: {question}"
-    }
-    data = post_json(OLLAMA_ANSWER_URL, payload, "Generierung", GENERATE_TIMEOUT)
-    if not isinstance(data, dict) or not isinstance(data.get("response"), str):
-        raise RuntimeError("Generierung: Ungueltige Antwort.")
-    metrics = generation_metrics(data)
-    def display(key, scale=1):
-        value = metrics[key]
-        return "nicht verfuegbar" if value is None else f"{value * scale:.2f}"
-    return data["response"] + (
-        "\n\n--- [Ausfuehrungs-Metriken] ---\n"
-        f"Gesamtdauer: {display('total_duration')} s\n"
-        f"Modell-Ladezeit: {display('load_duration', 1000)} ms\n"
-        f"Prompt-Token: {display('prompt_tokens')}, Dauer: {display('prompt_eval_duration')} s\n"
-        f"Antwort-Token: {display('answer_tokens')}, Dauer: {display('eval_duration')} s\n"
-        f"Antwort-Rate: {display('answer_rate')} Token/s"
-    )
-
-
-def rerank_results(query, results, reranker, top_k):
-    """Rerankt die Suchergebnisse """
-    payload = {
-        "model": reranker,
-        "query": query,
-        "documents": [result["chunktext"] for result in results]
-    }
-    body = post_json("http://localhost:5000/rerank", payload, "Reranking", RERANK_TIMEOUT)
-    if not isinstance(body, dict) or not isinstance(body.get("ranked_documents"), list):
-        raise RuntimeError("Reranking: Ungueltige Antwort.")
-    ranked = body["ranked_documents"]
-    seen = set()
-    for row in ranked:
-        index = row.get("original_index") if isinstance(row, dict) else None
-        if type(index) is not int or not 0 <= index < len(results) or index in seen:
-            raise RuntimeError("Reranking: Ungueltige Dokumentzuordnung.")
-        seen.add(index)
-    print(f"Reranker-Modell: {body.get('model', reranker)}")
-    return [results[row["original_index"]] for row in ranked[:top_k]]
+from rag.embedding_config import EMBEDDING_SET_ID
+RAG_API_URL = os.getenv("RAG_API_URL", "http://localhost:5600/process")
+ANSWER_MODEL_NAME = os.getenv("ANSWER_MODEL", "phi3:mini")
 
 
 def export_results(query, results, filename="search_results.json"):
@@ -206,77 +103,45 @@ def main():
     parser.add_argument("--top_k", type=german_integer, default=6, help="Anzahl der Top-Rerank-Ergebnisse.")
     parser.add_argument("--reranker", type=str, default="cross-encoder/ms-marco-MiniLM-L6-v2", help="Zu verwendendes Reranker-Modell")
 
+    parser.add_argument("--answer-model", default=ANSWER_MODEL_NAME, help="Antwortmodell")
     args = parser.parse_args()
 
     if not 1 <= args.num_results <= 100:
         parser.error(f"--num_results: {args.num_results!r} ist ungültig; erlaubt sind ganze Zahlen von 1 bis 100.")
     if args.top_k < 0:
         parser.error(f"--top_k: {args.top_k!r} ist ungültig; erwartet wird eine ganze Zahl >= 0 (0 deaktiviert Reranking).")
-    for option, value in (("--query", args.query), ("--embedding-set-id/--embedding", args.embedding), ("--reranker", args.reranker)):
+    for option, value in (("--answer-model", args.answer_model), ("--query", args.query), ("--embedding-set-id/--embedding", args.embedding), ("--reranker", args.reranker)):
         if not value.strip():
             parser.error(f"{option}: erwartet wird ein nichtleerer Text.")
 
-    metric = args.metric
-    num_results = args.num_results
-    top_k = args.top_k
-    query = args.query
-    embedding_key = args.embedding
-    reranker = args.reranker
-
     try:
-        print("Frage:", query)
-        print("Generiere Embedding für die Frage...")
-        embedding = generate_embedding(query)
-
-        # -------------------------
-
-        print(f"Führe {metric}-Suche über die Vektor-API aus...")
-        results = validate_results(search_vectors(embedding, metric, embedding_key, num_results))
-        results = [row for row in results if row["chunktext"].strip()]
-        if not results:
-            print("Die Frage kann basierend auf dem gegebenen Kontext nicht beantwortet werden. (no_context)")
+        body = post_json(RAG_API_URL, {
+            "query": args.query, "embedding_set_id": args.embedding,
+            "metric": args.metric, "num_results": args.num_results,
+            "top_k": args.top_k, "reranker": args.reranker,
+            "answer_model": args.answer_model}, "RAG", REQUEST_TIMEOUT)
+        if not isinstance(body, dict) or body.get("status") not in ("ok", "no_context") or not isinstance(body.get("response"), str):
+            raise RuntimeError("RAG: Ungueltige Antwort.")
+        retrieved = validate_results(body.get("retrieved_results"))
+        selected = validate_results(body.get("selected_results"))
+        print("Frage:", args.query)
+        print("Antwort:", body["response"])
+        if body["status"] == "no_context":
+            print("no_context")
             return 0
-
-        export_results(query, results)
-
-        # IDs für die Aufzählung extrahieren
-        retrieved_ids = [result["chunk_id"] for result in results]
-
-        if top_k > 0:
-            start = time.time()
-            results = rerank_results(query, results, reranker, top_k)
-            duration = time.time() - start
-            print(f"Laufzeit von rerank_results: {duration:.3f} Sekunden")
-
-            reranked_ids = [result["chunk_id"] for result in results]
-            context = "\n".join([result["chunktext"] for result in results])
-        else:
-            context = "\n".join([result["chunktext"] for result in results])
-
-
-        if not context.strip():
-            print("Keine verwertbaren Dokumente nach Reranking. (no_context)")
-            return 0
-
-        # Antwortgenerierung
-        print("\nGeneriere Antwort basierend auf den gefundenen Texten...")
-        answer = generate_answer(context, query)
-        print("\nAntwort:")
-        print(answer)
-
-        # Aufzählung der Chunks ausgeben
-        print("\nfound Chunks:")
-        for i, element in enumerate(retrieved_ids   , start=1):
-             print(f"{i}. {element}")
-
-        if top_k > 0:
-            print("\nreranked Chunks:")
-            for i, element in enumerate(reranked_ids   , start=1):
-                print(f"{i}. {element}")
-
+        export_results(args.query, retrieved)
+        for label, rows in (("found Chunks", retrieved), ("selected Chunks", selected)):
+            print(label + ":")
+            for index, row in enumerate(rows, 1):
+                print(f"{index}. {row['chunk_id']}")
+        metrics = body.get("metrics") or {}
+        for key, value in metrics.items():
+            print(f"{key}: {value if value is not None else 'nicht verfuegbar'}")
+        if body.get("reranking"):
+            print("Reranking:", body["reranking"])
         return 0
-    except Exception as e:
-        print(f"Fehler: {e}", file=sys.stderr)
+    except Exception as exc:
+        print(f"Fehler: {exc}", file=sys.stderr)
         return 1
 
 

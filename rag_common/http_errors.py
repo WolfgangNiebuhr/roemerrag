@@ -85,6 +85,10 @@ def validate(service):
         text(data, 'query')
         selection(data, ('embedding_set_id', 'filter'))
         search_options(data, 5)
+        text(data, 'reranker', required=False)
+        text(data, 'answer_model', required=False)
+        if type(data.get('top_k', 0)) is not int or data.get('top_k', 0) < 0:
+            invalid('top_k muss eine ganze Zahl >= 0 sein.', 'top_k')
     elif service == 'reranker':
         text(data, 'query')
         text(data, 'model', required=False)

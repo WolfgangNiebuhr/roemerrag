@@ -7,7 +7,7 @@ Das System unterstützt folgende Aufgaben:
 - Texte in Chunks zerlegen, optional mit Keywords anreichern, Embeddings erzeugen und zusammen mit dem Quelltext speichern.
 - Importvarianten über Set-Kennungen auswählen und Retrieval mit unterschiedlichen Suchparametern untersuchen.
 - Antworten aus gefundenen Textabschnitten generieren und Quell-Chunk-IDs sowie Generierungsmetriken ausgeben.
-- Modelle und Reranking über lokale Werkzeuge beziehungsweise HTTP-Schnittstellen erproben. Der eigenständige Reranker ist derzeit nicht in den Ablauf der RAG-API eingebunden.
+- Modelle und Reranking über lokale Werkzeuge beziehungsweise HTTP-Schnittstellen erproben. Die RAG-API kann den optionalen Reranker aufrufen.
 
 
 Änderungen und Ausrollnachweise stehen im [Changelog](changelog.md). Diese README beschreibt Einrichtung, Bedienung und aktuellen Schnittstellenvertrag.
@@ -22,7 +22,7 @@ Die arc42-Dokumentation beginnt mit [Einführung und Zielen](docs/1-einfuehrung-
 
 ## Lokalen Stack starten
 
-Die Befehle gelten für PowerShell im Projektstamm und einen Neuaufbau. Bereits vorhandene Container nicht erneut unter denselben Namen anlegen. PostgreSQL/pgvector, Vector-API und RAG-API laufen mit Podman; Ollama läuft als Windows-Hintergrund-App. Der Reranker ist optional und nicht in den RAG-Ablauf eingebunden. PostgreSQL-Daten bleiben im Named Volume erhalten; Ollama verwaltet seine Modelle separat im Windows-Benutzerprofil. Eine GPU ist für den Grundbetrieb nicht erforderlich.
+Die Befehle gelten für PowerShell im Projektstamm und einen Neuaufbau. Bereits vorhandene Container nicht erneut unter denselben Namen anlegen. PostgreSQL/pgvector, Vector-API und RAG-API laufen mit Podman; Ollama läuft als Windows-Hintergrund-App. Der Reranker wird optional durch die RAG-API aufgerufen. PostgreSQL-Daten bleiben im Named Volume erhalten; Ollama verwaltet seine Modelle separat im Windows-Benutzerprofil. Eine GPU ist für den Grundbetrieb nicht erforderlich.
 
 ### Ollama auf Windows vorbereiten
 
@@ -252,11 +252,17 @@ Auch bei pytest-Aufrufen aus tests, tests/unit und tests/podman greift die gemei
 
 ## CLI verwenden: Fehlerbehandlung und Validierung
 
-`interact.py` verwendet gemeinsame Retrievalvalidierung und Metrikaufbereitung aus `rag_common/rag_results.py`, die auch die RAG-API nutzt. Fehlerhafte Treffer werden nicht als leerer Kontext behandelt. Bei leeren Treffern oder ausschließlich leeren Texten endet die CLI mit kontrollierter Ablehnungsantwort (`no_context`), ohne Export, Reranking oder Generierung. Wenn Reranking keine verwertbaren Dokumente liefert, entfällt ebenfalls die Generierung.
+`interact.py` ruft ausschliesslich die RAG-API auf (`RAG_API_URL`, Standard `http://localhost:5600/process`). Ollama, Vector-API und Reranker werden durch die API orchestriert. Die CLI behaelt Argumentpruefung, Ausgabe und lokalen Export nach `search_results.json`. Fortschrittsmeldungen und Export nach spaeteren Verarbeitungsfehlern entfallen. Exitcodes: 0 Erfolg einschliesslich no_context, 1 Verarbeitungs-/Exportfehler, 2 Argumentfehler.
 
-HTTP-Fehler erscheinen verständlich mit Verarbeitungsschritt, tatsächlichem HTTP-Status, `title`/`detail` und vorhandener Typ-URI/Request-ID; rohe Fehlerbodys werden nicht ausgegeben. Bei Ollama wird auch dessen textuelles JSON-Feld `error` angezeigt, sofern keine Problem-Details-Meldung vorliegt. Timeout und Nichterreichbarkeit erhalten eigene Meldungen. Fehler gehen auf stderr. Exitcode 0 bedeutet Erfolg (auch ohne Kontext), 1 einen Verarbeitungs-/Exportabbruch und 2 ungültige CLI-Argumente. Exportfehler führen zum Abbruch statt zum stillen Fortsetzen. Es gibt keine automatischen Wiederholungen.
+Die CLI sendet metric=cosine, num_results=5, top_k=6 und das Rerankermodell explizit. `--top_k 0` deaktiviert Reranking. `--answer-model` waehlt das Antwortmodell; Standard ist fuer CLI und API `ANSWER_MODEL` beziehungsweise `phi3:mini` (ersetzt den bisherigen CLI-Standard gemma4:e4b). `--embedding-set-id` und `--embedding` bleiben erhalten. Der Export enthaelt die urspruenglichen nichtleeren Retrievalpassagen; ausgegebene ausgewaehlte Chunks entsprechen der Kontextreihenfolge. Bei no_context erfolgt kein Export.
 
-Alle HTTP-Aufrufe verwenden getrennte Verbindungs-/Antwortzeitlimits: 5 Sekunden Verbindung, 300 Sekunden Embedding, 60 Sekunden Retrieval sowie 600 Sekunden Generierung und Reranking. Dies sind Requests-Verbindungs-/Lesezeitlimits, kein Gesamtbudget des gesamten Laufs. Fehlende oder ungültige Metriken werden als „nicht verfügbar“ dargestellt; Nullzeiten verursachen keine Division durch null. Der CLI ruft Ollama, Vector-API und Reranker weiterhin direkt auf; seine Modellwahl bleibt unabhängig von der RAG-API.
+`POST /process` akzeptiert neben query, embedding_set_id/filter, metric und num_results die optionalen Felder `top_k` (Integer >= 0, Standard 0), `reranker` und `answer_model` (nichtleere Strings). Ohne Angabe bleiben API-Defaults metric=euclidean und Antwortmodell phi3:mini erhalten. Die Antwort behaelt response, metrics und chunks und ergaenzt `status` (ok/no_context), `retrieved_results` und `selected_results` (jeweils chunk_id und chunktext) sowie `reranking` (null oder model und duration in Sekunden). chunks nennt ausgewaehlte IDs. Leeres Retrieval oder leeres Reranking verhindert Generierung; metrics ist dann null.
+
+Der API-Container benoetigt bei Reranking `RERANKER_URL` (Standard `http://host.containers.internal:5000/rerank`), optional `RERANK_MODEL`; bei gemeinsamen Pods kann die URL auf `http://127.0.0.1:5000/rerank` zeigen. Fuer das laufende System muss das RAG-Image nach dem Umbau neu gebaut und der Container neu erstellt werden. API-Clients muessen zusaetzliche Antwortfelder tolerieren.
+
+Transportkonfiguration: `RAG_CONNECT_TIMEOUT=5`, `RAG_EMBEDDING_TIMEOUT=300`, `RAG_RETRIEVAL_TIMEOUT=60`, `RAG_RERANKING_TIMEOUT=600`, `RAG_GENERATION_TIMEOUT=600`, `RAG_TOTAL_TIMEOUT=1800` (Sekunden). Restbudget begrenzt jeden Folgeaufruf; nach Ablauf wird keine erfolgreiche Pipelineantwort geliefert. Requests-Zeitlimits sind Socket-Zeitlimits; ein blockierender Aufruf kann nicht aktiv abgebrochen werden. Embedding, Retrieval und Reranking werden bei Timeout/Verbindungsfehler hoechstens einmal wiederholt, Generierung und Writes nie. HTTP-Fehler werden nicht wiederholt. X-Request-ID wird weitergegeben. Die CLI hat `RAG_CLI_TIMEOUT=1800` als eigenes Antwortzeitlimit. Fehlende Metriken werden als nicht verfuegbar angezeigt.
+
+Analyse verwendet dieselben Providerfunktionen und denselben Prompt wie die API. Fuer Host-Ausfuehrung `OLLAMA_BASE_URL=http://localhost:11434` und `VECTOR_API_URL=http://localhost:5500/search` setzen. Import3 verwendet `IMPORT_CONNECT_TIMEOUT=5`, `IMPORT_EMBED_TIMEOUT=300` und `IMPORT_STORE_TIMEOUT=60` ohne automatische Schreibwiederholung.
 
 CLI-Validierung: --metric erlaubt ausschließlich cosine und euclidean (euklidische/L2-Distanz). L2 ist kein akzeptierter Parameterwert. Ungültige Optionen werden einzeln mit Parametername und erlaubten Werten beziehungsweise Grenzen gemeldet; Exitcode 2, ohne Dienstaufruf.
 

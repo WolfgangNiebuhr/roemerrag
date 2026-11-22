@@ -41,7 +41,7 @@ flowchart LR
 | Reranker | Frage-Dokument-Paare bewerten und sortieren | [app.py](../reranker/app.py), [Dockerfile](../reranker/Dockerfile) |
 | Lokale Werkzeuge | Direkte RAG-Abfragen und Analysen | [interact.py](../interact.py), [analyze.py](../analyze.py), `Vector/analyze_data.py` |
 
-Der Reranker ist eigenständig; die RAG-API ruft ihn nicht auf. Ältere Importvarianten sind keine austauschbaren Einstiegspunkte: `import.py` verwendet `/vectors` und enthält weitere Aufruffehler; `import3.py` schreibt auf den aktuellen Endpunkt `/vectors`.
+Der Reranker bleibt ein eigenstaendiger Dienst; die RAG-API ruft ihn bei top_k > 0 auf. Ältere Importvarianten sind keine austauschbaren Einstiegspunkte: `import.py` verwendet `/vectors` und enthält weitere Aufruffehler; `import3.py` schreibt auf den aktuellen Endpunkt `/vectors`.
 
 ## 5.3 Ebene 2 – zentrale Bausteine
 
@@ -106,11 +106,11 @@ Das zentrale Register mit Status, Prioritäten und Abschlusskriterien steht in [
 | Importkennung und RAG-Standardfilter unterscheiden sich | Für Import3-Daten im Request `filter: snowflake-arctic-embed2-v2` setzen. |
 | Nicht unterstützte Suchmetrik | Vector-Suche akzeptiert `euclidean` (`<->`) und `cosine` (`<=>`); andere Werte liefern HTTP 400. |
 | Nebenläufigkeit und Transaktionsbereinigung der Vector-API (TS-06 abgeschlossen) | Frühe Requestvalidierung und RFC-9457-Fehlerantworten sind umgesetzt. TS-06 implementiert ThreadedConnectionPool, atomare Upserts und zentrale Transaktionsbereinigung; die isolierte Podman-Abnahme ist erfolgreich (siehe Changelog). |
-| Reranker nicht in RAG integriert | Kein Reranking im `/process`-Pfad. |
+| Reranking in RAG integriert | Optional im `/process`-Pfad; top_k=0 deaktiviert es. |
 | Modellantworten variabel | Leerer Kontext liefert ohne Generierung HTTP 200 mit `no_context`, leeren Chunks und `metrics: null`. Bei vorhandenem Kontext garantiert HTTP 200 keine Faktentreue. |
 | Pakete und pgvector-Quellstand nicht vollständig fixiert | Builds können variieren; pgvector wird beim Image-Build aus dem aktuellen Repositorystand gebaut. |
 | Experimentelle Betriebsabsicherung | Flask-Entwicklungsserver, keine API-Authentifizierung, Beispiel-DB-Zugangsdaten; kein einheitlicher Readiness-Endpunkt aller Dienste. |
-| Import-/Analysevarianten und CLI-Konfiguration | Eigene feste URLs und teils veraltete Aufrufe. Import-/Analysepfade haben teilweise keine HTTP-Timeouts; interact.py verwendet feste Verbindungs-/Lesezeitlimits. |
+| Import-/Analysevarianten und CLI-Konfiguration | Eigene feste URLs und teils veraltete Aufrufe. Import3 hat konfigurierte HTTP-Zeitlimits; Analyse verwendet die RAG-Providerfunktionen. interact.py ist ein reiner RAG-HTTP-Client. |
 
 ## Quellen und Prüfumfang
 
@@ -127,3 +127,5 @@ TS-08 (22.11.2026): Die RAG-API validiert Trefferverträge und generiert bei lee
 Historische Aenderungs- und Pruefnachweise: [Changelog](../changelog.md).
 
 TS-07: Die Vector-API trennt Prozess-Liveness (`/health/live`) und Datenbank-Readiness (`/health/ready`). Poolinitialisierung ist bedarfsgesteuert und wiederholbar; gleichzeitig eintreffende Requests warten nicht auf den Initialisierungslock. Datenbankverbindungen begrenzen Verbindungs-, Statement- und Lock-Wartezeit jeweils auf drei Sekunden. Defekte Verbindungen werden verworfen; nach Datenbankwiederanlauf kann sich die API ohne Neustart erholen.
+
+TS-09: `/process` orchestriert Embedding, Retrieval, optional Reranking und Generierung. interact.py uebernimmt nur CLI-Validierung, einen API-Aufruf, Anzeige und lokalen Export. analyze.py verwendet dieselben Providerfunktionen und denselben Prompt aus rag/app.py. Modellunterschiede sind explizite Parameter; Antwortmodellstandard ist phi3:mini. Die API gibt urspruengliche und ausgewaehlte Treffer getrennt zurueck. Transportadapter begrenzen Timeouts und sichere Retries; Generierung und Writes werden nicht automatisch wiederholt.

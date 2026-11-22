@@ -25,3 +25,7 @@ Die Zuordnung von Verarbeitungsparametern zu `embedding_set_id` wird auf ausdrü
 Vor neuen Imports werden Set-ID und tatsächliche Parameter manuell dokumentiert; bei geänderter Verarbeitung wird eine neue Kennung gewählt. Historisch unbekannte Angaben bleiben als unbekannt gekennzeichnet. Vorhandene Daten bleiben erhalten. Die Möglichkeit einer versehentlichen Vermischung oder Überschreibung bei falsch gewählter Kennung wird als [Risiko R-01](11-1-risiken.md#r-01--manuelle-zuordnung-von-importvarianten--akzeptiertes-risiko) bewusst akzeptiert. Die Dokumentation verhindert solche Fehler nicht technisch.
 
 Historische Aenderungs- und Pruefnachweise: [Changelog](../changelog.md).
+
+## RAG-Orchestrierung als einziger CLI-Verarbeitungspfad (TS-09)
+
+Die CLI delegiert die gesamte Verarbeitung an `/process`; sie behaelt Argumentpruefung, Darstellung und Dateiexport. Reranking und Modellwahl werden explizite API-Parameter, urspruengliche und ausgewaehlte Treffer separate Antwortfelder. Bestehende API-Clients erhalten ohne neue Parameter weiterhin kein Reranking. Beide Einstiegspunkte verwenden phi3:mini als Antwortmodellstandard. analyze.py verwendet die Providerfunktionen aus rag/app.py fuer seine Vektoranalysen; eine weitere Klassenhierarchie ist nicht erforderlich. Fortschrittsstreaming und Export nach spaeteren Providerfehlern sind nicht Teil des Vertrags.

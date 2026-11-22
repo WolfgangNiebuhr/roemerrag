@@ -43,7 +43,8 @@ def test_import_file_enriches_embeds_and_stores_chunks(monkeypatch, start):
         enriched = "Roma, Capua\n" + chunk
         assert embedding == (importer.OLLAMA_URL, {"json": {
             "model": importer.MODEL_NAME, "prompt": enriched,
-        }})
+        }, "timeout": (5, 300)})
+        assert store[1]["timeout"] == (5, 60)
         payload = store[1]["json"]
         assert payload == {
             "chunk_id": f"{source.stem}-{index + start}",
@@ -70,7 +71,7 @@ def test_standard_import_is_selected_by_standard_retrieval(monkeypatch):
     def search(vector, set_id, metric, count):
         return [{"chunk_id": row[0], "chunktext": row[3]} for row in stored if row[1] == set_id]
     monkeypatch.setattr(rag_app, "search_vectors", search)
-    monkeypatch.setattr(rag_app, "generate_answer", lambda context, query: (context, {}))
+    monkeypatch.setattr(rag_app, "generate_answer", lambda context, query, model=None: (context, {}))
     response = rag_app.app.test_client().post("/process", json={"query": "Roma?"})
     assert response.status_code == 200
     assert response.json["chunks"] == [stored[0][0]]

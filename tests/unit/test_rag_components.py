@@ -75,7 +75,7 @@ def test_generate_embedding_normalizes_vector(monkeypatch):
     post.assert_called_once_with(
         rag_app.OLLAMA_EMBEDDING_URL,
         json={"model": rag_app.EMBEDDING_MODEL_NAME, "prompt": "test query"},
-        timeout=300,
+        timeout=(5, 300), headers={},
     )
 
 
@@ -85,7 +85,7 @@ def test_generate_embedding_rejects_missing_or_zero_vector(monkeypatch, embeddin
     response.json.return_value = {"embedding": embedding}
     monkeypatch.setattr(rag_app.requests, "post", Mock(return_value=response))
 
-    with pytest.raises(ValueError):
+    with pytest.raises(rag_app.Problem):
         rag_app.generate_embedding("test query")
 
 
@@ -93,7 +93,7 @@ def test_generate_embedding_rejects_http_error(monkeypatch):
     response = Mock(status_code=503, text="model unavailable")
     monkeypatch.setattr(rag_app.requests, "post", Mock(return_value=response))
 
-    with pytest.raises(Exception, match="model unavailable"):
+    with pytest.raises(Exception, match="Embedding is unavailable"):
         rag_app.generate_embedding("test query")
 
 
@@ -109,7 +109,7 @@ def test_search_vectors_sends_filters_and_rejects_non_list(monkeypatch):
     post.assert_called_once_with(
         rag_app.VECTOR_API_URL,
         json={"vector": [0.6, 0.8], "embedding_set_id": "embed-v1", "num_results": 3, "metric": "cosine"},
-        timeout=60,
+        timeout=(5, 60), headers={},
     )
 
 
@@ -135,7 +135,7 @@ def test_generate_answer_converts_metrics_and_reports_http_error(monkeypatch):
     assert post.call_args.kwargs["json"]["prompt"] == "Kontext:\ncontext\n\nFrage: question"
 
     post.return_value = Mock(status_code=500, text="generation failed")
-    with pytest.raises(Exception, match="generation failed"):
+    with pytest.raises(Exception, match="Generation is unavailable"):
         rag_app.generate_answer("context", "question")
 
 @pytest.mark.parametrize("fields", [{"filter": "legacy"}, {"embedding_set_id": "new"}])
@@ -158,13 +158,12 @@ def test_process_rejects_conflicting_aliases_before_embedding(monkeypatch):
 
 
 def test_cli_reranking_keeps_chunktext_and_chunk_identity(monkeypatch):
-    import interact
     response = Mock(status_code=200)
     response.json.return_value = {"model": "model", "ranked_documents": [{"text": "second", "original_index": 1}]}
     post = Mock(return_value=response)
-    monkeypatch.setattr(interact.requests, "post", post)
+    monkeypatch.setattr(rag_app.requests, "post", post)
     rows = [{"chunk_id": "a", "chunktext": "first"}, {"chunk_id": "b", "chunktext": "second"}]
-    assert interact.rerank_results("q", rows, "model", 1) == [{"chunk_id": "b", "chunktext": "second"}]
+    assert rag_app.rerank_results("q", rows, "model", 1) == [{"chunk_id": "b", "chunktext": "second"}]
     assert post.call_args.kwargs["json"]["documents"] == ["first", "second"]
 
 @pytest.mark.parametrize('results', [None, {}, [None], [{}], [{'chunk_id': 1, 'chunktext': 'text'}], [{'chunk_id': 'c', 'chunktext': None}]])
@@ -229,3 +228,112 @@ def test_metrics_zero_tokens_and_invalid_counts():
     metrics = rag_app.generation_metrics({'eval_duration': 1000000000, 'eval_count': 0, 'prompt_eval_count': 1.5})
     assert metrics['answer_rate'] == 0
     assert metrics['prompt_tokens'] is None
+
+
+@pytest.mark.parametrize("mapping", [[{"original_index": True}], [{"original_index": 2}],
+    [{"original_index": 0}, {"original_index": 0}], None])
+def test_reranking_rejects_invalid_mapping(monkeypatch, mapping):
+    response = Mock(status_code=200)
+    response.json.return_value = {"ranked_documents": mapping}
+    monkeypatch.setattr(rag_app.requests, "post", Mock(return_value=response))
+    with pytest.raises(rag_app.Problem):
+        rag_app.rerank_results("q", [{"chunk_id":"c", "chunktext":"text"}], "m", 1)
+
+
+@pytest.mark.parametrize("top_k", [-1, True, "1", 1.5])
+def test_reranking_validation_before_embedding(monkeypatch, top_k):
+    embed = Mock()
+    monkeypatch.setattr(rag_app, "generate_embedding", embed)
+    assert rag_app.app.test_client().post('/process', json={'query':'q', 'top_k':top_k}).status_code == 400
+    embed.assert_not_called()
+
+
+@pytest.mark.parametrize("selected", [[], [{"chunk_id":"b", "chunktext":"second"}]])
+def test_process_reranks_and_preserves_original_results(monkeypatch, selected):
+    rows = [{"chunk_id":"a", "chunktext":"first"}, {"chunk_id":"b", "chunktext":"second"}]
+    monkeypatch.setattr(rag_app, "generate_embedding", Mock(return_value=[1]))
+    monkeypatch.setattr(rag_app, "search_vectors", Mock(return_value=rows))
+    rerank = Mock(return_value=selected)
+    monkeypatch.setattr(rag_app, "rerank_results", rerank)
+    generate = Mock(return_value=("answer", {}))
+    monkeypatch.setattr(rag_app, "generate_answer", generate)
+    response = rag_app.app.test_client().post('/process', json={'query':'q', 'top_k':1,
+                                            'reranker':'rerank', 'answer_model':'answer-model'})
+    assert response.status_code == 200
+    assert response.json['retrieved_results'] == rows
+    assert response.json['selected_results'] == selected
+    assert response.json['reranking']['model'] == 'rerank'
+    rerank.assert_called_once_with('q', rows, 'rerank', 1)
+    if selected:
+        generate.assert_called_once_with('second', 'q', 'answer-model')
+    else:
+        assert response.json['status'] == 'no_context'
+        generate.assert_not_called()
+
+
+@pytest.mark.parametrize('stage,attempts', [('embedding',2), ('generation',1)])
+def test_transport_retries_are_bounded(monkeypatch, stage, attempts):
+    import requests
+    post = Mock(side_effect=requests.Timeout())
+    monkeypatch.setattr(rag_app.requests, 'post', post)
+    with pytest.raises(rag_app.Problem):
+        rag_app.upstream_post('url', {}, stage)
+    assert post.call_count == attempts
+
+
+def test_expired_budget_prevents_upstream_request(monkeypatch):
+    post = Mock()
+    monkeypatch.setattr(rag_app.requests, 'post', post)
+    with rag_app.app.test_request_context('/process'):
+        rag_app.g.deadline = 0
+        with pytest.raises(rag_app.Problem):
+            rag_app.upstream_post('url', {}, 'retrieval')
+    post.assert_not_called()
+
+
+def test_cli_and_http_equivalent_configuration(monkeypatch):
+    import interact
+    import sys
+    rows = [{'chunk_id':'c', 'chunktext':'text'}]
+    monkeypatch.setattr(rag_app, 'generate_embedding', Mock(return_value=[1]))
+    monkeypatch.setattr(rag_app, 'search_vectors', Mock(return_value=rows))
+    monkeypatch.setattr(rag_app, 'generate_answer', Mock(return_value=('answer', {})))
+    client = rag_app.app.test_client()
+    calls = []
+    def request_api(url, payload, operation, timeout):
+        calls.append(url)
+        return client.post('/process', json=payload).json
+    monkeypatch.setattr(interact, 'post_json', request_api)
+    export = Mock()
+    monkeypatch.setattr(interact, 'export_results', export)
+    monkeypatch.setattr(sys, 'argv', ['interact.py', '--query','q', '--top_k','0'])
+    assert interact.main() == 0
+    assert calls == [interact.RAG_API_URL]
+    export.assert_called_once_with('q', rows)
+
+
+@pytest.mark.parametrize('embedding', [[float('nan')], [float('inf')], [True], [[1]], ['1']])
+def test_embedding_invalid_provider_vectors(monkeypatch, embedding):
+    response = Mock(status_code=200)
+    response.json.return_value = {'embedding':embedding}
+    monkeypatch.setattr(rag_app.requests, 'post', Mock(return_value=response))
+    with pytest.raises(rag_app.Problem) as caught:
+        rag_app.generate_embedding('q')
+    assert caught.value.kind == 'upstream-invalid-response'
+
+
+@pytest.mark.parametrize('body', [{}, {'response':None}, {'response':3}, []])
+def test_generation_invalid_answer_is_502(monkeypatch, body):
+    response = Mock(status_code=200)
+    response.json.return_value = body
+    monkeypatch.setattr(rag_app.requests, 'post', Mock(return_value=response))
+    with pytest.raises(rag_app.Problem) as caught:
+        rag_app.generate_answer('text', 'q')
+    assert caught.value.kind == 'upstream-invalid-response'
+
+
+def test_analysis_uses_shared_provider_functions():
+    import analyze
+    assert analyze.generate_embedding is rag_app.generate_embedding
+    assert analyze._search_vectors is rag_app.search_vectors
+    assert analyze._generate_answer is rag_app.generate_answer

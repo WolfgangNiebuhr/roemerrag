@@ -50,9 +50,13 @@ def test_early_rome_question_end_to_end(vector_url, rag_url, test_id, e2e_ollama
             "filter": variant,
             "metric": "euclidean",
             "num_results": 1,
+            "top_k": 0,
+            "answer_model": "phi3:mini",
         }, timeout=1000)
 
         assert result["chunks"] == [chunk_ids[0]], result
+        assert result["retrieved_results"] == result["selected_results"]
+        assert result["reranking"] is None
         answer = result["response"]
         assert isinstance(answer, str) and answer.strip(), result
         assert any(name in answer.casefold() for name in ("karthag", "carthag")), answer
@@ -68,3 +72,26 @@ def test_early_rome_question_end_to_end(vector_url, rag_url, test_id, e2e_ollama
     finally:
         for chunk_id in chunk_ids:
             request(vector_url, "/chunk", "DELETE", {"chunk_id": chunk_id, "embedding": variant})
+
+
+@pytest.mark.podman
+@pytest.mark.rag
+@pytest.mark.reranker
+@pytest.mark.ollama
+def test_rag_reranking_through_api(vector_url, rag_url, test_id, e2e_ollama_url):
+    variant = "rerank-api-" + test_id
+    chunk = {"chunk_id":variant, "embedding_set_id":variant,
+             "vector":[1.0] + [0.0] * 1023,
+             "chunktext":"Karthago beherrschte das westliche Mittelmeer."}
+    try:
+        request(vector_url, '/vectors', 'POST', chunk, 201)
+        result = request(rag_url, '/process', 'POST', {'query':'Wer beherrschte das westliche Mittelmeer?',
+            'embedding_set_id':variant, 'top_k':1,
+            'reranker':'cross-encoder/ms-marco-MiniLM-L6-v2', 'answer_model':'phi3:mini'}, timeout=1000)
+        assert result['status'] == 'ok'
+        assert result['chunks'] == [variant]
+        assert result['selected_results'] == result['retrieved_results']
+        assert result['reranking']['model'] == 'cross-encoder/ms-marco-MiniLM-L6-v2'
+        assert result['reranking']['duration'] >= 0
+    finally:
+        request(vector_url, '/chunk', 'DELETE', chunk)

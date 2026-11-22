@@ -14,6 +14,26 @@ agent_instructions:
 Aus README und docs übernommene Änderungshistorie. Gleichdatierte Einträge folgen der umgekehrten Reihenfolge der dortigen Nachträge. Nicht datierbare Einträge stehen am Ende. Anleitungen: [README](README.md). Fachkonzepte: [Testkonzept](docs/8-1-testkonzept.md) und [Error-Handling](docs/8-3-error-handling.md).
 
 ## 2026-11-22
+### TS-09: RAG-Image ausgerollt und CLI am laufenden System geprueft
+
+`python scripts/build_image.py rag-api --tag localhost/rag-api:ts09-20261122` erfolgreich. Image-ID `5b8f07e93e665b01d2a2639d94e987e7f6bf89ac4124bed44740ee5b20079d4b`, ebenfalls als `localhost/rag-api:local` markiert. Laufenden Container `rag-api` mit bisheriger Konfiguration (Port 5600:5600, eigenstaendiges Netzwerk, keine zusaetzlichen Umgebungsvariablen) ersetzt. Vorheriger Container bleibt gestoppt als `rag-api-before-ts09` fuer einen Rueckweg erhalten. Datenbank, Vector-API, Reranker und Volumes unveraendert.
+
+Quellhash von rag/app.py im Container entspricht dem Workspace: `90ae159e67d8e145cec9d0cd418bbf8c6a96d1d80fcdc2c88202a1552364ae25`. Ollama aus dem Container unter `http://172.24.64.1:11434` aufgeloest; Reranker-Health ueber host.containers.internal:5000 erfolgreich (HTTP 200).
+
+Live-Pruefung: `python interact.py --query "Wer beherrschte das westliche Mittelmeer?" --num_results 3 --top_k 0` und derselbe Aufruf mit `--top_k 1`: beide Exitcode 0, generierte Antwort und Metriken, je drei urspruengliche Exportpassagen. Ohne Reranking drei ausgewaehlte Chunks; mit Reranking genau ein ausgewaehlter Chunk (`pg3060-552`), Modell `cross-encoder/ms-marco-MiniLM-L6-v2`, Rerankingdauer 0,01765 s. Beide `/process`-Aufrufe HTTP 200; Rerankerlog bestaetigt POST /rerank HTTP 200 mit drei Dokumenten. Bestehende search_results.json nach den Pruefungen bytegetreu wiederhergestellt. Keine Datenbank-Schreibpruefungen auf regulaeren Daten.
+
+Vorheriger vollstaendiger Testnachweis (204 bestanden) bleibt gueltig; bei diesem reinen Ausrollen keine Codeaenderungen und keine erneute Gesamtsuite. CLI und Reranking nutzen jetzt die neue Logik im laufenden System.
+
+### TS-09: RAG-Orchestrierung zentralisiert und CLI umgestellt
+
+`interact.py` nutzt ausschliesslich `POST /process`; lokale Argumentpruefung, Anzeige und JSON-Export bleiben erhalten. Die API unterstuetzt optionales Reranking (top_k, reranker), Antwortmodellwahl (answer_model), urspruengliche und ausgewaehlte Treffer sowie Rerankinglaufzeit. API-Default bleibt ohne Reranking; CLI sendet top_k=6 explizit. Gemeinsamer Antwortmodellstandard ist phi3:mini; bisheriger CLI-Standard gemma4:e4b kann explizit gewaehlt werden. Fortschrittsmeldungen und Export bei spaeteren Providerfehlern entfallen wie beauftragt.
+
+Analyse verwendet Providerfunktionen und Prompt aus rag/app.py. RAG-Transport kapselt sichere Fehler, konfigurierbare Verbindungs-/Lesezeitlimits, Restbudget und Request-ID-Weitergabe. Maximal ein Retry mit Zufallswartezeit fuer Transportfehler bei Embedding, Retrieval und Reranking; Generierung und Writes nie automatisch wiederholen. Kein harter Abbruch blockierender Socket-Aufrufe; Budgetpruefung vor/nach Aufrufen. Import3 hat jetzt konfigurierte Verbindungs-/Lesezeitlimits. TS-09 im Register abgeschlossen; gesonderte Importabschluss-, Provider- und historische Variantenaufgaben bleiben ihren Registereintraegen zugeordnet.
+
+Pruefung auf finalem Stand: `python -m pytest -c tests/pytest.ini tests --all`: **204 passed in 250.73s (0:04:10)**, Exitcode 0, keine ausgelassenen Tests. Enthalten: 191 Unit-Tests und 13 isolierte Integrationstests einschliesslich echter RAG-Verarbeitung mit und ohne Reranking sowie verz?gertem DB-Start. Unit-Suite separat: **191 passed in 7.76s**. Vertragstests pruefen CLI-Delegation, Modellwahl, Ergebnisidentitaet, leeres Reranking, ungueltige Providerantworten und Retry-/Budgetgrenzen. Der vorherige Gesamtlauf (192 passed, 2 failed) verwendete noch alte Importtest-Erwartungen ohne die ergaenzten Timeouts; diese Erwartungen korrigiert und finalen Gesamtlauf erfolgreich wiederholt. Testressourcen automatisch bereinigt, regulaere Volumes unveraendert.
+
+README, Baustein-/Laufzeitsicht, Architekturentscheidung, Fehler- und Testkonzept aktualisiert. Keine regulaeren Container im Rahmen dieses Umbaus ersetzt; das RAG-Image muss fuer die neue CLI vor Verwendung neu gebaut und der RAG-Container neu erstellt werden.
+
 ### TS-07: Initialisierung, Readiness und Datenbankerholung
 
 Vector-API um `/health/live` (Prozesspruefung ohne Datenbankzugriff) und `/health/ready` (Schema-Pruefung; 503 Problem Details bei Nichtbereitschaft) ergaenzt. Poolinitialisierung bleibt bedarfsgesteuert und wiederholbar; parallele Anfragen warten nicht auf den Initialisierungslock. Verbindungsaufbau, Statements und Lock-Wartezeit sind jeweils auf drei Sekunden begrenzt. Initialisierungswarnungen enthalten keine rohen DB-Fehlertexte. Kein gemeinsames Request-Gesamtbudget und keine automatischen Schreib-Retries.

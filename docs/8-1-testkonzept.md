@@ -168,3 +168,5 @@ Die gemeinsame Konfiguration greift auch bei Aufrufen aus `tests`, `tests/unit` 
 Pytest verwendet `--import-mode=importlib`, damit gleichnamige Unit- und Integrationstestmodule im gemeinsamen Lauf getrennt geladen werden. Die Testverzeichnisse sind fuer bestehende Helper-Imports im Python-Suchpfad eingetragen (`tests/pytest.ini`).
 
 TS-07 prueft in einem zusaetzlichen isolierten Pod den API-Start vor PostgreSQL, Liveness ohne Datenbank, 503-Problemantworten der Readiness sowie selbststaendige Erholung nach Datenbankstart und nach Ausfall/Wiederanlauf ohne API-Neustart. Die Datenbank verwendet ausschliesslich tmpfs im eigenen Testcontainer; regulaere Volumes werden nicht verwendet. Der zusaetzliche Pod wird auch bei Fehlern entfernt.
+
+TS-09: Unit-Vertragstests sichern einen einzigen CLI-Aufruf an die RAG-API, Modell- und Rerankingparameter, getrennte urspruengliche/ausgewaehlte Treffer und Export. Providervertraege pruefen Vektoren, Generierungsantworten und eindeutige Reranking-Indizes sowie begrenzte Retries und abgelaufenes Budget. Isolierte Ende-zu-Ende-Tests generieren mit echten Modellen sowohl ohne als auch mit Reranking.

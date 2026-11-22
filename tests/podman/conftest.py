@@ -139,6 +139,7 @@ def podman_stack(request):
             name = f"rag-test-app-{test_id}"
             _run("run", "-d", "--name", name, "--pod", pod,
                  "-e", "VECTOR_API_URL=http://127.0.0.1:5500/search",
+                 "-e", "RERANKER_URL=http://127.0.0.1:5000/rerank",
                  "-e", "OLLAMA_BASE_URL=" + os.environ.get("OLLAMA_CONTAINER_URL", ""), rag_image)
             containers.append(name)
         if include_reranker:
