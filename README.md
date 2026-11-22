@@ -239,3 +239,13 @@ Prüfnachweis vom 22.11.2026: Podman-Integration mit --include-rag --include-rer
 TS-08 (22.11.2026): /process liefert bei leerem Retrievalkontext HTTP 200 mit status no_context, chunks [] und metrics null; es wird kein Antwortmodell aufgerufen. Fehlerhafte Retrievalantworten liefern HTTP 502 Problem Details. Bei normalen Antworten sind fehlende/ungültige Einzelmetriken null; answer_rate ist bei fehlender oder nullwertiger eval_duration null. Clients müssen null-Werte unterstützen. Reguläre Container benötigen für diesen neuen Stand einen Image-Neubau und Neuerstellung.
 
 TS-08 wurde am 22.11.2026 auf die regulären API-Container ausgerollt. API-Verträge, leeres Retrieval (no_context), Reranker-Inferenz und vollständige RAG-Generierung erfolgreich geprüft; Datenbestand unverändert 10.378 Zeilen. Prüfnachweise und erhaltene Rückwegcontainer siehe Kapitel 8.3.
+
+### CLI-Fehlerbehandlung und TS-08 (22.11.2026)
+
+`interact.py` verwendet gemeinsame Retrievalvalidierung und Metrikaufbereitung aus `rag_common/rag_results.py`, die auch die RAG-API nutzt. Fehlerhafte Treffer werden nicht als leerer Kontext behandelt. Bei leeren Treffern oder ausschließlich leeren Texten endet die CLI mit kontrollierter Ablehnungsantwort (`no_context`), ohne Export, Reranking oder Generierung. Wenn Reranking keine verwertbaren Dokumente liefert, entfällt ebenfalls die Generierung.
+
+HTTP-Fehler erscheinen verständlich mit Verarbeitungsschritt, tatsächlichem HTTP-Status, `title`/`detail` und vorhandener Typ-URI/Request-ID; rohe Fehlerbodys werden nicht ausgegeben. Timeout und Nichterreichbarkeit erhalten eigene Meldungen. Fehler gehen auf stderr. Exitcode 0 bedeutet Erfolg (auch ohne Kontext), 1 einen Verarbeitungs-/Exportabbruch und 2 ungültige CLI-Argumente. Exportfehler führen zum Abbruch statt zum stillen Fortsetzen. Es gibt keine automatischen Wiederholungen.
+
+Alle HTTP-Aufrufe verwenden getrennte Verbindungs-/Antwortzeitlimits: 5 Sekunden Verbindung, 300 Sekunden Embedding, 60 Sekunden Retrieval sowie 600 Sekunden Generierung und Reranking. Dies sind Requests-Verbindungs-/Lesezeitlimits, kein Gesamtbudget des gesamten Laufs. Fehlende oder ungültige Metriken werden als „nicht verfügbar“ dargestellt; Nullzeiten verursachen keine Division durch null. Der CLI ruft Ollama, Vector-API und Reranker weiterhin direkt auf; seine Modellwahl bleibt unabhängig von der RAG-API.
+
+Ausrollstand 22.11.2026: Die regulären API-Container verwenden jetzt die neu gebauten Images mit rag_common/rag_results.py. Modulimport, API-Verträge, leerer Kontext, Reranker-Inferenz und RAG-Generierung erfolgreich geprüft; Datenbestand weiterhin 10.378 Zeilen. Details und Rückwegcontainer im Prüfnachweis in Kapitel 8.3.

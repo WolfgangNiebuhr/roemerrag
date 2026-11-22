@@ -1,8 +1,44 @@
+import sys
+from rag_common.rag_results import validate_results, generation_metrics
 import requests
 import argparse
 import numpy as np
 import time
 import json
+CONNECT_TIMEOUT = 5
+EMBED_TIMEOUT = 300
+SEARCH_TIMEOUT = 60
+GENERATE_TIMEOUT = 600
+RERANK_TIMEOUT = 600
+
+
+def post_json(url, payload, operation, timeout):
+    try:
+        response = requests.post(url, json=payload, timeout=(CONNECT_TIMEOUT, timeout))
+    except requests.Timeout as error:
+        raise RuntimeError(operation + ": Zeitlimit ueberschritten.") from error
+    except requests.ConnectionError as error:
+        raise RuntimeError(operation + ": Dienst nicht erreichbar.") from error
+    if response.status_code != 200:
+        message = operation + f": HTTP {response.status_code}"
+        try:
+            problem = response.json()
+        except ValueError:
+            problem = None
+        if isinstance(problem, dict):
+            for key in ("title", "detail"):
+                if isinstance(problem.get(key), str):
+                    message += " - " + problem[key]
+            for key in ("type", "request_id"):
+                if isinstance(problem.get(key), str):
+                    message += f" [{key}: {problem[key]}]"
+        raise RuntimeError(message)
+    try:
+        return response.json()
+    except ValueError as error:
+        raise RuntimeError(operation + ": Ungueltige JSON-Antwort.") from error
+
+
 # Konfiguration
 
 ## Embedding
@@ -28,14 +64,21 @@ def generate_embedding(query):
         "model": EMBEDDING_MODEL_NAME,
         "prompt": query
     }
-    response = requests.post(OLLAMA_EMBEDDING_URL, json=payload)
-    if response.status_code == 200:
-        # print(json.dumps(response.json(), indent=4))  # Ausgabe
-        vec = np.array(response.json().get("embedding"))
-        vec = vec / np.linalg.norm(vec)  # Normalisierung des Embeddings
-        return vec
-    else:
-        raise Exception(f"Fehler beim Abrufen des Embeddings: {response.text}")
+    data = post_json(OLLAMA_EMBEDDING_URL, payload, "Embedding", EMBED_TIMEOUT)
+    if not isinstance(data, dict) or not isinstance(data.get("embedding"), list):
+        raise RuntimeError("Embedding: Ungueltige Antwort.")
+    try:
+        raw = data["embedding"]
+        if any(type(value) not in (int, float) for value in raw):
+            raise ValueError()
+        vec = np.array(raw, dtype=float)
+        norm = np.linalg.norm(vec)
+        if vec.ndim != 1 or not vec.size or not np.isfinite(vec).all() or not np.isfinite(norm) or norm <= 0:
+            raise ValueError()
+        return vec / norm
+    except (ValueError, TypeError, OverflowError) as error:
+        raise RuntimeError("Embedding: Ungueltiger Vektor.") from error
+
 
 def search_vectors(embedding, metric, key, num_results):
     """Führt eine Suche über die Vektor-API aus und gibt die besten Treffer zurück."""
@@ -45,17 +88,7 @@ def search_vectors(embedding, metric, key, num_results):
         "metric": metric,
         "embedding_set_id": key
     }
-    response = requests.post(VECTOR_API_URL, json=payload)
-    if response.status_code == 200:
-        # print(json.dumps(response.json(), indent=4))  # Ausgabe der vollständigen JSON-Antwort
-        results = response.json()
-        # Überprüfen, ob die Antwort eine Liste ist
-        if isinstance(results, list):
-            return results
-        else:
-            raise Exception("Unerwartetes Antwortformat: Erwartet wurde eine Liste.")
-    else:
-        raise Exception(f"Fehler bei der Suche in der Vektor-API: {response.text}")
+    return validate_results(post_json(VECTOR_API_URL, payload, "Retrieval", SEARCH_TIMEOUT))
 
 
 def generate_answer(context, question):
@@ -72,35 +105,22 @@ def generate_answer(context, question):
         "system": system_prompt,
         "prompt": f"Kontext:\n{context}\n\nFrage: {question}"
     }
-    response = requests.post(OLLAMA_ANSWER_URL, json=payload)
-    # print("Rohantwort der API:", response.text)  # Debugging-Ausgabe
-
-    if response.status_code != 200:
-        raise Exception(f"Fehler bei der Antwortgenerierung: {response.text}")
-
-    data = response.json()
-    answer = data.get("response", "Keine Antwort erhalten.")
-
-    # Performance-Metriken extrahieren (in ns → s oder ms umrechnen)
-    total_duration = data.get("total_duration", 0) / 1e9  # Sekunden
-    load_duration = data.get("load_duration", 0) / 1e6    # Millisekunden
-    prompt_eval_duration = data.get("prompt_eval_duration", 0) / 1e9
-    eval_duration = data.get("eval_duration", 0) / 1e9
-
-    prompt_tokens = data.get("prompt_eval_count", 0)
-    answer_tokens = data.get("eval_count", 0)
-
-    # Ausgabe formatieren
-    metrics_report = (
-        f"\n\n--- [Ausführungs-Metriken] ---\n"
-        f"Gesamtdauer:        {total_duration:.2f} s\n"
-        f"Modell-Ladezeit:    {load_duration:.2f} ms\n"
-        f"Prompt-Token:       {prompt_tokens} Token, Dauer: {prompt_eval_duration:.2f} s\n"
-        f"Antwort-Token:      {answer_tokens} Token, Dauer: {eval_duration:.2f} s\n"
-        f"Antwort-Rate:       {answer_tokens / eval_duration:.2f} Token/s"
+    data = post_json(OLLAMA_ANSWER_URL, payload, "Generierung", GENERATE_TIMEOUT)
+    if not isinstance(data, dict) or not isinstance(data.get("response"), str):
+        raise RuntimeError("Generierung: Ungueltige Antwort.")
+    metrics = generation_metrics(data)
+    def display(key, scale=1):
+        value = metrics[key]
+        return "nicht verfuegbar" if value is None else f"{value * scale:.2f}"
+    return data["response"] + (
+        "\n\n--- [Ausfuehrungs-Metriken] ---\n"
+        f"Gesamtdauer: {display('total_duration')} s\n"
+        f"Modell-Ladezeit: {display('load_duration', 1000)} ms\n"
+        f"Prompt-Token: {display('prompt_tokens')}, Dauer: {display('prompt_eval_duration')} s\n"
+        f"Antwort-Token: {display('answer_tokens')}, Dauer: {display('eval_duration')} s\n"
+        f"Antwort-Rate: {display('answer_rate')} Token/s"
     )
 
-    return answer + metrics_report
 
 def rerank_results(query, results, reranker, top_k):
     """Rerankt die Suchergebnisse """
@@ -109,25 +129,18 @@ def rerank_results(query, results, reranker, top_k):
         "query": query,
         "documents": [result["chunktext"] for result in results]
     }
-    response = requests.post("http://localhost:5000/rerank", json=payload, timeout=600)
-
-    # print("Rohantwort der Rerank-API:", response.text)  # Debugging-Ausgabe
-
-    if response.status_code == 200:
-        body = response.json()
-        print(f"Reranker-Modell: {body['model']}")
-        reranked = body["ranked_documents"]
-
-        sorted_results = []
-        for item in reranked[:top_k]:
-            original = results[item["original_index"]]
-            sorted_results.append({
-                "chunktext": item["text"],
-                "chunk_id": original["chunk_id"]
-            })
-        return sorted_results
-    else:
-        raise Exception(f"Fehler beim Reranking: {response.text}")
+    body = post_json("http://localhost:5000/rerank", payload, "Reranking", RERANK_TIMEOUT)
+    if not isinstance(body, dict) or not isinstance(body.get("ranked_documents"), list):
+        raise RuntimeError("Reranking: Ungueltige Antwort.")
+    ranked = body["ranked_documents"]
+    seen = set()
+    for row in ranked:
+        index = row.get("original_index") if isinstance(row, dict) else None
+        if type(index) is not int or not 0 <= index < len(results) or index in seen:
+            raise RuntimeError("Reranking: Ungueltige Dokumentzuordnung.")
+        seen.add(index)
+    print(f"Reranker-Modell: {body.get('model', reranker)}")
+    return [results[row["original_index"]] for row in ranked[:top_k]]
 
 
 def export_results(query, results, filename="search_results.json"):
@@ -146,7 +159,7 @@ def export_results(query, results, filename="search_results.json"):
         print(f"Ergebnisse erfolgreich nach '{filename}' exportiert.")
 
     except Exception as e:
-        print(f"Fehler beim Exportieren: {e}")
+        raise RuntimeError("Export fehlgeschlagen: " + str(e)) from e
 
 def main():
     parser = argparse.ArgumentParser(description="Interaktives KI-Tool für Embedding, Suche und Antwortgenerierung.")
@@ -158,6 +171,9 @@ def main():
     parser.add_argument("--reranker", type=str, default="cross-encoder/ms-marco-MiniLM-L6-v2", help="Zu verwendendes Reranker-Modell")
 
     args = parser.parse_args()
+
+    if args.metric not in ("cosine", "euclidean") or not 1 <= args.num_results <= 100 or args.top_k < 0 or not args.query.strip() or not args.embedding.strip() or not args.reranker.strip():
+        parser.error("Ungueltige Suchparameter: Metrik, Trefferzahl (1..100), top_k >= 0 und nichtleere Texte erforderlich.")
 
     metric = args.metric
     num_results = args.num_results
@@ -174,7 +190,11 @@ def main():
         # -------------------------
 
         print(f"Führe {metric}-Suche über die Vektor-API aus...")
-        results = search_vectors(embedding, metric, embedding_key, num_results)
+        results = validate_results(search_vectors(embedding, metric, embedding_key, num_results))
+        results = [row for row in results if row["chunktext"].strip()]
+        if not results:
+            print("Die Frage kann basierend auf dem gegebenen Kontext nicht beantwortet werden. (no_context)")
+            return 0
 
         export_results(query, results)
 
@@ -193,6 +213,10 @@ def main():
             context = "\n".join([result["chunktext"] for result in results])
 
 
+        if not context.strip():
+            print("Keine verwertbaren Dokumente nach Reranking. (no_context)")
+            return 0
+
         # Antwortgenerierung
         print("\nGeneriere Antwort basierend auf den gefundenen Texten...")
         answer = generate_answer(context, query)
@@ -209,9 +233,11 @@ def main():
             for i, element in enumerate(reranked_ids   , start=1):
                 print(f"{i}. {element}")
 
+        return 0
     except Exception as e:
-        print(f"Fehler: {e}")
+        print(f"Fehler: {e}", file=sys.stderr)
+        return 1
 
 
 if __name__ == "__main__":
-    main()
+    raise SystemExit(main())

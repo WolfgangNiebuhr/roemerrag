@@ -2,9 +2,9 @@ import sys
 from pathlib import Path
 sys.path.insert(0, str(Path(__file__).resolve().parents[1]))
 from rag_common.http_errors import install, Problem
+from rag_common.rag_results import validate_results, generation_metrics
 from flask import Flask, request, jsonify, g
 import os
-import math
 import requests
 import numpy as np
 if __package__:
@@ -73,40 +73,6 @@ def search_vectors(embedding, embedding_set_id, metric, num_results):
         return validate_results(results)
     else:
         raise Problem("dependency-unavailable", "Retrieval is unavailable.")
-
-
-def validate_results(results):
-    if not isinstance(results, list):
-        raise Problem("upstream-invalid-response", "Erwartet wurde eine Liste.")
-    for row in results:
-        if (not isinstance(row, dict)
-                or not isinstance(row.get("chunk_id"), str) or not row["chunk_id"].strip()
-                or not isinstance(row.get("chunktext"), str)):
-            raise Problem("upstream-invalid-response", "Retrieval contains invalid chunk fields.")
-    return results
-
-
-def generation_metrics(data):
-    def number(key, count=False):
-        value = data.get(key)
-        if type(value) not in (int, float) or value < 0:
-            return None
-        try:
-            if not math.isfinite(value) or (count and type(value) is not int):
-                return None
-        except OverflowError:
-            return None
-        return value
-    metrics = {}
-    for key in ("total_duration", "load_duration", "prompt_eval_duration", "eval_duration"):
-        value = number(key)
-        metrics[key] = value / 1e9 if value is not None else None
-    metrics["prompt_tokens"] = number("prompt_eval_count", count=True)
-    metrics["answer_tokens"] = number("eval_count", count=True)
-    duration, tokens = metrics["eval_duration"], metrics["answer_tokens"]
-    rate = tokens / duration if duration and tokens is not None else None
-    metrics["answer_rate"] = rate if rate is not None and math.isfinite(rate) else None
-    return metrics
 
 
 def generate_answer(context, question):

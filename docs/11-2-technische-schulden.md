@@ -172,3 +172,7 @@ Zu jedem umgesetzten Paket werden betroffene Registereinträge mit Status, Imple
 | Modellinitialisierung und Betrieb | Fehler-, Zustands- und Neustarttests; Last- beziehungsweise Zugangstests entsprechend dem Einsatz. |
 
 Die ausführbaren Befehle und Voraussetzungen bleiben im [Testkonzept](8-1-testkonzept.md) und [README](../README.md). Nicht ausgeführte Prüfungen werden bei jedem Umsetzungsschritt mit Grund ausgewiesen.
+
+CLI-Fortschreibung (22.11.2026, TS-08/TS-09/TS-12): interact.py verwendet dieselbe Retrievalvalidierung und Metrikaufbereitung wie die RAG-API (rag_common/rag_results.py). Verständliche Problemantworten, Fehler-Exitcodes und getrennte HTTP-Zeitlimits sind im CLI umgesetzt; leere Kontexte lösen keine Generierung aus. 146 Unit-Tests bestanden. TS-09/TS-12 bleiben für die übrige Verarbeitung, Konfiguration und Provideradapter offen. Details und Grenzen im Error-Handling-Konzept und README.
+
+Ausrollnachweis gemeinsames RAG-Modul (22.11.2026, TS-08/TS-09): Alle drei regulären API-Images einschließlich rag_common/rag_results.py neu gebaut und laufende API-Container aktualisiert. Modulimport, aktuelle Image-IDs und Konfigurationserhalt geprüft. RFC-9457-Verträge, leeres Retrieval (no_context), Reranker-Inferenz und vollständige RAG-Generierung bestanden. Datenbank/Volume erhalten, weiterhin 10.378 Datensätze. Vorgängercontainer bleiben gestoppt mit Suffix -before-shared-module-20261122 als Rückweg erhalten. Ausführlicher Nachweis in Kapitel 8.3.

@@ -11,7 +11,7 @@ INPUTS = {
     'rag-api': ('rag/Dockerfile', 'rag/app.py', 'rag/embedding_config.py', 'rag/ollama_endpoint.py'),
     'reranker': ('reranker/Dockerfile', 'reranker/app.py'),
 }
-COMMON = ('rag_common/__init__.py', 'rag_common/http_errors.py')
+COMMON = ('rag_common/__init__.py', 'rag_common/http_errors.py', 'rag_common/rag_results.py')
 
 
 def build_image(service, image):
