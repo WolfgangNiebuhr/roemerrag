@@ -14,6 +14,12 @@ agent_instructions:
 Aus README und docs übernommene Änderungshistorie. Gleichdatierte Einträge folgen der umgekehrten Reihenfolge der dortigen Nachträge. Nicht datierbare Einträge stehen am Ende. Anleitungen: [README](README.md). Fachkonzepte: [Testkonzept](docs/8-1-testkonzept.md) und [Error-Handling](docs/8-3-error-handling.md).
 
 ## 2026-11-22
+### Neue Befunde im Schuldenregister priorisiert
+
+TS-19 und TS-20 erfassen stillen Trefferverlust beim Reranking und den widersprüchlichen Vertrag für fehlenden Chunktext als P1. TS-21 und TS-22 erfassen überlange Chunks und veraltete Angaben in der Bausteinsicht als P2. Bestehende Einträge wurden um die Nachweise zum Wiederholungsimport, die Fehlerzuordnung bei falscher Vektordimension, die fehlende SciPy-Testabhängigkeit, die exakte Referenzsuche für Metrikvergleiche und die zugehörigen Testlücken ergänzt. Die Abbaureihenfolge priorisiert Importintegrität, Trefferverträge und Messkorrektheit.
+
+Grundlage waren die vorangegangenen Prüfungen mit Testdoubles im Speicher und die lesende Chunkgrößenmessung im Beispielkorpus. Für die reine Dokumentationsänderung wurden Register, Verweise und `git diff --check` geprüft. Unit- und Podman-Suiten wurden nicht erneut ausgeführt.
+
 ### Gruener gemeinsamer Testlauf nach IDE-Referenzbereinigung
 
 `python -m pytest -c tests/pytest.ini tests --all`: **239 passed in 259.41s (0:04:19)**, Exitcode 0, keine Fehler oder ausgelassenen Tests. Alle 225 Unit-Tests und 14 Integrationstests einschliesslich Import3 mit echten Keywords/Embeddings, RAG, Reranking, Evaluationskette, Migrationen und Vector-Wiederanlauf gemeinsam erfolgreich. Der zuvor durch externen Ollama-CUDA-Absturz fehlgeschlagene Importtest besteht jetzt auch innerhalb des gemeinsamen Laufs. Damit liegt nach der IDE-Referenzbereinigung ein vollstaendig gruener Gesamtnachweis vor; der vorherige Fehlschlag bleibt als historischer Nachweis erhalten.
