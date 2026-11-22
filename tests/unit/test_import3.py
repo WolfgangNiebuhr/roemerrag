@@ -1,7 +1,5 @@
 """Exercise the real importer and keyword enrichment with HTTP responses faked."""
 
-import importlib
-from pathlib import Path
 from unittest.mock import Mock
 
 import pytest
@@ -11,9 +9,7 @@ from test_chunking import write_temp_text
 
 @pytest.mark.parametrize("start", [1, 2])
 def test_import_file_enriches_embeds_and_stores_chunks(monkeypatch, start):
-    # Match import3's script-style imports without changing production imports.
-    monkeypatch.syspath_prepend(str(Path(__file__).resolve().parents[2] / "Ingest"))
-    importer = importlib.import_module("import3")
+    from Ingest import import3 as importer
     monkeypatch.setattr(importer, "CHUNK_SIZE", 18)
     monkeypatch.setattr(importer, "OVERLAP", 8)
     source = write_temp_text("RomaAA\n\nCapuaB\n\nOstiaC\n\nGallia")
@@ -29,7 +25,7 @@ def test_import_file_enriches_embeds_and_stores_chunks(monkeypatch, start):
         assert url == importer.VECTOR_API_URL
         return Mock(status_code=201)
 
-    monkeypatch.setattr(importer.requests, "post", post)
+    monkeypatch.setattr("requests.post", post)
     try:
         importer.process_file(str(source), start)
     finally:
@@ -56,11 +52,10 @@ def test_import_file_enriches_embeds_and_stores_chunks(monkeypatch, start):
 
 def test_standard_import_is_selected_by_standard_retrieval(monkeypatch):
     from rag import app as rag_app
-    monkeypatch.syspath_prepend(str(Path(__file__).resolve().parents[2] / "Ingest"))
-    importer = importlib.import_module("import3")
+    from Ingest import import3 as importer
     source = write_temp_text("Roma")
     stored = []
-    monkeypatch.setattr(importer, "get_keywords_ollama", lambda text: ("Rom", {}, None))
+    monkeypatch.setattr("Ingest.import3.get_keywords_ollama", lambda text: ("Rom", {}, None))
     monkeypatch.setattr(importer, "generate_embedding", lambda text: importer.np.array([1.0]))
     monkeypatch.setattr(importer, "store_vector_in_db", lambda *args: stored.append(args))
     try:
@@ -83,13 +78,12 @@ def test_standard_import_is_selected_by_standard_retrieval(monkeypatch):
     ('rom', 'rom'), ('rom.txt', 'rom'),
 ])
 def test_file_stem_used_for_chunks_and_log(monkeypatch, tmp_path, filename, stem):
-    monkeypatch.syspath_prepend(str(Path(__file__).resolve().parents[2] / 'Ingest'))
-    importer = importlib.import_module('import3')
+    from Ingest import import3 as importer
     source = tmp_path / filename
     source.write_text('RomaAA\n\nCapuaB\n\nOstiaC\n\nGallia', encoding='utf-8')
     monkeypatch.setattr(importer, 'CHUNK_SIZE', 18)
     monkeypatch.setattr(importer, 'OVERLAP', 8)
-    monkeypatch.setattr(importer, 'get_keywords_ollama', lambda text: ('Rom', {}, None))
+    monkeypatch.setattr("Ingest.import3.get_keywords_ollama", lambda text: ('Rom', {}, None))
     monkeypatch.setattr(importer, 'generate_embedding', lambda text: importer.np.array([1.0]))
     store = Mock()
     monkeypatch.setattr(importer, 'store_vector_in_db', store)

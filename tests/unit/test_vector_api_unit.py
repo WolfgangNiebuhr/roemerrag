@@ -39,7 +39,7 @@ def database(monkeypatch, vector_module):
     connection.cursor.return_value = cursor
     pool = MagicMock()
     pool.getconn.return_value = connection
-    monkeypatch.setattr(vector_module, "db_pool", pool)
+    monkeypatch.setitem(vars(vector_module), "db_pool", pool)
     return vector_module, pool, connection, cursor
 
 
@@ -77,7 +77,7 @@ def test_search_uses_cosine_operator_and_filter_parameters(database):
 
 
 def test_api_reports_unavailable_database_pool(vector_module, monkeypatch):
-    monkeypatch.setattr(vector_module, "db_pool", None)
+    monkeypatch.setitem(vars(vector_module), "db_pool", None)
 
     response = vector_module.app.test_client().get("/chunks")
 
@@ -115,7 +115,7 @@ def test_api_recovers_when_database_becomes_available(vector_module, monkeypatch
     recovered_pool = MagicMock()
     recovered_pool.getconn.return_value = connection
     factory = MagicMock(return_value=recovered_pool)
-    monkeypatch.setattr(vector_module.psycopg2.pool, "ThreadedConnectionPool", factory)
+    monkeypatch.setitem(vars(vector_module.psycopg2.pool), "ThreadedConnectionPool", factory)
     response = client.get("/chunks")
     assert response.status_code == 200
     assert response.get_json() == {"chunks": 7}
@@ -182,7 +182,7 @@ def test_read_commits(database):
 
 def test_liveness_does_not_initialize_pool(vector_module, monkeypatch):
     initialize = MagicMock()
-    monkeypatch.setattr(vector_module, "ensure_db_pool", initialize)
+    monkeypatch.setitem(vars(vector_module), "ensure_db_pool", initialize)
     assert vector_module.app.test_client().get("/health/live").get_json() == {"status": "alive"}
     initialize.assert_not_called()
 

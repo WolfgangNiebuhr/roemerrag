@@ -14,7 +14,7 @@ def test_problem_details_are_readable(monkeypatch):
     response = Mock(status_code=503)
     response.json.return_value = {'type':'urn:rag:problem:model-unavailable','title':'Modell fehlt','detail':'Bitte bereitstellen','request_id':'abc'}
     post = Mock(return_value=response)
-    monkeypatch.setattr(cli.requests, 'post', post)
+    monkeypatch.setattr("requests.post", post)
     with pytest.raises(RuntimeError, match='HTTP 503.*Modell fehlt.*Bitte bereitstellen.*abc'):
         cli.post_json('http://example', {}, 'Reranking', 600)
     assert post.call_args.kwargs['timeout'] == (5, 600)
@@ -23,7 +23,7 @@ def test_problem_details_are_readable(monkeypatch):
 @pytest.mark.parametrize('error,message', [(requests.Timeout(), 'Zeitlimit'), (requests.ConnectionError(), 'nicht erreichbar')])
 def test_network_errors_and_exit_code(monkeypatch, capsys, error, message):
     arguments(monkeypatch)
-    monkeypatch.setattr(cli.requests, 'post', Mock(side_effect=error))
+    monkeypatch.setattr("requests.post", Mock(side_effect=error))
     assert cli.main() == 1
     assert message in capsys.readouterr().err
 
@@ -46,7 +46,7 @@ def test_cli_calls_only_rag_api(monkeypatch):
     response.json.return_value = {'status':'ok', 'response':'answer',
         'retrieved_results':rows, 'selected_results':rows, 'metrics':{}}
     post = Mock(return_value=response)
-    monkeypatch.setattr(cli.requests, 'post', post)
+    monkeypatch.setattr("requests.post", post)
     monkeypatch.setattr(cli, 'export_results', Mock())
     assert cli.main() == 0
     post.assert_called_once()
@@ -75,7 +75,7 @@ def test_export_failure_aborts(monkeypatch, capsys):
 def test_non_json_error_does_not_print_raw_body(monkeypatch):
     response = Mock(status_code=502, text='secret html')
     response.json.side_effect = ValueError()
-    monkeypatch.setattr(cli.requests, 'post', Mock(return_value=response))
+    monkeypatch.setattr("requests.post", Mock(return_value=response))
     with pytest.raises(RuntimeError) as caught:
         cli.post_json('url', {}, 'Retrieval', 60)
     assert 'HTTP 502' in str(caught.value) and 'secret' not in str(caught.value)
@@ -91,7 +91,7 @@ def test_non_json_error_does_not_print_raw_body(monkeypatch):
 def test_invalid_parameter_message_is_specific(monkeypatch, capsys, extra, expected):
     arguments(monkeypatch, *extra)
     post = Mock()
-    monkeypatch.setattr(cli.requests, 'post', post)
+    monkeypatch.setattr("requests.post", post)
     with pytest.raises(SystemExit) as caught:
         cli.main()
     assert caught.value.code == 2
@@ -114,7 +114,7 @@ def test_invalid_parameter_message_is_specific(monkeypatch, capsys, extra, expec
 def test_argparse_errors_are_german(monkeypatch, capsys, argv, fragments):
     monkeypatch.setattr(sys, 'argv', ['interact.py', *argv])
     post = Mock()
-    monkeypatch.setattr(cli.requests, 'post', post)
+    monkeypatch.setattr("requests.post", post)
     with pytest.raises(SystemExit) as caught:
         cli.main()
     assert caught.value.code == 2
@@ -129,7 +129,7 @@ def test_argparse_errors_are_german(monkeypatch, capsys, argv, fragments):
 def test_ollama_error_field_is_reported(monkeypatch):
     response = Mock(status_code=500)
     response.json.return_value = {'error': 'CUDA error: shared object initialization failed'}
-    monkeypatch.setattr(cli.requests, 'post', Mock(return_value=response))
+    monkeypatch.setattr("requests.post", Mock(return_value=response))
     with pytest.raises(RuntimeError, match='Embedding: HTTP 500 - CUDA error: shared object initialization failed'):
         cli.post_json('http://localhost:11434/api/embeddings', {}, 'Embedding', 300)
 
@@ -138,7 +138,7 @@ def test_ollama_error_field_is_reported(monkeypatch):
 def test_nontext_ollama_error_is_not_dumped(monkeypatch, body):
     response = Mock(status_code=500)
     response.json.return_value = body
-    monkeypatch.setattr(cli.requests, 'post', Mock(return_value=response))
+    monkeypatch.setattr("requests.post", Mock(return_value=response))
     with pytest.raises(RuntimeError) as caught:
         cli.post_json('url', {}, 'Embedding', 300)
     assert str(caught.value) == 'Embedding: HTTP 500'

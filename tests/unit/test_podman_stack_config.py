@@ -26,12 +26,12 @@ def test_stack_uses_allocated_ports_and_internal_retrieval(monkeypatch, reranker
             output = f"0.0.0.0:{ports[args[2]]}\n"
         return SimpleNamespace(stdout=output)
 
-    monkeypatch.setattr(stack, "_run", run)
-    monkeypatch.setattr(stack.shutil, "which", lambda name: name)
-    monkeypatch.setattr(stack.subprocess, "run", lambda *a, **kw: SimpleNamespace(returncode=0))
+    monkeypatch.setitem(vars(stack), "_run", run)
+    monkeypatch.setattr("shutil.which", lambda name: name)
+    monkeypatch.setattr("subprocess.run", lambda *a, **kw: SimpleNamespace(returncode=0))
     ready = []
-    monkeypatch.setattr(stack, "_wait_tcp", ready.append)
-    monkeypatch.setattr(stack, "_wait_reranker_ready", ready.append)
+    monkeypatch.setitem(vars(stack), "_wait_tcp", ready.append)
+    monkeypatch.setitem(vars(stack), "_wait_reranker_ready", ready.append)
     options = {"--include-rag": True, "--include-reranker": reranker}
     request = SimpleNamespace(config=SimpleNamespace(getoption=lambda key: options.get(key, False)))
     fixture = stack.podman_stack.__wrapped__(request)

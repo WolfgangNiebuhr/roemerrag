@@ -1,4 +1,7 @@
-from gateway import call_ollama_gateway
+if __package__:
+    from .gateway import call_ollama_gateway
+else:
+    from gateway import call_ollama_gateway
 import logging
 
 MAX_SIZE = 1000  # Max Size für 5 Keywords

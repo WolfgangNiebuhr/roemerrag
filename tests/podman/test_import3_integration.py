@@ -1,8 +1,8 @@
 """Real import3 ingestion against host Ollama and the isolated Vector API."""
 
-import importlib
 import os
 from pathlib import Path
+from Ingest import import3 as importer, gateway
 
 import pytest
 import requests
@@ -13,9 +13,6 @@ from common import request
 @pytest.mark.podman
 @pytest.mark.ollama
 def test_import3_with_real_keywords_and_embeddings(monkeypatch, vector_url, test_id):
-    monkeypatch.syspath_prepend(str(Path(__file__).resolve().parents[2] / "Ingest"))
-    importer = importlib.import_module("import3")
-    gateway = importlib.import_module("gateway")
     host = os.environ.get("OLLAMA_HOST_URL", "http://localhost:11434").rstrip("/")
     response = requests.get(host + "/api/tags", timeout=10)
     response.raise_for_status()
@@ -29,7 +26,7 @@ def test_import3_with_real_keywords_and_embeddings(monkeypatch, vector_url, test
     monkeypatch.setattr(importer, "VECTOR_API_URL", vector_url + "/vectors")
     monkeypatch.setattr(gateway, "OLLAMA_CHAT_URL", host + "/api/chat")
     variant = "import3-" + test_id
-    monkeypatch.setattr(importer, "EMBEDDING_SET_ID", importer.MODEL_NAME + "-" + variant)
+    monkeypatch.setattr("Ingest.import3.EMBEDDING_SET_ID", importer.MODEL_NAME + "-" + variant)
     embedding = importer.MODEL_NAME + "-" + variant
     corpus = Path(__file__).parent / "fixtures" / "early_rome.txt"
     chunks = importer.split_text_into_chunks(str(corpus), importer.CHUNK_SIZE, importer.OVERLAP)

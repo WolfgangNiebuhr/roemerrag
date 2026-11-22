@@ -59,7 +59,7 @@ def test_reranker_validation_precedes_loading(monkeypatch, payload):
 ])
 def test_vector_validation_precedes_pool_initialization(vector_module, monkeypatch, path, method, payload):
     initialize = Mock()
-    monkeypatch.setattr(vector_module, 'ensure_db_pool', initialize)
+    monkeypatch.setitem(vars(vector_module), "ensure_db_pool", initialize)
     response = getattr(vector_module.app.test_client(), method)(path, json=payload)
     problem(response, 400, 'urn:rag:problem:invalid-request')
     initialize.assert_not_called()

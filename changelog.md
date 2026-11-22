@@ -14,6 +14,26 @@ agent_instructions:
 Aus README und docs übernommene Änderungshistorie. Gleichdatierte Einträge folgen der umgekehrten Reihenfolge der dortigen Nachträge. Nicht datierbare Einträge stehen am Ende. Anleitungen: [README](README.md). Fachkonzepte: [Testkonzept](docs/8-1-testkonzept.md) und [Error-Handling](docs/8-3-error-handling.md).
 
 ## 2026-11-22
+### Gruener gemeinsamer Testlauf nach IDE-Referenzbereinigung
+
+`python -m pytest -c tests/pytest.ini tests --all`: **239 passed in 259.41s (0:04:19)**, Exitcode 0, keine Fehler oder ausgelassenen Tests. Alle 225 Unit-Tests und 14 Integrationstests einschliesslich Import3 mit echten Keywords/Embeddings, RAG, Reranking, Evaluationskette, Migrationen und Vector-Wiederanlauf gemeinsam erfolgreich. Der zuvor durch externen Ollama-CUDA-Absturz fehlgeschlagene Importtest besteht jetzt auch innerhalb des gemeinsamen Laufs. Damit liegt nach der IDE-Referenzbereinigung ein vollstaendig gruener Gesamtnachweis vor; der vorherige Fehlschlag bleibt als historischer Nachweis erhalten.
+
+Isolierte Testressourcen automatisch bereinigt. Keine Code-, Bestandsdaten- oder regulaeren Containeraenderungen. git diff --check erfolgreich.
+
+### IDE-Referenzfehler im gesamten Testbestand bereinigt
+
+Alle 23 Python-Dateien unter tests einschliesslich conftest und Hilfsmodulen mit der IDE-Referenzanalyse geprueft. Sieben weitere Dateien mit Referenzfehlern korrigiert: test_http_errors, test_vector_api_unit, test_chunking, test_rag_components, test_podman_stack_config, test_interact und die Import3-Integration. Statische Paketimporte und vollqualifizierte Patchziele fuer normale Module verwenden; bewusst dynamisch geladene isolierte Testmodule behalten ihre Stubs und werden ueber monkeypatch.setitem in ihrem Modulnamensraum gepatcht. Keine Inspektionen deaktiviert, keine Suppressionen eingefuegt. Testkonzept dokumentiert das Muster.
+
+Abschliessende erneute IDE-Pruefung aller 23 Dateien: keine ERROR-Eintraege. Unit-Suite nach erster Bereinigung: **225 passed in 8.41s**. Vollstaendiger finaler Lauf `python -m pytest -c tests/pytest.ini tests --all`: **238 passed, 1 failed in 276.59s**. Einziger Fehler: externer Ollama-Embeddingprozess in Import3-Integration mit CUDA shared object initialization failed / Exitstatus 0xc0000409 abgestuerzt; kein Import-/Patchziel-Referenzfehler. Gezielte Wiederholung `python -m pytest -c tests/pytest.ini tests/podman/test_import3_integration.py --include-ollama -q`: **1 passed in 43.09s**. Damit alle Tests erfolgreich ausgefuehrt, jedoch kein vollstaendig gruener gemeinsamer Lauf in dieser Pruefung; Fehler und Wiederholung bewusst getrennt dokumentiert. Keine weitere Wiederholung der gesamten Suite nach erfolgreicher gezielter Pruefung.
+
+Isolierte Testressourcen automatisch bereinigt. Keine regulaeren Container-/Datenaenderungen. git diff --check erfolgreich. Historische und schwache Stilhinweise bleiben von den geprueften Referenzfehlern getrennt.
+
+### IDE-Referenzfehler in Importtests beseitigt
+
+Dynamischen importlib-Import in tests/unit/test_import3.py durch statisch aufloesbaren Import von Ingest.import3 ersetzt. Nicht statisch erkannte reexportierte Patchziele verwenden pytest-konforme vollqualifizierte Strings (requests.post, Ingest.import3.get_keywords_ollama). Import3/keywords unterscheiden Paket- und direkte Skriptimporte, sodass Tests ohne temporaere sys.path-Erweiterung auskommen. Keine Inspektion deaktiviert und keine Suppression hinzugefuegt.
+
+Pruefung: IDE-Analyse der Testdatei meldet keine ERROR-Eintraege mehr (zuvor unresolved references an Patchzielen); bestehende schwache Hinweise auf ungenutzte Parameter in einem Testdouble nicht unterdrueckt. `python -m pytest -c tests/pytest.ini tests/unit -q`: **225 passed in 8.17s**. `python Ingest/import3.py --help` und `python -m Ingest.import3 --help` erfolgreich. git diff --check erfolgreich. Keine erneute Podman-/Modellintegration, da ausschliesslich Importaufloesung und Test-Patchziele geaendert; keine Daten-/Containeraktualisierung.
+
 ### TS-05 teilweise umgesetzt: Import3 verwendet Path.stem
 
 Chunk-ID- und Logdateistamm in Ingest/import3.py auf Path(file_path).stem umgestellt. Mehrere Punkte bleiben bis auf die letzte Erweiterung erhalten; erweiterungslose Namen bleiben unveraendert. Parametrisierte Tests durchlaufen echtes Chunking fuer rom.band1.txt, rom.band2.txt, rom und rom.txt, pruefen drei gespeicherte Chunk-IDs und den Logdateistamm mit gemockten externen Abhaengigkeiten. Risiko R-02 bleibt akzeptiert. TS-05 bleibt fuer kuerzere Neuimporte, Freigabe, Fehlerabschluss, Resume und Bestandsbereinigung offen. Konzept, Register, Risikoeintrag und README aktualisiert.

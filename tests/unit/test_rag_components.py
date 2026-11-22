@@ -9,7 +9,7 @@ from rag import app as rag_app
 
 @pytest.fixture(autouse=True)
 def fixed_ollama_endpoint(monkeypatch):
-    monkeypatch.setattr(rag_app, "resolve_ollama_base_url", lambda: rag_app.OLLAMA_BASE_URL)
+    monkeypatch.setattr("rag.app.resolve_ollama_base_url", lambda: rag_app.OLLAMA_BASE_URL)
 
 
 def test_rag_api_success_with_mocked_dependencies():
@@ -34,7 +34,7 @@ def test_rag_api_success_with_mocked_dependencies():
         "eval_count": 10,
     }
 
-    with patch.object(rag_app.requests, "post", side_effect=[ollama_embedding, vector_response, ollama_answer]) as post:
+    with patch("requests.post", side_effect=[ollama_embedding, vector_response, ollama_answer]) as post:
         client = rag_app.app.test_client()
         response = client.post("/process", json={"query": query, "metric": "cosine", "num_results": 2})
 
@@ -67,7 +67,7 @@ def test_generate_embedding_normalizes_vector(monkeypatch):
     response = Mock(status_code=200)
     response.json.return_value = {"embedding": [3.0, 4.0]}
     post = Mock(return_value=response)
-    monkeypatch.setattr(rag_app.requests, "post", post)
+    monkeypatch.setattr("requests.post", post)
 
     result = rag_app.generate_embedding("test query")
 
@@ -83,7 +83,7 @@ def test_generate_embedding_normalizes_vector(monkeypatch):
 def test_generate_embedding_rejects_missing_or_zero_vector(monkeypatch, embedding):
     response = Mock(status_code=200)
     response.json.return_value = {"embedding": embedding}
-    monkeypatch.setattr(rag_app.requests, "post", Mock(return_value=response))
+    monkeypatch.setattr("requests.post", Mock(return_value=response))
 
     with pytest.raises(rag_app.Problem):
         rag_app.generate_embedding("test query")
@@ -91,7 +91,7 @@ def test_generate_embedding_rejects_missing_or_zero_vector(monkeypatch, embeddin
 
 def test_generate_embedding_rejects_http_error(monkeypatch):
     response = Mock(status_code=503, text="model unavailable")
-    monkeypatch.setattr(rag_app.requests, "post", Mock(return_value=response))
+    monkeypatch.setattr("requests.post", Mock(return_value=response))
 
     with pytest.raises(Exception, match="Embedding is unavailable"):
         rag_app.generate_embedding("test query")
@@ -101,7 +101,7 @@ def test_search_vectors_sends_filters_and_rejects_non_list(monkeypatch):
     response = Mock(status_code=200)
     response.json.return_value = {"results": []}
     post = Mock(return_value=response)
-    monkeypatch.setattr(rag_app.requests, "post", post)
+    monkeypatch.setattr("requests.post", post)
 
     with pytest.raises(Exception, match="Erwartet wurde eine Liste"):
         rag_app.search_vectors(rag_app.np.array([0.6, 0.8]), "embed-v1", "cosine", 3)
@@ -121,7 +121,7 @@ def test_generate_answer_converts_metrics_and_reports_http_error(monkeypatch):
         "eval_duration": 1_000_000_000, "prompt_eval_count": 12, "eval_count": 8,
     }
     post = Mock(return_value=response)
-    monkeypatch.setattr(rag_app.requests, "post", post)
+    monkeypatch.setattr("requests.post", post)
 
     answer, metrics = rag_app.generate_answer("context", "question")
 
@@ -161,7 +161,7 @@ def test_cli_reranking_keeps_chunktext_and_chunk_identity(monkeypatch):
     response = Mock(status_code=200)
     response.json.return_value = {"model": "model", "ranked_documents": [{"text": "second", "original_index": 1}]}
     post = Mock(return_value=response)
-    monkeypatch.setattr(rag_app.requests, "post", post)
+    monkeypatch.setattr("requests.post", post)
     rows = [{"chunk_id": "a", "chunktext": "first"}, {"chunk_id": "b", "chunktext": "second"}]
     assert rag_app.rerank_results("q", rows, "model", 1) == [{"chunk_id": "b", "chunktext": "second"}]
     assert post.call_args.kwargs["json"]["documents"] == ["first", "second"]
@@ -197,7 +197,7 @@ def test_no_context_skips_generation(monkeypatch, results):
 def test_invalid_optional_metrics_preserve_answer(monkeypatch, value):
     response = Mock(status_code=200)
     response.json.return_value = {'response': 'answer', 'eval_duration': value, 'eval_count': 2}
-    monkeypatch.setattr(rag_app.requests, 'post', Mock(return_value=response))
+    monkeypatch.setattr("requests.post", Mock(return_value=response))
     answer, metrics = rag_app.generate_answer('context', 'question')
     assert answer == 'answer'
     assert metrics['answer_rate'] is None
@@ -206,7 +206,7 @@ def test_invalid_optional_metrics_preserve_answer(monkeypatch, value):
 def test_invalid_retrieval_json_maps_to_problem(monkeypatch):
     response = Mock(status_code=200)
     response.json.side_effect = ValueError('private upstream body')
-    monkeypatch.setattr(rag_app.requests, 'post', Mock(return_value=response))
+    monkeypatch.setattr("requests.post", Mock(return_value=response))
     from rag_common.http_errors import Problem
     with pytest.raises(Problem) as caught:
         rag_app.search_vectors(rag_app.np.array([1]), 'set', 'cosine', 1)
@@ -216,7 +216,7 @@ def test_invalid_retrieval_json_maps_to_problem(monkeypatch):
 
 def test_unavailable_retrieval_does_not_become_no_context(monkeypatch):
     monkeypatch.setattr(rag_app, 'generate_embedding', Mock(return_value=rag_app.np.array([1])))
-    monkeypatch.setattr(rag_app.requests, 'post', Mock(return_value=Mock(status_code=503)))
+    monkeypatch.setattr("requests.post", Mock(return_value=Mock(status_code=503)))
     generate = Mock()
     monkeypatch.setattr(rag_app, 'generate_answer', generate)
     response = rag_app.app.test_client().post('/process', json={'query': 'q'})
@@ -235,7 +235,7 @@ def test_metrics_zero_tokens_and_invalid_counts():
 def test_reranking_rejects_invalid_mapping(monkeypatch, mapping):
     response = Mock(status_code=200)
     response.json.return_value = {"ranked_documents": mapping}
-    monkeypatch.setattr(rag_app.requests, "post", Mock(return_value=response))
+    monkeypatch.setattr("requests.post", Mock(return_value=response))
     with pytest.raises(rag_app.Problem):
         rag_app.rerank_results("q", [{"chunk_id":"c", "chunktext":"text"}], "m", 1)
 
@@ -275,7 +275,7 @@ def test_process_reranks_and_preserves_original_results(monkeypatch, selected):
 def test_transport_retries_are_bounded(monkeypatch, stage, attempts):
     import requests
     post = Mock(side_effect=requests.Timeout())
-    monkeypatch.setattr(rag_app.requests, 'post', post)
+    monkeypatch.setattr("requests.post", post)
     with pytest.raises(rag_app.Problem):
         rag_app.upstream_post('url', {}, stage)
     assert post.call_count == attempts
@@ -283,7 +283,7 @@ def test_transport_retries_are_bounded(monkeypatch, stage, attempts):
 
 def test_expired_budget_prevents_upstream_request(monkeypatch):
     post = Mock()
-    monkeypatch.setattr(rag_app.requests, 'post', post)
+    monkeypatch.setattr("requests.post", post)
     with rag_app.app.test_request_context('/process'):
         rag_app.g.deadline = 0
         with pytest.raises(rag_app.Problem):
@@ -316,7 +316,7 @@ def test_cli_and_http_equivalent_configuration(monkeypatch):
 def test_embedding_invalid_provider_vectors(monkeypatch, embedding):
     response = Mock(status_code=200)
     response.json.return_value = {'embedding':embedding}
-    monkeypatch.setattr(rag_app.requests, 'post', Mock(return_value=response))
+    monkeypatch.setattr("requests.post", Mock(return_value=response))
     with pytest.raises(rag_app.Problem) as caught:
         rag_app.generate_embedding('q')
     assert caught.value.kind == 'upstream-invalid-response'
@@ -326,7 +326,7 @@ def test_embedding_invalid_provider_vectors(monkeypatch, embedding):
 def test_generation_invalid_answer_is_502(monkeypatch, body):
     response = Mock(status_code=200)
     response.json.return_value = body
-    monkeypatch.setattr(rag_app.requests, 'post', Mock(return_value=response))
+    monkeypatch.setattr("requests.post", Mock(return_value=response))
     with pytest.raises(rag_app.Problem) as caught:
         rag_app.generate_answer('text', 'q')
     assert caught.value.kind == 'upstream-invalid-response'
@@ -364,7 +364,7 @@ def test_answer_model_configuration_defaults_and_override():
 def test_pipeline_timings_include_all_steps_and_no_context(monkeypatch, mode):
     from types import SimpleNamespace
     clock = iter(range(20))
-    monkeypatch.setattr(rag_app, 'time', SimpleNamespace(monotonic=lambda: next(clock)))
+    monkeypatch.setattr("rag.app.time", SimpleNamespace(monotonic=lambda: next(clock)))
     rows = [{'chunk_id':'c', 'chunktext':'text'}]
     monkeypatch.setattr(rag_app, 'generate_embedding', Mock(return_value=[1]))
     monkeypatch.setattr(rag_app, 'search_vectors', Mock(return_value=[] if mode == 'empty' else rows))
@@ -394,7 +394,7 @@ def test_generation_duration_has_compatible_alias():
 @pytest.mark.parametrize('endpoint', ['rerank','generate'])
 def test_evaluation_validates_before_dependencies(monkeypatch, payload, endpoint):
     post = Mock()
-    monkeypatch.setattr(rag_app.requests, 'post', post)
+    monkeypatch.setattr("requests.post", post)
     response = rag_app.app.test_client().post('/evaluate/' + endpoint, json=payload)
     assert response.status_code == 400
     post.assert_not_called()
@@ -410,7 +410,7 @@ def test_evaluation_chain_is_reusable_and_isolated(monkeypatch):
     response = Mock(status_code=200)
     response.json.return_value = {'ranked_documents':[{'original_index':1,'score':0.9}]}
     post = Mock(return_value=response)
-    monkeypatch.setattr(rag_app.requests, 'post', post)
+    monkeypatch.setattr("requests.post", post)
     generate = Mock(return_value=('answer', {'generation_duration':1}))
     monkeypatch.setattr(rag_app, 'generate_answer', generate)
     client = rag_app.app.test_client()
@@ -445,7 +445,7 @@ def test_evaluation_chain_is_reusable_and_isolated(monkeypatch):
 @pytest.mark.parametrize('endpoint', ['rerank','generate'])
 def test_empty_evaluation_does_not_call_provider(monkeypatch, endpoint):
     post = Mock()
-    monkeypatch.setattr(rag_app.requests, 'post', post)
+    monkeypatch.setattr("requests.post", post)
     response = rag_app.app.test_client().post('/evaluate/' + endpoint, json={'query':'q','results':[]})
     assert response.status_code == 200
     assert response.json['status'] == 'no_context'
@@ -467,7 +467,7 @@ def test_retrieve_accepts_cached_vector(monkeypatch):
 @pytest.mark.parametrize('template', ['{unknown}', '{context.__class__}', '{context!r}', '{'])
 def test_evaluate_prompt_template_validation(monkeypatch, template):
     post = Mock()
-    monkeypatch.setattr(rag_app.requests, 'post', post)
+    monkeypatch.setattr("requests.post", post)
     response = rag_app.app.test_client().post('/evaluate/generate', json={
         'query':'q','results':[], 'user_prompt':template})
     assert response.status_code == 400
