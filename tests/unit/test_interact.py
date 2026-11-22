@@ -119,3 +119,21 @@ def test_argparse_errors_are_german(monkeypatch, capsys, argv, fragments):
     for english in ('invalid choice', 'invalid int value', 'expected one argument', 'required:', 'unrecognized arguments', 'error:'):
         assert english not in message
     post.assert_not_called()
+
+
+def test_ollama_error_field_is_reported(monkeypatch):
+    response = Mock(status_code=500)
+    response.json.return_value = {'error': 'CUDA error: shared object initialization failed'}
+    monkeypatch.setattr(cli.requests, 'post', Mock(return_value=response))
+    with pytest.raises(RuntimeError, match='Embedding: HTTP 500 - CUDA error: shared object initialization failed'):
+        cli.post_json('http://localhost:11434/api/embeddings', {}, 'Embedding', 300)
+
+
+@pytest.mark.parametrize('body', [{'error': {'secret': 'value'}}, {'error': None}])
+def test_nontext_ollama_error_is_not_dumped(monkeypatch, body):
+    response = Mock(status_code=500)
+    response.json.return_value = body
+    monkeypatch.setattr(cli.requests, 'post', Mock(return_value=response))
+    with pytest.raises(RuntimeError) as caught:
+        cli.post_json('url', {}, 'Embedding', 300)
+    assert str(caught.value) == 'Embedding: HTTP 500'

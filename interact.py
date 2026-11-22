@@ -29,6 +29,10 @@ def post_json(url, payload, operation, timeout):
             for key in ("title", "detail"):
                 if isinstance(problem.get(key), str):
                     message += " - " + problem[key]
+            # Ollama uses {"error": "..."} rather than RFC 9457.
+            if not any(isinstance(problem.get(key), str) for key in ("title", "detail")):
+                if isinstance(problem.get("error"), str):
+                    message += " - " + problem["error"]
             for key in ("type", "request_id"):
                 if isinstance(problem.get(key), str):
                     message += f" [{key}: {problem[key]}]"

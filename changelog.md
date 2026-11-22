@@ -14,6 +14,20 @@ agent_instructions:
 Aus README und docs übernommene Änderungshistorie. Gleichdatierte Einträge folgen der umgekehrten Reihenfolge der dortigen Nachträge. Nicht datierbare Einträge stehen am Ende. Anleitungen: [README](README.md). Fachkonzepte: [Testkonzept](docs/8-1-testkonzept.md) und [Error-Handling](docs/8-3-error-handling.md).
 
 ## 2026-11-22
+### Gemeinsame GPU-Nutzung untersucht; stabile Aufteilung vorgeschlagen
+
+Reranker-Startlog bestätigt cuda:0; Ollama-Logs bestätigen GPU-Offloading auf dieselbe RTX 4060 mit 8 GB. Hostmessung: rund 2454 MiB GPU-Belegung, pro Prozess unter Windows/WDDM keine verlässliche Speicherzuordnung verfügbar. Der frühere lange Batch und Ollamas CUDA-Initialisierungsfehler sind belegt, ihre Kausalität durch GPU-Konkurrenz jedoch nicht. Separate Torch-GPU-Abfragen beschreiben nicht den damaligen Speicherzustand des aktiven Rerankermodells.
+
+Isolierter CPU-Prozess mit gecachten MiniLM-L6-Gewichten, vier Torch-Threads und Batchgröße 8 bewertete 100 aus vorhandenen Exportpassagen wiederholte Beispiele in 2,444 Sekunden; Modellladen 0,238 Sekunden. Der Dienst blieb unverändert auf GPU. Dies ist kein identischer A/B-Vergleich zum früheren 100-Treffer-Lauf. Die Messwerte wurden erfolgreich ausgegeben; die äußere Diagnoseausgabe endete danach beim Ausgeben von Unicode-Ladefortschritt mit einem Windows-Encodingfehler.
+
+Vorschlag, noch nicht ausgerollt: Reranker explizit auf CPU (CrossEncoder device=cpu), Batchgröße 8 und zunächst vier Torch-Threads; Ollama allein auf GPU mit OLLAMA_NUM_PARALLEL=1 und OLLAMA_MAX_LOADED_MODELS=1. Letzteres kann häufigere Modellwechsel zwischen Embedding und Generierung verursachen. Kontext zunächst explizit 4096, bei größeren Retrievalkontexten Tokenbudget prüfen statt still kürzen. Zusätzlich begrenztes Warten auf MODEL_LOCK und getrennte Healthzustände wie zuvor vorgeschlagen. Neue Reranker-Optionen benötigen explizite Codeverdrahtung, keine bloß gesetzten ungenutzten Umgebungsvariablen. Quellen: [Ollama-Konfiguration](https://github.com/ollama/ollama/blob/main/envconfig/config.go), [CrossEncoder](https://sbert.net/docs/package_reference/cross_encoder/model.html). Keine produktive Konfiguration verändert.
+
+### Ollama-Embeddingfehler eingegrenzt und CLI-Meldung ergänzt
+
+Ollama-Log vom 22.11.2026, 10:34:32: Embedding-Runner nach CUDA-Fehler „shared object initialization failed“ mit Status 0xc0000409 beendet; /api/embeddings antwortete mit HTTP 500. Erneute Diagnoseanfrage erhielt HTTP 200 und ein Embedding, ohne Dienstneustart. Ein Zusammenhang mit der früheren langen Reranker-Inferenz oder GPU-Speicherkonkurrenz ist damit nicht bewiesen.
+
+interact.py zeigt nun neben RFC-9457-Problemfeldern auch Ollamas textuelles JSON-error-Feld, falls keine title/detail-Meldung vorliegt. Keine rohen HTML- oder nichttextuellen Fehlerbodys. 36 CLI-Unit-Tests bestanden; kein erneuter Podman-Lauf erforderlich, da ausschließlich lokale CLI-Fehlerdarstellung geändert wurde. Keine GPU-/Modellkonfiguration verändert.
+
 
 ### Architektur- und Verhaltensbeschreibungen abgeglichen
 
