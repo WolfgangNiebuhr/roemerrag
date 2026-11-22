@@ -14,6 +14,24 @@ agent_instructions:
 Aus README und docs übernommene Änderungshistorie. Gleichdatierte Einträge folgen der umgekehrten Reihenfolge der dortigen Nachträge. Nicht datierbare Einträge stehen am Ende. Anleitungen: [README](README.md). Fachkonzepte: [Testkonzept](docs/8-1-testkonzept.md) und [Error-Handling](docs/8-3-error-handling.md).
 
 ## 2026-11-22
+### Evaluationsendpunkte ausgerollt und live verkettet
+
+RAG-Image mit `python scripts/build_image.py rag-api --tag localhost/rag-api:evaluate-20261122` gebaut, Image-ID `e5c5e1d44286f0107b3442de9934e9e7c7296d6bc67b50abe1783d6e9a6fbf2e`, ebenfalls als localhost/rag-api:local markiert. Container rag-api mit bisheriger Konfiguration (Port 5600:5600, keine zusaetzlichen Umgebungsvariablen) ersetzt. Vorheriger Container bleibt gestoppt als rag-api-before-evaluate erhalten. Quellhash app.py im Container entspricht Workspace: `7a70f9a93405927425f57ec76191e5db49badf85be3b0ef941b486c1e6327ab2`. Datenbank, Vector-API, Reranker und Volumes unveraendert.
+
+Live-Kette gegen localhost:5600: POST /evaluate/retrieve mit Frage "Wer beherrschte das westliche Mittelmeer?", num_results=3, top_k=1 und answer_model=gemma4:e4b; dessen next_request unveraendert an /evaluate/rerank, dessen next_request unveraendert an /evaluate/generate. Alle drei HTTP 200. Retrieval liefert drei Chunks (pg3060-552, pg3061-301, pg3065-1770), 1024-dimensionalen Query-Vektor und Distanzen. Reranking waehlt pg3060-552, Score 2,9705081. Chunk-ID, Text und Distanz entsprechen dem ueber original_index referenzierten Retrievaltreffer. Generierung liefert status ok, nichtleere Antwort, passenden Kontext und Chunk-ID, Modell gemma4:e4b sowie wiederverwendbare request identisch zur vorherigen next_request.
+
+Laufzeiten: Embedding 0,09257 s, Retrieval 0,04543 s, Retrieve gesamt 0,13802 s, Rerank 0,11598 s, Generate-Aufruf 17,89520 s. Ollama-Generierungsdauer 17,89191 s, Ladezeit 17,23282 s, 136 Prompt- und 23 Antworttoken. Zeitfelder automatisch auf endliche nichtnegative Werte geprueft, Score und Generierungsmetriken ebenfalls validiert. Antwort: "Die vereinigte Macht der Italiker und Phoeniker behauptete die westliche Haelfte des Mittelmeeres."
+
+Keine Schreibzugriffe auf Datenbank oder Exportdateien fuer die Live-Kette. Vorheriger Gesamttestnachweis (235 bestanden) bleibt erhalten; keine Codeaenderung oder erneute Gesamtsuite beim reinen Ausrollen.
+
+### Schrittweise Evaluation ueber drei RAG-Endpunkte
+
+Die extern gelesene historische rag-configmap.yaml aus dem knowledge-experimental-ki/rag-setup dient als fachliche Referenz fuer /evaluate/retrieve, /evaluate/rerank und /evaluate/generate. Implementierung verwendet aktuelle RAG-Providerfunktionen, Chunkfelder und Problem Details statt historischer SQL-/LangChain-Verarbeitung. Retrieve und Rerank liefern next_request mit Frage, Ergebnissen und Folgeparametern, direkt als Eingabe fuer den naechsten Schritt. Generate liefert eine wiederverwendbare request-Eingabe. Trefferidentitaet und Metadaten/Distanzen bleiben erhalten; Reranking ergaenzt Score und Index. Modelle, Laufzeiten und verfuegbare Provider-Metriken werden ausgegeben; fehlende Metriken null. Retrieve kann gespeicherte Vektoren verwenden, Generate eigene System-/Userpromptvorlagen. Kein serverseitiger Sitzungszustand oder impliziter Folgeaufruf. Goldvergleich und aggregierte Qualitaetsmessung bleiben spaetere Schritte.
+
+Pruefung: Unit-Suite **221 passed in 8.08s**. Abschliessend `python -m pytest -c tests/pytest.ini tests --all`: **235 passed in 255.85s (0:04:15)**, Exitcode 0, keine ausgelassenen Tests. Vertragstests pruefen Verkettbarkeit und Isolation der Schritte, erhaltene Chunk-ID/Distanz/Score, gespeicherte Vektoren, leere Eingaben und Eingangs-/Promptvalidierung. Neue isolierte Integration durchlaeuft Retrieve/Rerank/Generate mit echtem Testchunk, Reranker und Antwortmodell; Testchunk und isolierte Ressourcen anschliessend entfernt. Vorhandene Datenbestaende und regulaere Container unveraendert. `git diff --check` erfolgreich.
+
+README mit Vertragsbeschreibung und PowerShell-Beispiel, Baustein-/Laufzeitsicht, Architekturentscheidung, Fehler- und Testkonzept aktualisiert. Keine Gold-Antworten bewertet und keine regulaeren Images/Container aktualisiert; fuer Live-Nutzung RAG-Image neu bauen und Container ersetzen.
+
 ### Neue RAG-Laufzeiten ausgerollt und live geprueft
 
 `python scripts/build_image.py rag-api --tag localhost/rag-api:timings-20261122` erfolgreich; Image-ID `32b7fe95e32f675c5b1a35beb0275a37587d69e8b5023b4f7645d95c37c0e45f`, auch localhost/rag-api:local. Container rag-api mit unveraenderter Startkonfiguration (Port 5600:5600, keine zusaetzlichen Umgebungsvariablen) ersetzt. Vorheriger Container bleibt gestoppt als rag-api-before-timings erhalten. Quellhash app.py im Container entspricht Workspace: `d9249f9836bb8afcfbffbcd594c9f0c7230c20262dd700edf1d3aabecbe0399b`. Datenbank, Vector-API, Reranker und Volumes unveraendert.

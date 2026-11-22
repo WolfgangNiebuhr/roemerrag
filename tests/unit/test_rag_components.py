@@ -387,3 +387,88 @@ def test_pipeline_timings_include_all_steps_and_no_context(monkeypatch, mode):
 def test_generation_duration_has_compatible_alias():
     metrics = rag_app.generation_metrics({'total_duration':1500000000})
     assert metrics['generation_duration'] == metrics['total_duration'] == 1.5
+
+
+@pytest.mark.parametrize('payload', [{}, {'query':'q'}, {'query':'q','results':[{}]},
+    {'query':'q','results':'bad'}, {'query':'q','results':[{'chunk_id':'c','chunktext':None}]}])
+@pytest.mark.parametrize('endpoint', ['rerank','generate'])
+def test_evaluation_validates_before_dependencies(monkeypatch, payload, endpoint):
+    post = Mock()
+    monkeypatch.setattr(rag_app.requests, 'post', post)
+    response = rag_app.app.test_client().post('/evaluate/' + endpoint, json=payload)
+    assert response.status_code == 400
+    post.assert_not_called()
+
+
+def test_evaluation_chain_is_reusable_and_isolated(monkeypatch):
+    rows = [{'chunk_id':'a','chunktext':'first','distance':0.1},
+            {'chunk_id':'b','chunktext':'second','distance':0.2}]
+    embed = Mock(return_value=(rag_app.np.array([1.0]), {'prompt_tokens':3}))
+    search = Mock(return_value=rows)
+    monkeypatch.setattr(rag_app, 'generate_embedding', embed)
+    monkeypatch.setattr(rag_app, 'search_vectors', search)
+    response = Mock(status_code=200)
+    response.json.return_value = {'ranked_documents':[{'original_index':1,'score':0.9}]}
+    post = Mock(return_value=response)
+    monkeypatch.setattr(rag_app.requests, 'post', post)
+    generate = Mock(return_value=('answer', {'generation_duration':1}))
+    monkeypatch.setattr(rag_app, 'generate_answer', generate)
+    client = rag_app.app.test_client()
+    retrieved = client.post('/evaluate/retrieve', json={'query':'q','top_k':1,
+        'answer_model':'model','system_prompt':'system','user_prompt':'{question}: {context}'}).json
+    assert retrieved['results'] == rows
+    assert retrieved['metrics']['embedding']['prompt_tokens'] == 3
+    post.assert_not_called()
+    generate.assert_not_called()
+    embed.reset_mock()
+    search.reset_mock()
+    ranked_response = client.post('/evaluate/rerank', json=retrieved['next_request'])
+    assert ranked_response.status_code == 200
+    ranked = ranked_response.json
+    assert ranked['results'][0]['chunk_id'] == 'b'
+    assert ranked['results'][0]['distance'] == 0.2
+    assert ranked['results'][0]['rerank_score'] == 0.9
+    assert ranked['results'][0]['original_index'] == 1
+    embed.assert_not_called()
+    search.assert_not_called()
+    post.reset_mock()
+    result = client.post('/evaluate/generate', json=ranked['next_request'])
+    assert result.status_code == 200
+    assert result.json['context'] == 'second'
+    assert result.json['metrics']['generation_duration'] == 1
+    generate.assert_called_once_with('second','q','model', system_prompt='system', user_prompt='{question}: {context}')
+    post.assert_not_called()
+    embed.assert_not_called()
+    search.assert_not_called()
+
+
+@pytest.mark.parametrize('endpoint', ['rerank','generate'])
+def test_empty_evaluation_does_not_call_provider(monkeypatch, endpoint):
+    post = Mock()
+    monkeypatch.setattr(rag_app.requests, 'post', post)
+    response = rag_app.app.test_client().post('/evaluate/' + endpoint, json={'query':'q','results':[]})
+    assert response.status_code == 200
+    assert response.json['status'] == 'no_context'
+    post.assert_not_called()
+
+
+def test_retrieve_accepts_cached_vector(monkeypatch):
+    embed = Mock()
+    search = Mock(return_value=[])
+    monkeypatch.setattr(rag_app, 'generate_embedding', embed)
+    monkeypatch.setattr(rag_app, 'search_vectors', search)
+    response = rag_app.app.test_client().post('/evaluate/retrieve', json={'query':'q','vector':[1.0]+[0.0]*1023})
+    assert response.status_code == 200
+    assert response.json['embedding_model'] is None
+    assert response.json['timings']['embedding_duration'] is None
+    embed.assert_not_called()
+
+
+@pytest.mark.parametrize('template', ['{unknown}', '{context.__class__}', '{context!r}', '{'])
+def test_evaluate_prompt_template_validation(monkeypatch, template):
+    post = Mock()
+    monkeypatch.setattr(rag_app.requests, 'post', post)
+    response = rag_app.app.test_client().post('/evaluate/generate', json={
+        'query':'q','results':[], 'user_prompt':template})
+    assert response.status_code == 400
+    post.assert_not_called()

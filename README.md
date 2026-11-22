@@ -281,3 +281,39 @@ Die CLI-Ausgabe gliedert sich durch Leerzeilen in Retrieval (Treffer und Export)
 `POST /process` liefert zusaetzlich `timings` mit `embedding_duration`, `retrieval_duration` und `pipeline_duration`, jeweils Sekunden aus einer monotonen Uhr. Embedding umfasst Endpunktaufloesung, Provideraufruf, Normalisierung und moegliche Retries; Retrieval umfasst Suche, Validierung und Entfernen leerer Texte. Die Pipelinezeit reicht vom Eintritt in die Verarbeitung nach Requestvalidierung bis unmittelbar vor Aufbau der JSON-Antwort und umfasst Reranking, Kontextbildung und Generierung. HTTP-Transport zum Client, Antwortserialisierung und lokaler Export sind nicht enthalten. Auch no_context liefert timings; Generierungsmetriken bleiben dann null. Fehlerantworten erhalten keine Teillaufzeiten.
 
 Die bisherige Ollama-Gesamtdauer heisst `metrics.generation_duration` und erscheint in der CLI als Generierungsdauer. `metrics.total_duration` bleibt als Kompatibilitaetsalias erhalten und ist keine Pipelinezeit. Die CLI zeigt Embedding- und Retrieval-Laufzeiten im Retrievalabschnitt, Reranking separat und die RAG-Pipeline-Gesamtdauer im Abschnitt Antwortgenerierung. Alle Zeitangaben werden in Sekunden mit zwei Nachkommastellen dargestellt; die API liefert ungerundete Werte. Aeltere APIs ohne timings werden als nicht verfuegbar dargestellt.
+
+## Einzelne RAG-Schritte evaluieren
+
+Die RAG-API bietet drei POST-Endpunkte fuer spaetere Qualitaetsmessungen. Sie verwenden dieselben Providerfunktionen, Validierung, Zeitlimits, Retries und Modelle wie `/process`, fuehren aber nur den jeweiligen Schritt aus. Gold-Antworten und Qualitaetsscores werden noch nicht berechnet. Die historische ConfigMap dient nur als fachliche Referenz; deren SQL-Zugriffe und Feldnamen werden nicht uebernommen.
+
+| Endpunkt | Eingabe | Ausgabe und Weiterverwendung |
+|---|---|---|
+| `/evaluate/retrieve` | query, optional embedding_set_id/filter, metric (Standard euclidean), num_results (5), vector | results mit Chunk-IDs, Texten, Distanzen und vorhandenen Trefferfeldern; normalisierter Query-Vektor bei neuem Embedding, Modell/Set/Metrik, Laufzeiten und Trefferzahl. next_request kann direkt an rerank gesendet werden. |
+| `/evaluate/rerank` | query, results (Liste von Chunkobjekten), optional reranker und top_k (5) | results in neuer Reihenfolge, erhaltene Trefferfelder sowie rerank_score und original_index; Modell, ausgewaehlte Anzahl und Laufzeit. next_request kann direkt an generate gesendet werden. |
+| `/evaluate/generate` | query, results, optional answer_model, system_prompt, user_prompt | Antwort, Kontext, Chunk-IDs, ausgewaehlte Texte, Modell, Ollama-Metriken und serverseitige Laufzeit; request erlaubt Wiederholung der Generierung. |
+
+results enthalten mindestens `chunk_id` und `chunktext`. Zum Ueberspringen von Reranking kann der Retrieve-next_request auch direkt an generate gesendet werden (zusaetzliche Felder werden ignoriert). answer_model sowie eigene Promptvorlagen koennen bereits beim Retrieval angegeben werden und werden im next_request bis zur Generierung weitergereicht. Jeder Schritt kann ebenso mit einer gespeicherten oder von Hand erstellten Eingabe aufgerufen werden. Es gibt keinen serverseitigen Sitzungszustand und keine impliziten Folgeaufrufe.
+
+Beispiel in PowerShell:
+
+```powershell
+$base = 'http://localhost:5600'
+$retrieved = Invoke-RestMethod "$base/evaluate/retrieve" -Method Post -ContentType 'application/json' -Body (@{
+    query = 'Wer beherrschte das westliche Mittelmeer?'
+    num_results = 5
+    top_k = 2
+    answer_model = 'gemma4:e4b'
+} | ConvertTo-Json)
+# Objekte fuer spaetere Versuchsreihen speichern, statt Retrieval zu wiederholen.
+$retrieved | ConvertTo-Json -Depth 30 | Set-Content retrieved.json -Encoding utf8
+$ranked = Invoke-RestMethod "$base/evaluate/rerank" -Method Post -ContentType 'application/json' -Body ($retrieved.next_request | ConvertTo-Json -Depth 30)
+$answer = Invoke-RestMethod "$base/evaluate/generate" -Method Post -ContentType 'application/json' -Body ($ranked.next_request | ConvertTo-Json -Depth 30)
+$answer.response
+$answer.metrics
+```
+
+Optionaler Retrieve-vector ist ein bereits vorbereiteter Vektor mit 1024 endlichen Zahlen (Liste oder JSON-Listenstring); er wird unveraendert verwendet, nicht erneut normalisiert. Embedding entf?llt dann, embedding_model und embedding_duration sind null. Bei neuem Embedding sind vorhandene Ollama-Laufzeit-/Tokenmetriken unter metrics.embedding enthalten; fehlende Messwerte sind null und werden nicht als null Sekunden erfunden. Trefferzahl steht unter metrics.retrieved_count. Serverzeiten stehen in timings (embedding_duration/retrieval_duration/evaluation_duration beziehungsweise reranking_duration oder generation_request_duration), jeweils ungerundete Sekunden. Generierungsmetriken entsprechen `/process`.
+
+Reranking behaelt Distanzen und sonstige Trefferfelder bei. original_index bezieht sich auf die an den Reranker uebergebene Liste nach Entfernen leerer Texte. top_k=0 deaktiviert Reranking und behaelt alle nichtleeren Treffer ohne neue Scores. Leere results sind erlaubt: Rerank/Generate liefern no_context, ohne Provideraufruf; Generierungsmetriken sind null. Nichtleere Textfelder, Modellparameter und Indizes werden validiert; ungueltige Eingaben ergeben 400 Problem Details vor Dienstzugriff, defekte Providerantworten 502, Dienstausfaelle 503.
+
+Eigene user_prompt-Vorlagen erlauben ausschliesslich `{context}` und `{question}` als Platzhalter, ohne Formatierung oder Attributzugriff; literale Klammern muessen verdoppelt werden. Ohne Vorlagen gelten dieselben Prompts wie bei `/process`. Die drei Endpunkte verwenden query/results/reranker/answer_model/system_prompt/user_prompt; die historischen Felder question/chunks/modelname/systemprompt/userprompt der ConfigMap sind keine API-Aliase. Vor Live-Nutzung RAG-Image neu bauen und Container ersetzen.

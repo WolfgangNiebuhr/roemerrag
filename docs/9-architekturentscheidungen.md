@@ -29,3 +29,7 @@ Historische Aenderungs- und Pruefnachweise: [Changelog](../changelog.md).
 ## RAG-Orchestrierung als einziger CLI-Verarbeitungspfad (TS-09)
 
 Die CLI delegiert die gesamte Verarbeitung an `/process`; sie behaelt Argumentpruefung, Darstellung und Dateiexport. Reranking und Modellwahl werden explizite API-Parameter, urspruengliche und ausgewaehlte Treffer separate Antwortfelder. Bestehende API-Clients erhalten ohne neue Parameter weiterhin kein Reranking. Beide Einstiegspunkte verwenden gemma4:e4b als Antwortmodellstandard. analyze.py verwendet die Providerfunktionen aus rag/app.py fuer seine Vektoranalysen; eine weitere Klassenhierarchie ist nicht erforderlich. Fortschrittsstreaming und Export nach spaeteren Providerfehlern sind nicht Teil des Vertrags.
+
+## Stateless Evaluationsendpunkte
+
+Die drei historischen /evaluate-Endpunktnamen werden als aktuelle RAG-HTTP-Adapter umgesetzt; historische SQL- und LangChain-Orchestrierung werden nicht uebernommen. Einheitliche Chunkobjekte statt blossen Textlisten bewahren Identitaet, Distanzen und Scores ueber alle Schritte. next_request transportiert Frage, Ergebnisse und Folgeparameter explizit, damit gespeicherte Zwischenergebnisse fuer getrennte Versuchsreihen ausreichen. Gemeinsame Providerfunktionen verhindern einen zweiten fachlichen Verarbeitungskern. Goldvergleich ist eine spaetere Anwendung dieser Schnittstellen.

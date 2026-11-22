@@ -99,3 +99,34 @@ def test_rag_reranking_through_api(vector_url, rag_url, test_id, e2e_ollama_url)
         assert result['reranking']['duration'] >= 0
     finally:
         request(vector_url, '/chunk', 'DELETE', chunk)
+
+
+@pytest.mark.podman
+@pytest.mark.rag
+@pytest.mark.reranker
+@pytest.mark.ollama
+def test_evaluation_endpoints_chain(vector_url, rag_url, test_id, e2e_ollama_url):
+    variant = 'evaluation-' + test_id
+    chunk = {'chunk_id':variant, 'embedding_set_id':variant,
+             'vector':[1.0]+[0.0]*1023, 'chunktext':'Karthago beherrschte das westliche Mittelmeer.'}
+    try:
+        request(vector_url, '/vectors', 'POST', chunk, 201)
+        retrieved = request(rag_url, '/evaluate/retrieve', 'POST', {
+            'query':'Wer beherrschte das westliche Mittelmeer?', 'embedding_set_id':variant,
+            'top_k':1, 'answer_model':'phi3:mini'}, timeout=600)
+        assert retrieved['results'][0]['chunk_id'] == variant
+        assert len(retrieved['vector']) == 1024
+        assert 'distance' in retrieved['results'][0]
+        assert retrieved['timings']['retrieval_duration'] >= 0
+        ranked = request(rag_url, '/evaluate/rerank', 'POST', retrieved['next_request'], timeout=600)
+        assert ranked['results'][0]['chunk_id'] == variant
+        assert isinstance(ranked['results'][0]['rerank_score'], (int,float))
+        generated = request(rag_url, '/evaluate/generate', 'POST', ranked['next_request'], timeout=1000)
+        assert generated['status'] == 'ok'
+        assert generated['response'].strip()
+        assert generated['chunks'] == [variant]
+        assert generated['metrics']['generation_duration'] >= 0
+        # The stored generation request can be replayed independently.
+        assert generated['request'] == ranked['next_request']
+    finally:
+        request(vector_url, '/chunk', 'DELETE', chunk)

@@ -83,6 +83,26 @@ def validate(service):
         invalid('Ein gültiges JSON-Objekt ist erforderlich.')
     if service == 'rag':
         text(data, 'query')
+        if request.endpoint in ('evaluate_rerank', 'evaluate_generate'):
+            rows = data.get('results')
+            if not isinstance(rows, list) or any(not isinstance(row, dict)
+                    or not isinstance(row.get('chunk_id'), str) or not row['chunk_id'].strip()
+                    or not isinstance(row.get('chunktext'), str) for row in rows):
+                invalid('results muss Chunkobjekte mit chunk_id und chunktext enthalten.', 'results')
+        if request.endpoint == 'evaluate_retrieve' and 'vector' in data:
+            vector(data)
+        if request.endpoint in ('evaluate_retrieve', 'evaluate_rerank', 'evaluate_generate'):
+            text(data, 'system_prompt', required=False)
+            template = text(data, 'user_prompt', required=False)
+            if template is not None:
+                import string
+                try:
+                    fields = list(string.Formatter().parse(template))
+                    if any(field is not None and (field not in ('context', 'question') or spec or conversion)
+                           for _, field, spec, conversion in fields):
+                        raise ValueError()
+                except ValueError:
+                    invalid('user_prompt erlaubt nur {context} und {question}.', 'user_prompt')
         selection(data, ('embedding_set_id', 'filter'))
         search_options(data, 5)
         text(data, 'reranker', required=False)
