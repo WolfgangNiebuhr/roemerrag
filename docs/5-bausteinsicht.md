@@ -133,3 +133,5 @@ TS-09: `/process` orchestriert Embedding, Retrieval, optional Reranking und Gene
 Die RAG-Antwort trennt Server-Laufzeiten in timings (embedding_duration, retrieval_duration, pipeline_duration) von Ollama-Generierungsmetriken. Deren generation_duration ersetzt die mehrdeutige Bezeichnung total_duration; letzteres bleibt Kompatibilitaetsalias. no_context enthaelt ebenfalls timings.
 
 Die RAG-API stellt zusaetzlich /evaluate/retrieve, /evaluate/rerank und /evaluate/generate bereit. Diese HTTP-Adapter nutzen die bestehenden Providerfunktionen und geben serialisierbare next_request-Objekte fuer den jeweils folgenden Schritt aus. Identitaet und Trefferfelder bleiben erhalten; Evaluation schreibt keine Vektoren und besitzt keinen Sitzungszustand. Goldvergleich und aggregierte Qualitaetsmessung sind noch nicht implementiert.
+
+Das Zielbild fuer einen gemeinsamen Importablauf mit austauschbaren Chunking-/Anreicherungsstrategien, lokalen Zwischenartefakten und geprueftem Importabschluss steht in [Kapitel 8.4](8-4-importkonzept.md). Es ist noch nicht implementiert und ersetzt die aktuelle Import3-Beschreibung nicht.

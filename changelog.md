@@ -14,6 +14,24 @@ agent_instructions:
 Aus README und docs übernommene Änderungshistorie. Gleichdatierte Einträge folgen der umgekehrten Reihenfolge der dortigen Nachträge. Nicht datierbare Einträge stehen am Ende. Anleitungen: [README](README.md). Fachkonzepte: [Testkonzept](docs/8-1-testkonzept.md) und [Error-Handling](docs/8-3-error-handling.md).
 
 ## 2026-11-22
+### Dateistamm-Regel und akzeptiertes Kollisionsrisiko dokumentiert
+
+Kapitel 8.4 und TS-05 legen Chunk-IDs als Dateinamen ohne letzte Erweiterung (Path.stem) plus Chunknummer ab 1 fest. Eindeutigkeit des Stamms gilt innerhalb eines Embedding-Sets; keine Versions-/Pfadkomponenten im Chunkschluessel. R-02 akzeptiert Kollisionen etwa zwischen rom.txt und rom.md sowie gleichen Namen aus verschiedenen Verzeichnissen; manuell umbenennen oder getrennte Sets verwenden. Keine technische Kollisionsregistrierung vorgesehen. Abbauplan auf diese Entscheidung angepasst. Codekorrektur, Bestandsbereinigung, kuerzere Neuimporte und Fehlerabschluss bleiben offen.
+
+Pruefung: Dokumentverweise und Konsistenz der ID-Regel kontrolliert; git diff --check erfolgreich. Keine Code-/Daten-/Containeraenderung; Unit-/Integrationstests fuer diese Dokumentationsentscheidung nicht ausgefuehrt.
+
+### Importkonzept auf gemeinsamen Chunktext vereinfacht
+
+Kapitel 8.4 verwendet vorerst denselben chunktext fuer Embedding, Reranking und Antwortkontext. texts aus der Versuchskonfiguration entfernt; Ablauf, Datenvertrag und Baselinebeschreibung angepasst. Original und Anreicherung bleiben als lokale Zwischeninformationen erhalten, ohne getrennte Embedding-/Kontextfelder einzufuehren. Abschnitt 8.4.10 bewahrt Erklaerung, Beispiel und Versuchsfragestellung der spaeteren Trennung, markiert aber ausdruecklich: derzeit nicht implementieren, auch keine Schalter oder Schemavorbereitung.
+
+Pruefung: JSON-Beispiele geparst, texts-Schluessel ausgeschlossen und lokale Kapitelverweise kontrolliert; git diff --check erfolgreich. Keine Code-/Container-/Datenaenderung. Unit- und Integrationstests wegen ausschliesslicher Konzeptaenderung nicht erneut ausgefuehrt.
+
+### Kapitel 8.4: Variantenfaehiges Importkonzept
+
+Neues docs/8-4-importkonzept.md beschreibt gemeinsamen Importablauf, austauschbare Python-Strategien und JSON-Versuchskonfigurationen statt vollstaendiger Importskripte pro Idee. Enthalten sind Schnittstellen-/CLI-Entwuerfe, getrennte Quell-/Anreicherungs-/Embedding-/Kontexttexte, versionierte Zwischenartefakte, explizite Wiederverwendung, Dokument-/Versions-/Laufidentitaet sowie Zielregeln fuer Freigabe, Altlasten, Resume und Metriken. R-01 bleibt unveraendert: keine automatische Set-Konfigurationsregistrierung oder -pruefung. Zielkonzept klar von aktuellem Import3 und noch umzusetzenden TS-05/12/14/17 abgegrenzt; in Bausteinsicht und Schuldenregister verlinkt.
+
+Pruefung: beide JSON-Beispiele geparst, lokale Kapitelverweise und neun nummerierte Unterabschnitte kontrolliert; git diff --check erfolgreich. Keine Code-/Container-/Datenaenderung und kein Schuldenabschluss. Unit-/Integrationstests nicht ausgefuehrt, da ausschliesslich Konzeptdokumentation geaendert. Neue Konzeptdatei gezielt fuer Git vorgemerkt; kein Commit.
+
 ### Schuldenregister gegen Code und Testbestand abgeglichen
 
 Alle TS-01 bis TS-18 anhand aktueller Implementierung, Tests, Dockerfiles und Migrationsskripte geprueft; k8s-Verzeichnisse ausgeschlossen. TS-01/02/03/06/07/09 bleiben abgeschlossen, TS-08 jetzt konsistent als abgeschlossen ausgewiesen. R-01 unveraendert akzeptiertes Risiko. TS-05 und TS-10 bis TS-18 bleiben mit praezisiertem Restumfang offen.
