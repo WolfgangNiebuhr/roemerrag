@@ -60,7 +60,11 @@ def test_early_rome_question_end_to_end(vector_url, rag_url, test_id, e2e_ollama
         answer = result["response"]
         assert isinstance(answer, str) and answer.strip(), result
         assert any(name in answer.casefold() for name in ("karthag", "carthag")), answer
+        for key in ("embedding_duration", "retrieval_duration", "pipeline_duration"):
+            assert result["timings"][key] >= 0
+        assert result["timings"]["pipeline_duration"] >= sum(result["timings"][key] for key in ("embedding_duration", "retrieval_duration"))
         metrics = result["metrics"]
+        assert metrics["generation_duration"] == metrics["total_duration"]
         for key in (
             "total_duration", "load_duration", "prompt_eval_duration", "eval_duration",
             "prompt_tokens", "answer_tokens", "answer_rate",

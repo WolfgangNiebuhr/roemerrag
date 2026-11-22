@@ -22,7 +22,7 @@ sequenceDiagram
     Vector-->>RAG: Texte und Chunk-IDs
     Note over RAG: Treffervertrag validieren, leere Texte entfernen
     alt Kontext vorhanden
-        RAG->>Ollama: POST /api/generate (phi3:mini, Kontext und Frage)
+        RAG->>Ollama: POST /api/generate (answer_model, Standard gemma4:e4b, Kontext und Frage)
         Ollama-->>RAG: Antwort und Generierungsmetriken
         RAG-->>Client: response, chunks, metrics (fehlende Einzelwerte null)
     else Kein Kontext
@@ -127,3 +127,7 @@ Der zweite Befehl soll eine Basisadresse und Status `200` ausgeben. Er startet e
 „Connection refused“ allein beweist keine bestimmte Ursache. Im beobachteten Fehlerfall war der falsche Netzwerkweg entscheidend: Über den Windows-Gateway funktionierten Modellliste, Embeddings und anschließend der E2E-Test mit der Ollama-Hintergrund-App.
 
 Seit der Chunktext-Migration liest die Kontextbildung `chunktext` aus Suchtreffern. Import und Reranking reichen den Text unter diesem Namen weiter; `/find` durchsucht dieselbe Spalte. Der alte Feldname wird nicht als Alias angeboten.
+
+## Laufzeitmessung der RAG-Pipeline
+
+Die RAG-API misst mit time.monotonic die Abschnitte Embedding (einschliesslich Aufloesung, Normalisierung und Retries) und Retrieval (einschliesslich Trefferpruefung und Textfilterung). timings.pipeline_duration misst vom Beginn der Verarbeitung nach Eingangsvalidierung bis unmittelbar vor JSON-Antwortaufbau alle Schritte einschliesslich optionalem Reranking, Kontextbildung und Generierung. Antwortserialisierung, Uebertragung und CLI-Export gehoeren nicht dazu. timings steht auch bei no_context zur Verfuegung; Fehlerantworten enthalten keine Teillaufzeiten. Alle API-Zeiten sind ungerundete Sekunden. metrics.generation_duration stammt hingegen aus Ollamas total_duration und kann von der serverseitig gemessenen Generierungswartezeit abweichen. metrics.total_duration bleibt als kompatibler Alias erhalten.

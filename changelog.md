@@ -14,6 +14,50 @@ agent_instructions:
 Aus README und docs übernommene Änderungshistorie. Gleichdatierte Einträge folgen der umgekehrten Reihenfolge der dortigen Nachträge. Nicht datierbare Einträge stehen am Ende. Anleitungen: [README](README.md). Fachkonzepte: [Testkonzept](docs/8-1-testkonzept.md) und [Error-Handling](docs/8-3-error-handling.md).
 
 ## 2026-11-22
+### Neue RAG-Laufzeiten ausgerollt und live geprueft
+
+`python scripts/build_image.py rag-api --tag localhost/rag-api:timings-20261122` erfolgreich; Image-ID `32b7fe95e32f675c5b1a35beb0275a37587d69e8b5023b4f7645d95c37c0e45f`, auch localhost/rag-api:local. Container rag-api mit unveraenderter Startkonfiguration (Port 5600:5600, keine zusaetzlichen Umgebungsvariablen) ersetzt. Vorheriger Container bleibt gestoppt als rag-api-before-timings erhalten. Quellhash app.py im Container entspricht Workspace: `d9249f9836bb8afcfbffbcd594c9f0c7230c20262dd700edf1d3aabecbe0399b`. Datenbank, Vector-API, Reranker und Volumes unveraendert.
+
+Live-CLI ueber interact.main mit Argumenten `--query "Wer beherrschte das westliche Mittelmeer?" --num_results 3 --top_k 0` und anschliessend `--top_k 1`: beide HTTP 200, status ok, Exitcode 0, Modell gemma4:e4b, drei Retrieval-/Exportpassagen. Ohne Reranking: Embedding 0,14 s, Retrieval 0,03 s, Pipeline 14,09 s, Generierung 13,92 s. Mit Reranking: Embedding 2,74 s, Retrieval 0,03 s, Reranking 3,94 s, Pipeline 12,56 s, Generierung 5,85 s; ein ausgewaehlter Kontexttreffer pg3060-552.
+
+Automatisch geprueft: neue API-Zeitfelder endlich und nichtnegativ; Pipelinezeit mindestens Summe der gemessenen Teilzeiten einschliesslich Reranking; generation_duration identisch zum kompatiblen total_duration-Alias. CLI-Ausgabe mit Sekunden und zwei Nachkommastellen sowie getrennten Abschnitten bestaetigt. Bestehende search_results.json bytegetreu wiederhergestellt. Keine Datenbankschreibpruefung. Vorheriger Gesamtnachweis (216 bestanden) bleibt gueltig; keine erneute Gesamtsuite beim reinen Ausrollen ohne Codeaenderung.
+
+### Embedding-, Retrieval- und Pipeline-Laufzeiten ergaenzt
+
+RAG-API liefert timings.embedding_duration, timings.retrieval_duration und timings.pipeline_duration in ungerundeten Sekunden mit monotoner Uhr. Messbeginn am Eintritt in process_request nach Eingangsvalidierung; Pipelineende unmittelbar vor JSON-Antwortaufbau. Enthalten sind Aufloesung, Provideraufrufe, Validierung/Normalisierung, Retries, optionales Reranking und Generierung; Antwortserialisierung, Clienttransport und CLI-Export nicht enthalten. no_context enthaelt ebenfalls timings, metrics bleibt null; Fehlerantworten liefern keine Teillaufzeiten.
+
+Ollamas bisherige total_duration heisst nun metrics.generation_duration; metrics.total_duration bleibt kompatibler Alias. CLI benennt den Wert Generierungsdauer und zeigt zusaetzlich Embedding-/Retrieval-Laufzeiten im Retrievalabschnitt sowie RAG-Pipeline-Gesamtdauer. Einheitlich Sekunden mit zwei Nachkommastellen. Fehlende Felder aelterer APIs werden als nicht verfuegbar angezeigt. README, Bausteinsicht, Laufzeitsicht und Testkonzept aktualisiert.
+
+Pruefung: `python -m pytest -c tests/pytest.ini tests/unit -q`: **203 passed in 8.05s**. Abschliessend `python -m pytest -c tests/pytest.ini tests --all`: **216 passed in 260.42s (0:04:20)**, Exitcode 0, keine ausgelassenen Tests. Kontrollierte Uhr prueft exakte Messgrenzen mit/ohne Reranking und no_context vor/nach Reranking; CLI-Test prueft Rundung und Bezeichnungen. Echte RAG-Integration prueft neue Zeitfelder und kompatiblen Generierungsalias. Isolierte Testressourcen automatisch bereinigt; regulaere Container und Daten nicht geaendert. `git diff --check` erfolgreich. Fuer Live-Nutzung der neuen Servermessungen RAG-Image neu bauen und Container ersetzen.
+
+### Gruppierte CLI-Ausgabe am laufenden System geprueft
+
+Live-Aufrufe: `python interact.py --query "Wer beherrschte das westliche Mittelmeer?" --num_results 3 --top_k 0` und derselbe Aufruf mit `--top_k 1`. Beide erfolgreich (Exitcode 0), Antwortmodell gemma4:e4b, je drei Retrieval- und Exportpassagen. Ohne Reranking: Abschnitt meldet Deaktiviert; Generierungs-Gesamtdauer 13,53 s, Modell-Ladezeit 10,18 s, Prompt-Verarbeitung 0,40 s, Antwortgenerierung 2,94 s. Mit Reranking: cross-encoder/ms-marco-MiniLM-L6-v2, 0,28 s, ein ausgewaehlter Chunk pg3060-552; Generierungs-Gesamtdauer 0,86 s, Modell-Ladezeit 0,01 s, Prompt-Verarbeitung 0,09 s, Antwortgenerierung 0,25 s.
+
+Abschnitte Retrieval, Reranking und Antwortgenerierung sowie Leerzeilen und Sekundenformat mit zwei Nachkommastellen in beiden echten CLI-Ausgaben bestaetigt. Tokenzahlen und Antwort-Rate ausgegeben. Die Gesamtdauer stammt aus den Generierungsmetriken und umfasst nicht die gesamte RAG-Pipeline. Bestehende search_results.json nach den Tests bytegetreu wiederhergestellt. Keine Datenbank-Schreibpruefung, Code- oder Containeraenderung; vorheriger CLI-Unit-Nachweis bleibt erhalten, Gesamtsuite nicht erneut ausgefuehrt.
+
+### CLI-Ausgabe nach Verarbeitungsschritten gruppiert
+
+interact.py trennt Retrieval, Reranking und Antwortgenerierung durch Leerzeilen. Treffer/Export, Rerankermodell/ausgewaehlte Chunks sowie Antwort/Generierungsmetriken stehen jeweils im passenden Abschnitt. Saemtliche ausgegebenen Laufzeiten verwenden Sekunden mit zwei Nachkommastellen (auch Modell-Ladezeit); fehlende Werte bleiben nicht verfuegbar. Tokenzahlen bleiben unveraendert, Antwort-Rate mit zwei Nachkommastellen. Ausgelassene Schritte und no_context werden explizit angezeigt. README aktualisiert.
+
+Pruefung: `python -m pytest -c tests/pytest.ini tests/unit/test_interact.py -q`: **31 passed in 0.19s**. Ausgabepruefung sichert Abschnittsreihenfolge, Leerzeilen, Rundung, Einheiten und fehlende Messwerte. `git diff --check` erfolgreich. Keine Podman-/Modelltests oder erneute Gesamtsuite fuer die reine CLI-Darstellung; keine Containeraktualisierung erforderlich.
+
+### Antwortmodellstandard im laufenden RAG-System aktualisiert
+
+RAG-Image mit `python scripts/build_image.py rag-api --tag localhost/rag-api:gemma4-20261122` neu gebaut, Image-ID `68d7c0495b2cdca8fd6d2b0c762e974154a795594841adc09ee2f58c91aae4ac`; ebenfalls als localhost/rag-api:local markiert. Container rag-api mit unveraenderter Startkonfiguration (Port 5600:5600, keine weiteren Umgebungsvariablen) ersetzt. Bisheriger Container bleibt gestoppt als rag-api-before-gemma4 erhalten. Datenbank, Vector-API, Reranker und Volumes nicht ersetzt.
+
+Laufender API-Standard gemma4:e4b bestaetigt. SHA256 von app.py (`97ba723df545d40630168e525c64a4aa7e5a121838d150772caff636e402a7d1`) und embedding_config.py (`ceb0eb9a9b74617537284471a2589a5f3a5988b431f32feb2850895b8515c9f1`) stimmen mit dem Workspace ueberein.
+
+CLI-Livepruefung ueber interact.main mit Argumenten `--query "Wer beherrschte das westliche Mittelmeer?" --num_results 3 --top_k 1`: ohne Modelloption wird nachweislich answer_model=gemma4:e4b an die laufende RAG-API gesendet; mit `--answer-model phi3:mini` nachweislich phi3:mini. Beide Laeufe Exitcode 0, HTTP 200, status ok, Antwort und Generierungsmetriken. Reranking mit cross-encoder/ms-marco-MiniLM-L6-v2 erfolgreich: drei Retrievaltreffer, ein ausgewaehlter Kontexttreffer (pg3060-552), Export jeweils drei Passagen. Rerankingdauer rund 0,0121 s beziehungsweise 0,2740 s. Vorhandene search_results.json nach den Tests bytegetreu wiederhergestellt. Keine Datenbankschreibtests auf regulaeren Daten.
+
+Vorheriger Unit-Nachweis (197 bestanden) bleibt erhalten; reine Bereitstellung ohne Codeaenderung, deshalb keine erneute Gesamtsuite. Neuer Default und explizite Modellwahl sind jetzt im laufenden System geprueft.
+
+### Gemeinsames Antwortmodell gemma4:e4b
+
+CLI und RAG-API lesen den gemeinsamen Antwortmodellstandard aus rag/embedding_config.py: ohne Konfiguration gemma4:e4b, mit ANSWER_MODEL der konfigurierte Wert. Die vorhandene CLI-Option --answer-model und das API-Feld answer_model ueberschreiben diesen Standard pro Anfrage. Ungueltige Modellangaben ergeben weiterhin frueh HTTP 400 beziehungsweise CLI-Exitcode 2. Dokumentation und CLI-Beispiel aktualisiert; E2E-Tests behalten ihre explizite Modellwahl phi3:mini.
+
+Pruefung: `python -m pytest -c tests/pytest.ini tests/unit -q`: **197 passed in 9.83s**. Tests sichern Standard, Umgebungsueberschreibung, CLI-Weitergabe, explizite Modellwahl und API-Eingangsvalidierung ab. `git diff --check` erfolgreich. Keine erneuten Modell-/Podman-Integrationstests fuer diese reine Standardkonfigurationsaenderung; keine laufenden Container ersetzt. Fuer den neuen serverseitigen Default muss das RAG-Image neu gebaut und der Container neu erstellt werden.
+
 ### TS-09: RAG-Image ausgerollt und CLI am laufenden System geprueft
 
 `python scripts/build_image.py rag-api --tag localhost/rag-api:ts09-20261122` erfolgreich. Image-ID `5b8f07e93e665b01d2a2639d94e987e7f6bf89ac4124bed44740ee5b20079d4b`, ebenfalls als `localhost/rag-api:local` markiert. Laufenden Container `rag-api` mit bisheriger Konfiguration (Port 5600:5600, eigenstaendiges Netzwerk, keine zusaetzlichen Umgebungsvariablen) ersetzt. Vorheriger Container bleibt gestoppt als `rag-api-before-ts09` fuer einen Rueckweg erhalten. Datenbank, Vector-API, Reranker und Volumes unveraendert.

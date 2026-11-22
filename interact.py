@@ -39,9 +39,9 @@ def post_json(url, payload, operation, timeout):
         raise RuntimeError(operation + ": Ungueltige JSON-Antwort.") from error
 
 
-from rag.embedding_config import EMBEDDING_SET_ID
+from rag.embedding_config import EMBEDDING_SET_ID, ANSWER_MODEL
 RAG_API_URL = os.getenv("RAG_API_URL", "http://localhost:5600/process")
-ANSWER_MODEL_NAME = os.getenv("ANSWER_MODEL", "phi3:mini")
+ANSWER_MODEL_NAME = ANSWER_MODEL
 
 
 def export_results(query, results, filename="search_results.json"):
@@ -94,6 +94,11 @@ def metric_value(value):
     return value
 
 
+def seconds(value):
+    """API durations already use seconds; preserve missing measurements."""
+    return "nicht verfuegbar" if value is None else f"{value:.2f} s"
+
+
 def main():
     parser = GermanArgumentParser(allow_abbrev=False, description="Interaktives KI-Tool für Embedding, Suche und Antwortgenerierung.")
     parser.add_argument("--metric", type=metric_value, metavar="{cosine,euclidean}", default="cosine", help="Die zu verwendende Metrik (z.B. 'euclidean', 'cosine').")
@@ -102,8 +107,8 @@ def main():
     parser.add_argument("--query", type=str, required=True, help="Die Query, die verarbeitet werden soll.")
     parser.add_argument("--top_k", type=german_integer, default=6, help="Anzahl der Top-Rerank-Ergebnisse.")
     parser.add_argument("--reranker", type=str, default="cross-encoder/ms-marco-MiniLM-L6-v2", help="Zu verwendendes Reranker-Modell")
-
     parser.add_argument("--answer-model", default=ANSWER_MODEL_NAME, help="Antwortmodell")
+
     args = parser.parse_args()
 
     if not 1 <= args.num_results <= 100:
@@ -125,20 +130,48 @@ def main():
         retrieved = validate_results(body.get("retrieved_results"))
         selected = validate_results(body.get("selected_results"))
         print("Frage:", args.query)
-        print("Antwort:", body["response"])
-        if body["status"] == "no_context":
-            print("no_context")
-            return 0
-        export_results(args.query, retrieved)
-        for label, rows in (("found Chunks", retrieved), ("selected Chunks", selected)):
-            print(label + ":")
-            for index, row in enumerate(rows, 1):
+        timings = body.get("timings") or {}
+        print("\nRetrieval")
+        print("Embedding-Laufzeit:", seconds(timings.get("embedding_duration")))
+        print("Retrieval-Laufzeit:", seconds(timings.get("retrieval_duration")))
+        print("Gefundene Chunks:")
+        for index, row in enumerate(retrieved, 1):
+            print(f"{index}. {row['chunk_id']}")
+        if body["status"] == "ok":
+            print()
+            export_results(args.query, retrieved)
+
+        print("\nReranking")
+        reranking = body.get("reranking")
+        if reranking:
+            print("Modell:", reranking["model"])
+            print("Laufzeit:", seconds(reranking.get("duration")))
+            print("Ausgewaehlte Chunks:")
+            for index, row in enumerate(selected, 1):
                 print(f"{index}. {row['chunk_id']}")
+        else:
+            print("Deaktiviert." if args.top_k == 0 else "Nicht ausgefuehrt (kein Kontext).")
+
+        print("\nAntwortgenerierung")
+        print("Modell:", args.answer_model)
+        print("\nAntwort:")
+        print(body["response"])
+        print("\nRAG-Pipeline-Gesamtdauer:", seconds(timings.get("pipeline_duration")))
+        if body["status"] == "no_context":
+            print("\nKeine Generierung (no_context).")
+            return 0
         metrics = body.get("metrics") or {}
-        for key, value in metrics.items():
-            print(f"{key}: {value if value is not None else 'nicht verfuegbar'}")
-        if body.get("reranking"):
-            print("Reranking:", body["reranking"])
+        print("\nLaufzeiten:")
+        for key, label in (("generation_duration", "Generierungsdauer"), ("load_duration", "Modell-Ladezeit"),
+                           ("prompt_eval_duration", "Prompt-Verarbeitung"), ("eval_duration", "Antwortgenerierung")):
+            value = metrics.get(key, metrics.get("total_duration")) if key == "generation_duration" else metrics.get(key)
+            print(f"{label}: {seconds(value)}")
+        print("\nToken:")
+        for key, label in (("prompt_tokens", "Prompt"), ("answer_tokens", "Antwort")):
+            value = metrics.get(key)
+            print(f"{label}: {value if value is not None else 'nicht verfuegbar'}")
+        rate = metrics.get("answer_rate")
+        print("Antwort-Rate:", f"{rate:.2f} Token/s" if rate is not None else "nicht verfuegbar")
         return 0
     except Exception as exc:
         print(f"Fehler: {exc}", file=sys.stderr)

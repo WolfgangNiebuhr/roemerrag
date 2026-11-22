@@ -27,6 +27,8 @@ def generation_metrics(data):
     for key in ("total_duration", "load_duration", "prompt_eval_duration", "eval_duration"):
         value = number(key)
         metrics[key] = value / 1e9 if value is not None else None
+    # Keep the previous wire field as a compatibility alias.
+    metrics["generation_duration"] = metrics["total_duration"]
     metrics["prompt_tokens"] = number("prompt_eval_count", count=True)
     metrics["answer_tokens"] = number("eval_count", count=True)
     duration, tokens = metrics["eval_duration"], metrics["answer_tokens"]

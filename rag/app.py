@@ -23,9 +23,9 @@ install(app, "rag")
 OLLAMA_BASE_URL = os.environ.get("OLLAMA_BASE_URL", "http://host.containers.internal:11434").rstrip("/")
 OLLAMA_EMBEDDING_URL = OLLAMA_BASE_URL + "/api/embeddings"
 if __package__:
-    from .embedding_config import EMBEDDING_MODEL, EMBEDDING_SET_ID
+    from .embedding_config import EMBEDDING_MODEL, EMBEDDING_SET_ID, ANSWER_MODEL
 else:
-    from embedding_config import EMBEDDING_MODEL, EMBEDDING_SET_ID
+    from embedding_config import EMBEDDING_MODEL, EMBEDDING_SET_ID, ANSWER_MODEL
 EMBEDDING_MODEL_NAME = EMBEDDING_MODEL
 
 ## Retrieval
@@ -34,7 +34,7 @@ NUM_RESULTS = 5
 
 ## Generation
 OLLAMA_ANSWER_URL = OLLAMA_BASE_URL + "/api/generate"
-ANSWER_MODEL_NAME = os.getenv("ANSWER_MODEL", "phi3:mini")
+ANSWER_MODEL_NAME = ANSWER_MODEL
 RERANKER_URL = os.getenv("RERANKER_URL", "http://host.containers.internal:5000/rerank")
 RERANKER_MODEL = os.getenv("RERANK_MODEL", "cross-encoder/ms-marco-MiniLM-L6-v2")
 
@@ -164,17 +164,23 @@ def rerank_results(query, results, model, top_k):
 
 @app.route('/process', methods=['POST'])
 def process_request():
-    g.deadline = time.monotonic() + TOTAL_TIMEOUT
+    pipeline_started = time.monotonic()
+    g.deadline = pipeline_started + TOTAL_TIMEOUT
+    timings = {}
     data = request.get_json()
     query = data["query"]
     embedding_set = data.get("embedding_set_id", data.get("filter", EMBEDDING_SET_ID))
     g.stage = "embedding"
+    started = time.monotonic()
     embedding = generate_embedding(query)
+    timings["embedding_duration"] = time.monotonic() - started
     g.stage = "retrieval"
+    started = time.monotonic()
     retrieved = validate_results(search_vectors(embedding, embedding_set,
                                 data.get("metric", "euclidean"), data.get("num_results", 5)))
     retrieved = [{"chunk_id": row["chunk_id"], "chunktext": row["chunktext"]}
                  for row in retrieved if row["chunktext"].strip()]
+    timings["retrieval_duration"] = time.monotonic() - started
     selected = retrieved
     reranking = None
     top_k = data.get("top_k", 0)
@@ -185,13 +191,15 @@ def process_request():
         selected = rerank_results(query, retrieved, model, top_k)
         reranking = {"model": model, "duration": time.monotonic() - started}
     result = {"retrieved_results": retrieved, "selected_results": selected,
-              "reranking": reranking, "chunks": [row["chunk_id"] for row in selected]}
+              "reranking": reranking, "timings": timings, "chunks": [row["chunk_id"] for row in selected]}
     if not selected:
+        timings["pipeline_duration"] = time.monotonic() - pipeline_started
         return jsonify(**result, status="no_context", metrics=None,
                        response="Die Frage kann basierend auf dem gegebenen Kontext nicht beantwortet werden.")
     g.stage = "generation"
     context = "\n".join(row["chunktext"] for row in selected)
     answer, metrics = generate_answer(context, query, data.get("answer_model", ANSWER_MODEL_NAME))
+    timings["pipeline_duration"] = time.monotonic() - pipeline_started
     return jsonify(**result, status="ok", response=answer, metrics=metrics)
 
 

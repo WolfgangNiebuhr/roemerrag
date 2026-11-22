@@ -142,3 +142,33 @@ def test_nontext_ollama_error_is_not_dumped(monkeypatch, body):
     with pytest.raises(RuntimeError) as caught:
         cli.post_json('url', {}, 'Embedding', 300)
     assert str(caught.value) == 'Embedding: HTTP 500'
+
+
+def test_cli_uses_shared_answer_default(monkeypatch):
+    from rag.embedding_config import ANSWER_MODEL
+    arguments(monkeypatch)
+    post = Mock(return_value={'status':'no_context', 'response':'empty',
+                             'retrieved_results':[], 'selected_results':[]})
+    monkeypatch.setattr(cli, 'post_json', post)
+    assert cli.main() == 0
+    assert post.call_args.args[1]['answer_model'] == ANSWER_MODEL
+
+
+def test_output_groups_and_seconds(monkeypatch, capsys):
+    arguments(monkeypatch)
+    rows = [{'chunk_id':'c', 'chunktext':'text'}]
+    monkeypatch.setattr(cli, 'post_json', Mock(return_value={
+        'status':'ok', 'response':'answer', 'retrieved_results':rows, 'selected_results':rows,
+        'reranking':{'model':'ranker', 'duration':0.012345},
+        'timings':{'embedding_duration':0.4567, 'retrieval_duration':0.1234, 'pipeline_duration':14.5678},
+        'metrics':{'generation_duration':12.3456, 'load_duration':0.001,
+                   'prompt_eval_duration':None, 'eval_duration':2, 'answer_rate':3.456}}))
+    monkeypatch.setattr(cli, 'export_results', Mock())
+    assert cli.main() == 0
+    output = capsys.readouterr().out
+    assert output.index('\nRetrieval\n') < output.index('\nReranking\n') < output.index('\nAntwortgenerierung\n')
+    for expected in ('Embedding-Laufzeit: 0.46 s', 'Retrieval-Laufzeit: 0.12 s',
+                     'RAG-Pipeline-Gesamtdauer: 14.57 s', 'Laufzeit: 0.01 s', 'Generierungsdauer: 12.35 s', 'Modell-Ladezeit: 0.00 s',
+                     'Prompt-Verarbeitung: nicht verfuegbar', 'Antwortgenerierung: 2.00 s',
+                     'Antwort-Rate: 3.46 Token/s'):
+        assert expected in output

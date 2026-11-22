@@ -127,7 +127,7 @@ def test_generate_answer_converts_metrics_and_reports_http_error(monkeypatch):
 
     assert answer == "answer"
     assert metrics == {
-        "total_duration": 2.0, "load_duration": 0.5,
+        "total_duration": 2.0, "generation_duration": 2.0, "load_duration": 0.5,
         "prompt_eval_duration": 0.25, "eval_duration": 1.0,
         "prompt_tokens": 12, "answer_tokens": 8, "answer_rate": 8.0,
     }
@@ -337,3 +337,53 @@ def test_analysis_uses_shared_provider_functions():
     assert analyze.generate_embedding is rag_app.generate_embedding
     assert analyze._search_vectors is rag_app.search_vectors
     assert analyze._generate_answer is rag_app.generate_answer
+
+
+@pytest.mark.parametrize('value', [None, '', ' ', 42])
+def test_invalid_answer_model_rejected_before_embedding(monkeypatch, value):
+    embed = Mock()
+    monkeypatch.setattr(rag_app, 'generate_embedding', embed)
+    assert rag_app.app.test_client().post('/process', json={'query':'q','answer_model':value}).status_code == 400
+    embed.assert_not_called()
+
+
+def test_answer_model_configuration_defaults_and_override():
+    import os
+    import subprocess
+    import sys
+    environment = dict(os.environ)
+    environment.pop('ANSWER_MODEL', None)
+    code = 'from rag.embedding_config import ANSWER_MODEL; print(ANSWER_MODEL)'
+    result = subprocess.check_output([sys.executable, '-c', code], env=environment, text=True)
+    assert result.strip() == 'gemma4:e4b'
+    environment['ANSWER_MODEL'] = 'custom-model'
+    assert subprocess.check_output([sys.executable, '-c', code], env=environment, text=True).strip() == 'custom-model'
+
+
+@pytest.mark.parametrize('mode', ['plain', 'rerank', 'empty', 'empty_rerank'])
+def test_pipeline_timings_include_all_steps_and_no_context(monkeypatch, mode):
+    from types import SimpleNamespace
+    clock = iter(range(20))
+    monkeypatch.setattr(rag_app, 'time', SimpleNamespace(monotonic=lambda: next(clock)))
+    rows = [{'chunk_id':'c', 'chunktext':'text'}]
+    monkeypatch.setattr(rag_app, 'generate_embedding', Mock(return_value=[1]))
+    monkeypatch.setattr(rag_app, 'search_vectors', Mock(return_value=[] if mode == 'empty' else rows))
+    monkeypatch.setattr(rag_app, 'rerank_results', Mock(return_value=[] if mode == 'empty_rerank' else rows))
+    generate = Mock(return_value=('answer', {}))
+    monkeypatch.setattr(rag_app, 'generate_answer', generate)
+    enabled = mode in ('rerank', 'empty_rerank')
+    body = rag_app.app.test_client().post('/process', json={'query':'q', 'top_k':1 if enabled else 0}).json
+    assert body['timings'] == {'embedding_duration':1, 'retrieval_duration':1,
+                               'pipeline_duration':7 if enabled else 5}
+    if enabled:
+        assert body['reranking']['duration'] == 1
+    if mode in ('empty', 'empty_rerank'):
+        assert body['metrics'] is None
+        generate.assert_not_called()
+    else:
+        generate.assert_called_once()
+
+
+def test_generation_duration_has_compatible_alias():
+    metrics = rag_app.generation_metrics({'total_duration':1500000000})
+    assert metrics['generation_duration'] == metrics['total_duration'] == 1.5

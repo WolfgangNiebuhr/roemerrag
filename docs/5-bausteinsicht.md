@@ -60,7 +60,7 @@ Die Importskripte verwenden eigene fest konfigurierte Dienstadressen. `OLLAMA_HO
 | Embeddingadapter | `/api/embeddings`, Modell `snowflake-arctic-embed2`, Normalisierung des Fragevektors. |
 | Retrievaladapter | `VECTOR_API_URL`, Standard `http://host.containers.internal:5500/search`. Im gemeinsamen Pod explizit `http://127.0.0.1:5500/search` setzen. |
 | Kontextbildung | Verknüpft `chunktext` der Treffer und sammelt `chunk_id`. |
-| Generierungsadapter | `/api/generate`, Modell `phi3:mini`, ohne Streaming; liefert Antwort und Laufzeit-/Tokenmetriken. |
+| Generierungsadapter | `/api/generate`, Modell `gemma4:e4b`, ohne Streaming; liefert Antwort und Laufzeit-/Tokenmetriken. |
 
 Die Antwort enthält `response`, `chunks` und `metrics`. Der Prompt verlangt Antworten nur aus dem Kontext; eine technische Garantie für Faktentreue besteht nicht. Resolvergrenzen, Wiederholungsverhalten und Netzwerkdiagnose stehen in der [Laufzeitsicht](6-laufzeitsicht.md).
 
@@ -81,7 +81,7 @@ Die Tabelle `vectors` enthält `id SERIAL PRIMARY KEY`, `chunk_id TEXT NOT NULL`
 
 ### 5.3.4 Ollama und Reranker
 
-Ollama benötigt `snowflake-arctic-embed2` für Embeddings und `phi3:mini` für RAG-Antworten. `import3.py` benötigt zusätzlich `gemma3:4b`. Die Modelle werden auf dem Windows-Host bereitgestellt; sie liegen nicht im RAG-Image oder im PostgreSQL-Volume.
+Ollama benötigt `snowflake-arctic-embed2` für Embeddings und `gemma4:e4b` für RAG-Antworten. `import3.py` benötigt zusätzlich `gemma3:4b`. Die Modelle werden auf dem Windows-Host bereitgestellt; sie liegen nicht im RAG-Image oder im PostgreSQL-Volume.
 
 Das Reranker-Image installiert Flask, sentence-transformers und torch und laedt beim Build `cross-encoder/ms-marco-MiniLM-L6-v2` vor. `POST /rerank` akzeptiert optional `model`; ohne Angabe gilt `RERANK_MODEL`. Ein aktiver CrossEncoder wird bei gleicher Auswahl wiederverwendet und bei Modellwechsel ersetzt. Laden und Inferenz sind gemeinsam synchronisiert. Neue Gewichte werden bei Bedarf geladen; Modelle mit erforderlichem Remote-Code werden nicht unterstuetzt (`trust_remote_code=False`). Ladefehler liefern HTTP 503 ohne Fallback. Antworten enthalten das verwendete `model` und `ranked_documents` mit `original_index`, `score` und `text`, absteigend sortiert. Leere Dokumentlisten laden kein Modell. `/health` nennt das aktive Modell und laedt beim ersten Aufruf das Defaultmodell. Der alternative Standalone-Code `reranker-local.py` ist nicht der Einstiegspunkt des Podman-Images.
 
@@ -128,4 +128,6 @@ Historische Aenderungs- und Pruefnachweise: [Changelog](../changelog.md).
 
 TS-07: Die Vector-API trennt Prozess-Liveness (`/health/live`) und Datenbank-Readiness (`/health/ready`). Poolinitialisierung ist bedarfsgesteuert und wiederholbar; gleichzeitig eintreffende Requests warten nicht auf den Initialisierungslock. Datenbankverbindungen begrenzen Verbindungs-, Statement- und Lock-Wartezeit jeweils auf drei Sekunden. Defekte Verbindungen werden verworfen; nach Datenbankwiederanlauf kann sich die API ohne Neustart erholen.
 
-TS-09: `/process` orchestriert Embedding, Retrieval, optional Reranking und Generierung. interact.py uebernimmt nur CLI-Validierung, einen API-Aufruf, Anzeige und lokalen Export. analyze.py verwendet dieselben Providerfunktionen und denselben Prompt aus rag/app.py. Modellunterschiede sind explizite Parameter; Antwortmodellstandard ist phi3:mini. Die API gibt urspruengliche und ausgewaehlte Treffer getrennt zurueck. Transportadapter begrenzen Timeouts und sichere Retries; Generierung und Writes werden nicht automatisch wiederholt.
+TS-09: `/process` orchestriert Embedding, Retrieval, optional Reranking und Generierung. interact.py uebernimmt nur CLI-Validierung, einen API-Aufruf, Anzeige und lokalen Export. analyze.py verwendet dieselben Providerfunktionen und denselben Prompt aus rag/app.py. Modellunterschiede sind explizite Parameter; Antwortmodellstandard ist gemma4:e4b. Die API gibt urspruengliche und ausgewaehlte Treffer getrennt zurueck. Transportadapter begrenzen Timeouts und sichere Retries; Generierung und Writes werden nicht automatisch wiederholt.
+
+Die RAG-Antwort trennt Server-Laufzeiten in timings (embedding_duration, retrieval_duration, pipeline_duration) von Ollama-Generierungsmetriken. Deren generation_duration ersetzt die mehrdeutige Bezeichnung total_duration; letzteres bleibt Kompatibilitaetsalias. no_context enthaelt ebenfalls timings.
