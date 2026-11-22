@@ -130,7 +130,7 @@ Die Ollama-Ermittlung wird containerfrei in `tests/unit/test_ollama_endpoint.py`
 
 ## Empfohlene Ausbaureihenfolge
 
-Die projektweite Reihenfolge und die Abschlusskriterien stehen in [Kapitel 11 – Risiken und technische Schulden](11-risiken-und-technische-schulden.md#113-priorisierte-reihenfolge-für-den-abbau). TS-17 beschreibt die übergreifenden Testlücken. Tests begleiten die jeweilige Korrektur:
+Die projektweite Reihenfolge und die Abschlusskriterien stehen in [Kapitel 11.2 – Technische Schulden](11-2-technische-schulden.md#1123-priorisierte-reihenfolge-für-den-abbau). TS-17 beschreibt die übergreifenden Testlücken. Tests begleiten die jeweilige Korrektur:
 
 1. Zuerst Regressionstests für abweichende Defaults, wirkungslose Modellwahl, falschen Goldtext, ungültige Requests, leeren Kontext und Nullzeiten ergänzen (Pakete 1 und 2).
 2. Atomare Writes, Poolnutzung und verzögerten DB-Start isoliert mit Podman prüfen; danach Migration, Variantenisolation und Wiederholungsimporte absichern (Pakete 3 bis 5).

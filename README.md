@@ -10,7 +10,7 @@ Das System unterstützt folgende Aufgaben:
 - Modelle und Reranking über lokale Werkzeuge beziehungsweise HTTP-Schnittstellen erproben. Der eigenständige Reranker ist derzeit nicht in den Ablauf der RAG-API eingebunden.
 
 
-?nderungen und Ausrollnachweise stehen im [Changelog](changelog.md). Diese README beschreibt Einrichtung, Bedienung und aktuellen Schnittstellenvertrag.
+Änderungen und Ausrollnachweise stehen im [Changelog](changelog.md). Diese README beschreibt Einrichtung, Bedienung und aktuellen Schnittstellenvertrag.
 
 Die arc42-Dokumentation beginnt mit [Einführung und Zielen](docs/1-einfuehrung-und-ziele.md), [Randbedingungen](docs/2-randbedingungen.md) und [Kontextabgrenzung](docs/3-kontextabgrenzung.md).
 
@@ -242,7 +242,7 @@ Vor Dienstzugriffen werden JSON-Objekte, nichtleere Textfelder, Set-Aliase, Metr
 
 Die API-Images werden mit `scripts/build_image.py` aus einem temporaeren Build-Kontext gebaut (siehe Befehle oben). Das Skript kopiert ausschliesslich die pro Dienst aufgelisteten Quelldateien und das gemeinsame Paket `rag_common`; es durchsucht weder Tests noch historische Verzeichnisse. Dies umgeht den Windows-Podman-Fehler beim Lesen gesperrter Verzeichnisse trotz Ignore-Regeln. Der temporaere Kontext wird auch bei Buildfehlern entfernt. Neue Laufzeitdateien muessen in der Eingabeliste des Skripts ergaenzt werden. Nach Codeaenderungen Images neu bauen und Container neu erstellen. Weitergehende Adapterklassifikation, Retrybudgets, Importabschluss und Readiness sind noch Zielkonzept: [Kapitel 8.3](docs/8-3-error-handling.md).
 
-Auch bei pytest-Aufrufen aus tests, tests/unit und tests/podman greift die gemeinsame Temp-/Cache-Absicherung. Ein ausdrücklich aktivierter Cache-Provider wird vor seiner Initialisierung in den externen Tempbereich (rag-pytest-cache) umgeleitet, selbst bei überschriebenem addopts/cache_dir. Prüfnachweis und Grenzen (insbesondere --noconftest/--confcutdir) siehe [Testkonzept](docs/8-1-testkonzept.md).
+Auch bei pytest-Aufrufen aus tests, tests/unit und tests/podman greift die gemeinsame Temp-/Cache-Absicherung. Ein ausdrücklich aktivierter Cache-Provider wird vor seiner Initialisierung in den externen Tempbereich (rag-pytest-cache) umgeleitet, selbst bei überschriebenem addopts/cache_dir. Grenzen (insbesondere --noconftest/--confcutdir) siehe [Testkonzept](docs/8-1-testkonzept.md); historische Prüfnachweise stehen im [Changelog](changelog.md).
 
 ## RAG-Antworten und Metriken
 

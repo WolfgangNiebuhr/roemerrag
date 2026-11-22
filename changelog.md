@@ -11,9 +11,14 @@ agent_instructions:
 
 # Changelog
 
-Aus README und docs uebernommene Aenderungshistorie. Gleichdatierte Einträge folgen der umgekehrten Reihenfolge der dortigen Nachträge. Nicht datierbare Einträge stehen am Ende. Anleitungen: [README](README.md). Fachkonzepte: [Testkonzept](docs/8-1-testkonzept.md) und [Error-Handling](docs/8-3-error-handling.md).
+Aus README und docs übernommene Änderungshistorie. Gleichdatierte Einträge folgen der umgekehrten Reihenfolge der dortigen Nachträge. Nicht datierbare Einträge stehen am Ende. Anleitungen: [README](README.md). Fachkonzepte: [Testkonzept](docs/8-1-testkonzept.md) und [Error-Handling](docs/8-3-error-handling.md).
 
 ## 2026-11-22
+
+### Dokumentationsverweise bereinigt
+
+Lokale Dateilinks und Abschnittsanker in README, docs und Changelog geprueft; Verweise auf das ehemalige kombinierte Kapitel 11 und den verschobenen TS-08-Ausrollnachweis korrigiert. Verweise auf historische Pruefergebnisse zeigen auf das Changelog. Datumsgruppen stehen absteigend; explizit datierte Detailnachweise wurden aus dem undatierten Bereich einsortiert. Beschaedigten Umlaut in der README korrigiert. Keine Code-Tests erforderlich (nur Dokumentation).
+
 
 ### Deutsche CLI-Validierung
 
@@ -51,7 +56,7 @@ CLI-Fortschreibung (22.11.2026, TS-08/TS-09/TS-12): interact.py verwendet diesel
 
 #### Quelle: `docs/11-2-technische-schulden.md`
 
-- **Ausrollen und Betriebsprüfung (22.11.2026):** Alle drei regulären API-Images neu gebaut und die laufenden API-Container mit ihren bisherigen Startparametern ersetzt. Aktuelle Image-IDs sowie Erhalt von Ports, Pod-Zuordnung, Startkonfiguration, Umgebungsvariablen (außer HOSTNAME), GPU-Geräten und Mounts verifiziert. RFC-9457-Antworten aller APIs, Reranker-Health/Inferenz und vollständige RAG-Generierung mit zwei Quellchunks erfolgreich geprüft. Eine RAG-Anfrage mit zufälliger unbenutzter Set-ID lieferte HTTP 200 mit `status: no_context`, leeren Chunks und `metrics: null`, ohne Bestandsdaten zu verändern. Datenbankcontainer und Volume `pgvector-data` blieben erhalten; SQL- und API-Zählung ergaben weiterhin 10.378 Zeilen. Vorgängercontainer bleiben gestoppt mit Suffix `-before-ts08-20261122` als Rückweg erhalten. Details: [Kapitel 8.3](docs/8-3-error-handling.md#ts-08-ausrollen-und-betriebsprüfung-22112026).
+- **Ausrollen und Betriebsprüfung (22.11.2026):** Alle drei regulären API-Images neu gebaut und die laufenden API-Container mit ihren bisherigen Startparametern ersetzt. Aktuelle Image-IDs sowie Erhalt von Ports, Pod-Zuordnung, Startkonfiguration, Umgebungsvariablen (außer HOSTNAME), GPU-Geräten und Mounts verifiziert. RFC-9457-Antworten aller APIs, Reranker-Health/Inferenz und vollständige RAG-Generierung mit zwei Quellchunks erfolgreich geprüft. Eine RAG-Anfrage mit zufälliger unbenutzter Set-ID lieferte HTTP 200 mit `status: no_context`, leeren Chunks und `metrics: null`, ohne Bestandsdaten zu verändern. Datenbankcontainer und Volume `pgvector-data` blieben erhalten; SQL- und API-Zählung ergaben weiterhin 10.378 Zeilen. Vorgängercontainer bleiben gestoppt mit Suffix `-before-ts08-20261122` als Rückweg erhalten. Details: [TS-08-Ausrollnachweis](#ts-08-implementiert-und-ausgerollt).
 
 #### Quelle: `docs/8-1-testkonzept.md`
 

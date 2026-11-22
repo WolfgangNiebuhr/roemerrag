@@ -99,7 +99,7 @@ Die Testfixture baut einen eigenen Pod mit eindeutigen Container-/Image-Namen un
 
 ## 5.5 Offene Punkte
 
-Das zentrale Register mit Nachweisen, Prioritäten und Abschlusskriterien steht in [Kapitel 11 – Risiken und technische Schulden](11-risiken-und-technische-schulden.md). Die folgende Tabelle fasst die Auswirkungen auf die Bausteinsicht zusammen; die Abbaureihenfolge wird in Kapitel 11 gepflegt.
+Das zentrale Register mit Status, Prioritäten und Abschlusskriterien steht in [Kapitel 11.2 – Technische Schulden](11-2-technische-schulden.md). Die folgende Tabelle fasst die Auswirkungen auf die Bausteinsicht zusammen; die Abbaureihenfolge wird in Kapitel 11 gepflegt.
 
 | Befund | Auswirkung |
 |---|---|
