@@ -22,7 +22,7 @@ CHUNK_SIZE = 1000  # Größe der Chunks in Zeichen
 OVERLAP = 150  # Überlappung zwischen den Chunks
 
 def setup_logging(file_path):
-    base = os.path.basename(file_path).split('.')[0]
+    base = Path(file_path).stem
     timestamp = datetime.now().strftime("%Y-%m-%d_%H-%M-%S")
     log_filename = f"{base}_{timestamp}.log"
     logging.basicConfig(
@@ -65,7 +65,7 @@ def store_vector_in_db(chunk_id, embedding_set_id, vector, chunk):
 
 def process_file(file_path, start):
     """Verarbeitet eine Datei: Zerlegen, Embeddings generieren, in DB speichern."""
-    file_name = os.path.basename(file_path).split('.')[0]
+    file_name = Path(file_path).stem
     chunks = split_text_into_chunks(file_path, CHUNK_SIZE, OVERLAP)
     for i, chunk in enumerate(chunks):
         if i+1 >= start:

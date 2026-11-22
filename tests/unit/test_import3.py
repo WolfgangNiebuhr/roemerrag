@@ -76,3 +76,26 @@ def test_standard_import_is_selected_by_standard_retrieval(monkeypatch):
     assert response.status_code == 200
     assert response.json["chunks"] == [stored[0][0]]
     assert importer.MODEL_NAME == rag_app.EMBEDDING_MODEL_NAME
+
+
+@pytest.mark.parametrize('filename,stem', [
+    ('rom.band1.txt', 'rom.band1'), ('rom.band2.txt', 'rom.band2'),
+    ('rom', 'rom'), ('rom.txt', 'rom'),
+])
+def test_file_stem_used_for_chunks_and_log(monkeypatch, tmp_path, filename, stem):
+    monkeypatch.syspath_prepend(str(Path(__file__).resolve().parents[2] / 'Ingest'))
+    importer = importlib.import_module('import3')
+    source = tmp_path / filename
+    source.write_text('RomaAA\n\nCapuaB\n\nOstiaC\n\nGallia', encoding='utf-8')
+    monkeypatch.setattr(importer, 'CHUNK_SIZE', 18)
+    monkeypatch.setattr(importer, 'OVERLAP', 8)
+    monkeypatch.setattr(importer, 'get_keywords_ollama', lambda text: ('Rom', {}, None))
+    monkeypatch.setattr(importer, 'generate_embedding', lambda text: importer.np.array([1.0]))
+    store = Mock()
+    monkeypatch.setattr(importer, 'store_vector_in_db', store)
+    configure_log = Mock()
+    monkeypatch.setattr(importer.logging, 'basicConfig', configure_log)
+    importer.setup_logging(str(source))
+    assert configure_log.call_args.kwargs['filename'].startswith(stem + '_')
+    importer.process_file(str(source), 1)
+    assert [call.args[0] for call in store.call_args_list] == [stem + '-1', stem + '-2', stem + '-3']

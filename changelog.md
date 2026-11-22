@@ -14,6 +14,12 @@ agent_instructions:
 Aus README und docs übernommene Änderungshistorie. Gleichdatierte Einträge folgen der umgekehrten Reihenfolge der dortigen Nachträge. Nicht datierbare Einträge stehen am Ende. Anleitungen: [README](README.md). Fachkonzepte: [Testkonzept](docs/8-1-testkonzept.md) und [Error-Handling](docs/8-3-error-handling.md).
 
 ## 2026-11-22
+### TS-05 teilweise umgesetzt: Import3 verwendet Path.stem
+
+Chunk-ID- und Logdateistamm in Ingest/import3.py auf Path(file_path).stem umgestellt. Mehrere Punkte bleiben bis auf die letzte Erweiterung erhalten; erweiterungslose Namen bleiben unveraendert. Parametrisierte Tests durchlaufen echtes Chunking fuer rom.band1.txt, rom.band2.txt, rom und rom.txt, pruefen drei gespeicherte Chunk-IDs und den Logdateistamm mit gemockten externen Abhaengigkeiten. Risiko R-02 bleibt akzeptiert. TS-05 bleibt fuer kuerzere Neuimporte, Freigabe, Fehlerabschluss, Resume und Bestandsbereinigung offen. Konzept, Register, Risikoeintrag und README aktualisiert.
+
+Pruefung: `python -m pytest -c tests/pytest.ini tests/unit -q`: **225 passed in 8.36s**. `git diff --check` erfolgreich. Keine Integration mit Podman/Ollama erneut ausgefuehrt, da ausschliesslich lokale Dateistamm-Ermittlung geaendert und ueber den echten Importablauf containerfrei geprueft. Keine Imports auf Bestandsdaten, Migrationen oder Containeraktualisierungen ausgefuehrt. Alte IDs mehrteiliger Namen werden nicht automatisch geloescht; vor Wiederholungsimport Altbestand pruefen und Bereinigung planen.
+
 ### Dateistamm-Regel und akzeptiertes Kollisionsrisiko dokumentiert
 
 Kapitel 8.4 und TS-05 legen Chunk-IDs als Dateinamen ohne letzte Erweiterung (Path.stem) plus Chunknummer ab 1 fest. Eindeutigkeit des Stamms gilt innerhalb eines Embedding-Sets; keine Versions-/Pfadkomponenten im Chunkschluessel. R-02 akzeptiert Kollisionen etwa zwischen rom.txt und rom.md sowie gleichen Namen aus verschiedenen Verzeichnissen; manuell umbenennen oder getrennte Sets verwenden. Keine technische Kollisionsregistrierung vorgesehen. Abbauplan auf diese Entscheidung angepasst. Codekorrektur, Bestandsbereinigung, kuerzere Neuimporte und Fehlerabschluss bleiben offen.
