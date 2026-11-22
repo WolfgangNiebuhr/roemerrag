@@ -114,7 +114,7 @@ Das zentrale Register mit Nachweisen, Prioritäten und Abschlusskriterien steht 
 
 ## Quellen und Prüfumfang
 
-Beschrieben sind aktuelle Repository-Implementierung und dokumentierte Podman-Konfiguration. Der E2E-Test wurde am 15.11.2026 erfolgreich mit Windows-Ollama als Hintergrund-App und automatischer Gateway-Ermittlung ausgeführt. Diese Dokumentationsbereinigung umfasst keine erneute Deployment- oder Lastprüfung. Historische Dateien und das separate Structurizr-Modell können vom aktuellen Podman-Aufbau abweichen.
+Repository-Konfiguration und aktuelle Implementierung bilden die Grundlage dieser Sicht. Historische Dateien und das separate Structurizr-Modell koennen vom aktuellen Podman-Aufbau abweichen.
 
 Die Vector-API akzeptiert weiterhin `embedding` als Alias und liefert beide Namen in Einzelchunk- und Suchantworten. Konflikte ergeben HTTP 400. Import3, CLI und RAG verwenden `rag/embedding_config.py` mit unabhaengigen Modell- und Set-Defaults. Bestandsmigration mit Backup: siehe README.
 
@@ -123,3 +123,5 @@ Die Vector-API akzeptiert weiterhin `embedding` als Alias und liefert beide Name
 Die APIs verwenden gemeinsame frühe Requestvalidierung und RFC-9457-Problemantworten aus rag_common/http_errors.py; Einzelheiten und verbleibende Zielzustände stehen in Kapitel 8.3. Die Vector-API initialisiert den Pool erst nach erfolgreicher Eingangsvalidierung und versucht es bei späteren Anfragen erneut. Die zuvor genannten Lücken bei Requestvalidierung und JSON-Fehlerausgabe sind damit behoben; Transaktions- und Poolnebenläufigkeit bleiben offen. API-Images werden über scripts/build_image.py aus temporären Kontexten mit explizit aufgelisteten Quelldateien und rag_common gebaut; gesperrte lokale Testverzeichnisse werden nicht durchsucht.
 
 TS-08 (22.11.2026): Die RAG-API validiert Trefferverträge und generiert bei leerem Kontext nicht mehr. Sie liefert dann status no_context mit leeren chunks und metrics null. Ungültige Retrievalantworten ergeben HTTP 502; optionale ungültige Metriken werden null. Frühere Aussagen zur Generierung bei leeren Treffern und ungesicherter Trefferverarbeitung sind durch diese Umsetzung ersetzt; Details in Kapitel 8.3.
+
+Historische Aenderungs- und Pruefnachweise: [Changelog](../changelog.md).

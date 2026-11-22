@@ -10,6 +10,8 @@ Das System unterstützt folgende Aufgaben:
 - Modelle und Reranking über lokale Werkzeuge beziehungsweise HTTP-Schnittstellen erproben. Der eigenständige Reranker ist derzeit nicht in den Ablauf der RAG-API eingebunden.
 
 
+?nderungen und Ausrollnachweise stehen im [Changelog](changelog.md). Diese README beschreibt Einrichtung, Bedienung und aktuellen Schnittstellenvertrag.
+
 Die arc42-Dokumentation beginnt mit [Einführung und Zielen](docs/1-einfuehrung-und-ziele.md), [Randbedingungen](docs/2-randbedingungen.md) und [Kontextabgrenzung](docs/3-kontextabgrenzung.md).
 
 ## Voraussetzungen
@@ -88,7 +90,7 @@ Vector-API: `embedding_set_id` ersetzt den JSON-/Queryparameter `embedding`; der
 
 ### Bestehende Datenbank migrieren
 
-Der Quelltext eines Chunks heißt in Datenbank und API jetzt `chunktext` (zuvor `metadata`). Importer, Retrieval, Reranking, Analyse und `/find` verwenden den neuen Namen. Es gibt keinen Alias für `metadata`; externe Clients müssen gleichzeitig aktualisiert werden.
+Der Quelltext eines Chunks heißt in Datenbank und API `chunktext` (bei ?lteren Datenbanken `metadata`). Importer, Retrieval, Reranking, Analyse und `/find` verwenden den neuen Namen. Es gibt keinen Alias für `metadata`; externe Clients müssen gleichzeitig aktualisiert werden.
 
 Für eine Datenbank, deren Set-Spalte bereits `embedding_set_id` heißt, nach dem Bauen der neuen API-Images und Stoppen beider APIs ausführen:
 
@@ -136,7 +138,7 @@ python interact.py --query "Was ist Rom?" --reranker cross-encoder/ms-marco-Tiny
 
 Der Dienst hält ein Modell aktiv. Gleiche Auswahl verwendet es erneut, ein Wechsel lädt ein anderes Modell; ein Rückwechsel lädt die Modellinstanz erneut aus dem lokalen Cache. Noch nicht vorhandene Gewichte benötigen beim ersten Aufruf einen Download. Laden und Inferenz laufen nacheinander unter einer gemeinsamen Sperre. Der Wechsel kann daher dauern und vorübergehend Speicher für beide Modelle benötigen. Ladefehler liefern HTTP 503 mit der angefragten Modellkennung, ohne auf ein anderes Modell auszuweichen; das vorher aktive Modell bleibt verfügbar. Ungültige Modellparameter liefern HTTP 400. Leere Dokumentlisten liefern eine leere Ergebnisliste mit der ausgewählten Kennung, ohne ein Modell zu laden. `/health` zeigt das aktive Modell und lädt nur bei noch ungeladenem Dienst den Default.
 
-Für diese neue Fähigkeit muss die geänderte App einmal ausgerollt werden. Anschließend erfordern Modellwechsel weder einen Image-Build noch einen Neustart. Der isolierte Integrationstest `python -m pytest -c tests/pytest.ini tests/podman/test_reranker.py --include-reranker` prüft zwei echte Modelle und den Rückwechsel; dafür muss der Download des zusätzlichen Testmodells möglich sein.
+Modellwechsel erfordern weder einen Image-Build noch einen Neustart. Der isolierte Integrationstest `python -m pytest -c tests/pytest.ini tests/podman/test_reranker.py --include-reranker` prüft zwei echte Modelle und den Rückwechsel; dafür muss der Download des zusätzlichen Testmodells möglich sein.
 
 ### Einzelne Dienste und Details
 
@@ -145,7 +147,7 @@ Die Vector-spezifischen Hinweise stehen in [Vector/README.txt](Vector/README.txt
 ### Automatisierte Tests: Unit und Podman-Integration
 
 Die Testarten sind getrennt: containerfreie Unit-Tests liegen in `tests/unit`; Podman- und externe Dienst-Integrationstests liegen in `tests/podman`. `tests/conftest.py` stellt gemeinsame pytest-Optionen bereit. `tests/podman/conftest.py` baut den isolierten Containerstack auf und räumt ihn anschließend ab.
-Die pytest-Konfiguration deaktiviert den Cache-Provider (`-p no:cacheprovider`), damit kein Zugriff auf `.pytest_cache` erforderlich ist. Die Chunking-Tests legen eindeutige UTF-8-Testdateien direkt in `tests/unit` an und löschen sie selbst; Diese Chunking-Tests benötigen keine temporären Verzeichnisse. Pytest-Tempverzeichnisse (`tmp_path`/`tmpdir`) liegen durch `tests/conftest.py` immer außerhalb des Checkouts in einem eindeutigen Unterverzeichnis des System-/Benutzer-Tempbereichs. Ein explizites `--basetemp` innerhalb des Projekts wird vor Testbeginn zurückgewiesen; auch ein Tempbereich aus Umgebungsvariablen darf nicht im Projekt liegen. `PYTEST_DEBUG_TEMPROOT` kann die Fixture-Verzeichnisse nicht ins Projekt umleiten. Migrationstests verwenden ebenfalls externe Tempverzeichnisse. Private Windows-ACLs solcher Verzeichnisse bleiben damit außerhalb des Projekts.
+Die pytest-Konfiguration deaktiviert den Cache-Provider (`-p no:cacheprovider`), damit kein Zugriff auf `.pytest_cache` erforderlich ist. Die Chunking-Tests legen eindeutige UTF-8-Testdateien direkt in `tests/unit` an und löschen sie selbst. Diese Chunking-Tests benötigen keine temporären Verzeichnisse. Pytest-Tempverzeichnisse (`tmp_path`/`tmpdir`) liegen durch `tests/conftest.py` immer außerhalb des Checkouts in einem eindeutigen Unterverzeichnis des System-/Benutzer-Tempbereichs. Ein explizites `--basetemp` innerhalb des Projekts wird vor Testbeginn zurückgewiesen; auch ein Tempbereich aus Umgebungsvariablen darf nicht im Projekt liegen. `PYTEST_DEBUG_TEMPROOT` kann die Fixture-Verzeichnisse nicht ins Projekt umleiten. Migrationstests verwenden ebenfalls externe Tempverzeichnisse. Private Windows-ACLs solcher Verzeichnisse bleiben damit außerhalb des Projekts.
 
 Voraussetzungen für Unit-Tests sind Python und die Testabhängigkeiten. Podman-Integration benötigt zusätzlich eine gestartete Podman-Machine. Ollama-Tests setzen eine Host-Instanz auf `localhost:11434` und das Modell `snowflake-arctic-embed2` voraus.
 
@@ -196,7 +198,7 @@ Der Standardstart benötigt keine GPU. Für einen optionalen NVIDIA-GPU-Start un
 podman run -d --name reranker -p 5000:5000 --device /dev/dxg -v /usr/lib/wsl/lib:/usr/lib/wsl/lib:ro -v /usr/lib/wsl/drivers:/usr/lib/wsl/drivers:ro -e LD_LIBRARY_PATH=/usr/lib/wsl/lib localhost/reranker:local
 ```
 
-Die Geräteweitergabe allein garantiert keine CUDA-Inferenz; auch die installierte torch-Variante muss CUDA unterstützen. Diese optionale Konfiguration ist kein Bestandteil der Standard-Testfixture. Die zusätzliche Einbindung von `/usr/lib/wsl/drivers` ist erforderlich: Fehlen diese Treiberdateien, kann CUDA trotz sichtbarem `/dev/dxg` mit `cuInit: 100` scheitern. Die Konfiguration wurde auf einer NVIDIA GeForce RTX 4060 mit CUDA-Berechnung geprüft.
+Die Geräteweitergabe allein garantiert keine CUDA-Inferenz; auch die installierte torch-Variante muss CUDA unterstützen. Diese optionale Konfiguration ist kein Bestandteil der Standard-Testfixture. Die zusätzliche Einbindung von `/usr/lib/wsl/drivers` ist erforderlich: Fehlen diese Treiberdateien, kann CUDA trotz sichtbarem `/dev/dxg` mit `cuInit: 100` scheitern.
 
 Voraussetzungen und Prüfung:
 
@@ -242,21 +244,17 @@ Die API-Images werden mit `scripts/build_image.py` aus einem temporaeren Build-K
 
 Auch bei pytest-Aufrufen aus tests, tests/unit und tests/podman greift die gemeinsame Temp-/Cache-Absicherung. Ein ausdrücklich aktivierter Cache-Provider wird vor seiner Initialisierung in den externen Tempbereich (rag-pytest-cache) umgeleitet, selbst bei überschriebenem addopts/cache_dir. Prüfnachweis und Grenzen (insbesondere --noconftest/--confcutdir) siehe [Testkonzept](docs/8-1-testkonzept.md).
 
-Prüfnachweis vom 22.11.2026: Podman-Integration mit --include-rag --include-reranker unter der geänderten pytest-Konfiguration: 6 bestanden, 3 optionale Ollama-Tests übersprungen. Die anschließende Projektprüfung fand keine Cache-/Tempverzeichnisse oder Verzeichnisse mit abgeschalteter ACL-Vererbung; Details und Prüfumfang im Testkonzept.
+## RAG-Antworten und Metriken
 
-TS-08 (22.11.2026): /process liefert bei leerem Retrievalkontext HTTP 200 mit status no_context, chunks [] und metrics null; es wird kein Antwortmodell aufgerufen. Fehlerhafte Retrievalantworten liefern HTTP 502 Problem Details. Bei normalen Antworten sind fehlende/ungültige Einzelmetriken null; answer_rate ist bei fehlender oder nullwertiger eval_duration null. Clients müssen null-Werte unterstützen. Reguläre Container benötigen für diesen neuen Stand einen Image-Neubau und Neuerstellung.
+`/process` liefert bei leerem Retrievalkontext HTTP 200 mit status no_context, chunks [] und metrics null; es wird kein Antwortmodell aufgerufen. Fehlerhafte Retrievalantworten liefern HTTP 502 Problem Details. Bei normalen Antworten sind fehlende/ungültige Einzelmetriken null; answer_rate ist bei fehlender oder nullwertiger eval_duration null. Clients müssen null-Werte unterstützen. Nach Codeänderungen Images neu bauen und Container neu erstellen.
 
-TS-08 wurde am 22.11.2026 auf die regulären API-Container ausgerollt. API-Verträge, leeres Retrieval (no_context), Reranker-Inferenz und vollständige RAG-Generierung erfolgreich geprüft; Datenbestand unverändert 10.378 Zeilen. Prüfnachweise und erhaltene Rückwegcontainer siehe Kapitel 8.3.
-
-### CLI-Fehlerbehandlung und TS-08 (22.11.2026)
+## CLI verwenden: Fehlerbehandlung und Validierung
 
 `interact.py` verwendet gemeinsame Retrievalvalidierung und Metrikaufbereitung aus `rag_common/rag_results.py`, die auch die RAG-API nutzt. Fehlerhafte Treffer werden nicht als leerer Kontext behandelt. Bei leeren Treffern oder ausschließlich leeren Texten endet die CLI mit kontrollierter Ablehnungsantwort (`no_context`), ohne Export, Reranking oder Generierung. Wenn Reranking keine verwertbaren Dokumente liefert, entfällt ebenfalls die Generierung.
 
 HTTP-Fehler erscheinen verständlich mit Verarbeitungsschritt, tatsächlichem HTTP-Status, `title`/`detail` und vorhandener Typ-URI/Request-ID; rohe Fehlerbodys werden nicht ausgegeben. Timeout und Nichterreichbarkeit erhalten eigene Meldungen. Fehler gehen auf stderr. Exitcode 0 bedeutet Erfolg (auch ohne Kontext), 1 einen Verarbeitungs-/Exportabbruch und 2 ungültige CLI-Argumente. Exportfehler führen zum Abbruch statt zum stillen Fortsetzen. Es gibt keine automatischen Wiederholungen.
 
 Alle HTTP-Aufrufe verwenden getrennte Verbindungs-/Antwortzeitlimits: 5 Sekunden Verbindung, 300 Sekunden Embedding, 60 Sekunden Retrieval sowie 600 Sekunden Generierung und Reranking. Dies sind Requests-Verbindungs-/Lesezeitlimits, kein Gesamtbudget des gesamten Laufs. Fehlende oder ungültige Metriken werden als „nicht verfügbar“ dargestellt; Nullzeiten verursachen keine Division durch null. Der CLI ruft Ollama, Vector-API und Reranker weiterhin direkt auf; seine Modellwahl bleibt unabhängig von der RAG-API.
-
-Ausrollstand 22.11.2026: Die regulären API-Container verwenden jetzt die neu gebauten Images mit rag_common/rag_results.py. Modulimport, API-Verträge, leerer Kontext, Reranker-Inferenz und RAG-Generierung erfolgreich geprüft; Datenbestand weiterhin 10.378 Zeilen. Details und Rückwegcontainer im Prüfnachweis in Kapitel 8.3.
 
 CLI-Validierung: --metric erlaubt ausschließlich cosine und euclidean (euklidische/L2-Distanz). L2 ist kein akzeptierter Parameterwert. Ungültige Optionen werden einzeln mit Parametername und erlaubten Werten beziehungsweise Grenzen gemeldet; Exitcode 2, ohne Dienstaufruf.
 

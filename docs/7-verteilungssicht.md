@@ -107,4 +107,4 @@ Nach dem Lauf werden die eigenen Container, der Pod, das Testvolume und die Test
 
 ## 7.7 Geltungsbereich der Prüfung
 
-Diese Sicht beschreibt Repository-Konfiguration und die im bisherigen Arbeitsverlauf geprüfte Windows-/WSL-Umgebung. Der E2E-Test mit Ollama-Hintergrund-App und automatischer Gateway-Ermittlung war am 15.11.2026 erfolgreich. Für die Ergänzung dieser Dokumentation wurden keine Container verändert, keine Volumes entfernt und keine erneuten GPU-, Neustart- oder Lasttests ausgeführt.
+Historische Aenderungs- und Pruefnachweise: [Changelog](../changelog.md).
