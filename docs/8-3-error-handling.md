@@ -105,6 +105,8 @@ Strukturierte Logs enthalten Dienst, Request-/Lauf-ID, Fehlerereignis, Verarbeit
 
 Liveness prüft nur, ob der Prozess lebt, und löst keine Modellinitialisierung aus. Readiness beschreibt, ob der Dienst seine Aufgaben ausführen kann; fehlende erforderliche Abhängigkeiten oder Modelle führen zu 503 mit Problem Details. Prüfungen sind zeitlich begrenzt und berücksichtigen die tatsächlich benötigten Abhängigkeiten.
 
+Vector-API (TS-07): `/health/live` prueft nur den Prozess; `/health/ready` prueft eine Transaktion auf den benoetigten Spalten der Tabelle vectors. Fehlende Bereitschaft ergibt 503 Problem Details. Initialisierung erfolgt bedarfsgesteuert und ohne wartende Initialisierungswarteschlange; spaetere Requests versuchen fehlgeschlagene Initialisierung erneut. connect_timeout, statement_timeout und lock_timeout betragen jeweils drei Sekunden (kein Gesamtbudget). Defekte Poolverbindungen werden verworfen; spaetere Probes stellen die Bereitschaft nach Datenbankwiederanlauf wieder fest.
+
 ## 8.3.8 Umsetzung und Abnahmekriterien
 
 1. Gemeinsames Fehlerprofil und Typregister, frühe Validierung sowie zentrale Flask-Handler einführen. Die Umstellung vom bisherigen `{"error": ...}`-Format ist eine Schnittstellenänderung: unterstützte Clients, Tests und README gemeinsam aktualisieren.
@@ -123,7 +125,7 @@ TS-03 und TS-08 sind implementiert: gemeinsame frühe Requestvalidierung und RFC
 
 `interact.py` zeigt HTTP-Fehler mit Schritt, tatsächlichem Status, verständlichen Problemfeldern und vorhandener Request-ID auf stderr. Exitcode 0 steht für Erfolg einschließlich fehlendem Kontext, 1 für Verarbeitungs-/Exportabbruch und 2 für ungültige Argumente. Ohne Kontext entfallen Export, Reranking und Generierung. Ein leeres Rerankingergebnis unterbindet ebenfalls die Generierung. Argumentfehler werden auf Deutsch ausgegeben; Parameterabkürzungen sind deaktiviert.
 
-Alle CLI-HTTP-Aufrufe verwenden 5 Sekunden Verbindungszeitlimit; Antwortzeitlimits sind 300 Sekunden für Embedding, 60 Sekunden für Retrieval und 600 Sekunden für Generierung/Reranking. Diese Lesezeitlimits sind kein Gesamtbudget; automatische Retries erfolgen nicht. Ungültige Metriken erscheinen als „nicht verfügbar“. Die CLI ruft die Dienste direkt auf und behält ihre eigene Modellwahl. Weitere Adapterklassifikation, Gesamtbudgets, Transaktionsbereinigung, Importabschluss und getrennte Readiness bleiben Zielzustände.
+Alle CLI-HTTP-Aufrufe verwenden 5 Sekunden Verbindungszeitlimit; Antwortzeitlimits sind 300 Sekunden für Embedding, 60 Sekunden für Retrieval und 600 Sekunden für Generierung/Reranking. Diese Lesezeitlimits sind kein Gesamtbudget; automatische Retries erfolgen nicht. Ungültige Metriken erscheinen als „nicht verfügbar“. Die CLI ruft die Dienste direkt auf und behält ihre eigene Modellwahl. Weitere Adapterklassifikation, Gesamtbudgets, Importabschluss und getrennte Readiness anderer Dienste bleiben Zielzustände.
 
 ## Abgrenzung von Implementierung und Zielkonzept
 

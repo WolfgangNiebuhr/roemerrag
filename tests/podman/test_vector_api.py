@@ -101,3 +101,64 @@ app.db_pool.closeall()
     container = "rag-test-vector-" + podman_stack["id"]
     subprocess.run(["podman", "exec", container, "python", "-c", script],
                    check=True, capture_output=True, text=True, timeout=30)
+
+
+@pytest.mark.podman
+def test_delayed_database_start_and_recovery(podman_stack):
+    import subprocess
+    import time
+    import urllib.error
+    import urllib.request
+    import json
+    suffix = podman_stack["id"]
+    pod, api, db = ["rag-test-delayed-" + name + "-" + suffix for name in ("pod", "api", "db")]
+    def run(*args):
+        return subprocess.run(["podman", *args], check=True, capture_output=True,
+                              text=True, timeout=60).stdout.strip()
+    db_image = run("inspect", podman_stack["db_container"], "--format", "{{.Image}}")
+    api_image = run("inspect", "rag-test-vector-" + suffix, "--format", "{{.Image}}")
+    def probe(path):
+        try:
+            with urllib.request.urlopen(base + path, timeout=10) as response:
+                return response.status, json.load(response), response.headers.get_content_type()
+        except urllib.error.HTTPError as exc:
+            return exc.code, json.load(exc), exc.headers.get_content_type()
+    def wait_status(path, expected):
+        deadline = time.monotonic() + 60
+        while time.monotonic() < deadline:
+            try:
+                result = probe(path)
+                if result[0] == expected:
+                    return result
+            except OSError:
+                pass
+            time.sleep(0.5)
+        raise AssertionError(f"{path} did not reach {expected}")
+    try:
+        run("pod", "create", "--name", pod, "-p", "5500")
+        run("run", "-d", "--name", api, "--pod", pod, api_image)
+        infra = run("pod", "inspect", "--format", "{{.InfraContainerID}}", pod)
+        port = run("port", infra, "5500/tcp").splitlines()[0].rsplit(":", 1)[1]
+        base = "http://localhost:" + port
+        api_id = run("inspect", api, "--format", "{{.Id}}")
+        wait_status("/health/live", 200)
+        status, problem, media = wait_status("/health/ready", 503)
+        assert media == "application/problem+json"
+        assert problem["type"] == "urn:rag:problem:dependency-unavailable"
+        assert problem["status"] == 503
+        wait_status("/chunks", 503)
+        run("run", "-d", "--name", db, "--pod", pod,
+            "--tmpfs", "/var/lib/postgresql/data", "-e", "POSTGRES_USER=admin",
+            "-e", "POSTGRES_PASSWORD=admin", "-e", "POSTGRES_DB=vector_db", db_image)
+        wait_status("/health/ready", 200)
+        wait_status("/chunks", 200)
+        run("stop", db)
+        wait_status("/health/ready", 503)
+        wait_status("/health/live", 200)
+        run("start", db)
+        wait_status("/health/ready", 200)
+        wait_status("/chunks", 200)
+        assert run("inspect", api, "--format", "{{.Id}}") == api_id
+        assert run("inspect", api, "--format", "{{.RestartCount}}") == "0"
+    finally:
+        subprocess.run(["podman", "pod", "rm", "-f", pod], capture_output=True, timeout=60)

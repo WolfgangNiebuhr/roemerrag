@@ -14,6 +14,14 @@ agent_instructions:
 Aus README und docs übernommene Änderungshistorie. Gleichdatierte Einträge folgen der umgekehrten Reihenfolge der dortigen Nachträge. Nicht datierbare Einträge stehen am Ende. Anleitungen: [README](README.md). Fachkonzepte: [Testkonzept](docs/8-1-testkonzept.md) und [Error-Handling](docs/8-3-error-handling.md).
 
 ## 2026-11-22
+### TS-07: Initialisierung, Readiness und Datenbankerholung
+
+Vector-API um `/health/live` (Prozesspruefung ohne Datenbankzugriff) und `/health/ready` (Schema-Pruefung; 503 Problem Details bei Nichtbereitschaft) ergaenzt. Poolinitialisierung bleibt bedarfsgesteuert und wiederholbar; parallele Anfragen warten nicht auf den Initialisierungslock. Verbindungsaufbau, Statements und Lock-Wartezeit sind jeweils auf drei Sekunden begrenzt. Initialisierungswarnungen enthalten keine rohen DB-Fehlertexte. Kein gemeinsames Request-Gesamtbudget und keine automatischen Schreib-Retries.
+
+Pruefung: `python -m pytest -c tests/pytest.ini tests/unit -q`: **174 passed in 7.92s**. `python -m pytest -c tests/pytest.ini tests/podman/test_vector_api.py -q`: **4 passed in 98.60s**. Neuer isolierter Test startet API vor PostgreSQL, prueft Liveness und 503-Readiness, startet die Datenbank und prueft selbststaendige Bereitschaft; danach Datenbank-Stopp und Wiederanlauf mit erneuter Erholung. API-ID unveraendert, RestartCount 0. Eigener Test-Pod mit tmpfs-Datenbank automatisch entfernt; keine regulaeren Volumes angefasst. Erster Testversuch scheiterte an Portermittlung vor Containerstart (3 passed, 1 failed); Reihenfolge korrigiert und obigen Lauf erfolgreich wiederholt.
+
+TS-07 abgeschlossen; README, Bausteinsicht, Fehlerkonzept, Testkonzept und Schuldenregister aktualisiert. Optionale RAG-/Reranker-/Ollama-Tests und gemeinsamer Gesamtlauf nicht erneut ausgefuehrt, da nur Vector-Lebenszyklus betroffen. Kein Ausrollen der TS-07-Aenderung in regulaere Container im Rahmen dieser Aufgabe.
+
 ### Gemeinsamer vollstaendiger Testlauf erfolgreich
 
 `python -m pytest -c tests/pytest.ini tests --all`: **182 passed in 229.61s (0:03:49)**, Exitcode 0; keine Fehler oder uebersprungenen Tests. Der gemeinsame Lauf bestaetigt die korrigierte pytest-Konfiguration mit importlib und Helper-Suchpfaden sowie das Zusammenspiel der 171 Unit-Tests und elf Integrationstests in einer Sitzung. Alle optionalen Gruppen (RAG, Reranker, Ollama einschliesslich Ingestion und Ende-zu-Ende-Antwortgenerierung) sowie TS-06 enthalten. Ausfuehrung mit genehmigtem Podman-Zugriff ausserhalb der Sandbox; isolierte Testressourcen automatisch bereinigt. Die zuvor noch ausstehende gemeinsame Ausfuehrungspruefung ist damit abgeschlossen. Keine weiteren Code- oder Containeraenderungen erforderlich.

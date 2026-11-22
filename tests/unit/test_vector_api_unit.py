@@ -178,3 +178,24 @@ def test_read_commits(database):
     assert module.app.test_client().get("/chunks").status_code == 200
     conn.commit.assert_called_once()
     conn.rollback.assert_not_called()
+
+
+def test_liveness_does_not_initialize_pool(vector_module, monkeypatch):
+    initialize = MagicMock()
+    monkeypatch.setattr(vector_module, "ensure_db_pool", initialize)
+    assert vector_module.app.test_client().get("/health/live").get_json() == {"status": "alive"}
+    initialize.assert_not_called()
+
+
+def test_readiness_uses_transaction(database):
+    module, pool, conn, cursor = database
+    assert module.app.test_client().get("/health/ready").status_code == 200
+    conn.commit.assert_called_once()
+
+
+def test_initializing_request_does_not_wait_for_lock(vector_module):
+    vector_module.pool_init_lock.acquire()
+    try:
+        assert vector_module.app.test_client().get("/health/ready").status_code == 503
+    finally:
+        vector_module.pool_init_lock.release()

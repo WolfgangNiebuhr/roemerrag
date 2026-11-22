@@ -1,6 +1,6 @@
 # 11.2 Technische Schulden
 
-Stand: 22.11.2026. Dieses Kapitel nach arc42 dokumentiert die im Projekt untersuchten technischen Schulden und einen vorgeschlagenen Abbauplan. TS-01, TS-02 und TS-03 sind abgeschlossen (historische Nachweise im [Changelog](../changelog.md)). Der bisherige TS-04 wird als akzeptiertes Risiko [R-01](11-1-risiken.md#r-01--manuelle-zuordnung-von-importvarianten--akzeptiertes-risiko) separat geführt. Technische Schulden gelten nur bei ausdrücklicher Markierung als Risiken. TS-06 ist abgeschlossen; TS-08 ist implementiert. Die übrigen offenen Einträge beschreiben verbleibende Maßnahmen; bereits umgesetzte Teilmaßnahmen sind jeweils ausgewiesen.
+Stand: 22.11.2026. Dieses Kapitel nach arc42 dokumentiert die im Projekt untersuchten technischen Schulden und einen vorgeschlagenen Abbauplan. TS-01, TS-02 und TS-03 sind abgeschlossen (historische Nachweise im [Changelog](../changelog.md)). Der bisherige TS-04 wird als akzeptiertes Risiko [R-01](11-1-risiken.md#r-01--manuelle-zuordnung-von-importvarianten--akzeptiertes-risiko) separat geführt. Technische Schulden gelten nur bei ausdrücklicher Markierung als Risiken. TS-06 und TS-07 sind abgeschlossen; TS-08 ist implementiert. Die übrigen offenen Einträge beschreiben verbleibende Maßnahmen; bereits umgesetzte Teilmaßnahmen sind jeweils ausgewiesen.
 
 Die [Bausteinsicht](5-bausteinsicht.md) beschreibt die betroffenen Komponenten, die [Laufzeitsicht](6-laufzeitsicht.md) deren Zusammenspiel und das [Testkonzept](8-1-testkonzept.md) die vorhandenen Prüfungen. Das [Error-Handling-Konzept in Kapitel 8.3](8-3-error-handling.md) konkretisiert die offenen Maßnahmen; seine Dokumentation ist kein Implementierungsnachweis. Verzeichnisse namens `k8s` sind ausgeschlossen. Bewertungsmaßstab ist der lokale Podman-Betrieb eines Systems zum Vergleich von RAG-Strategien, kein bereits zugesagter Produktionsbetrieb.
 
@@ -55,10 +55,10 @@ Historische Ergebnisse und Grenzen einzelner Analyseläufe stehen im [Changelog]
 - **Transaktionen:** Zentraler Context Manager schlie?t auch Lesezugriffe mit Commit ab, rollt Fehler zur?ck und verwirft defekte oder nicht bereinigbare Verbindungen. R?ckgabefehler verdecken den urspr?nglichen Fehler nicht.
 - **Pr?fung:** Unit-Tests f?r Commit, Rollback, Bereinigungsfehler und Poolersch?pfung; isolierte Podman-Tests f?r parallele Upserts und stabile IDs. Pr?fnachweis im Changelog.
 
-### TS-07 ? Datenbankinitialisierung und Readiness weiter absichern ? P2
+### TS-07 - Datenbankinitialisierung und Readiness - P2 - Abgeschlossen
 
-- **Aktueller Stand:** Die Vector-API initialisiert den Pool nach erfolgreicher Requestvalidierung bei Bedarf; bei fehlgeschlagener Verbindung wiederholt die naechste gueltige Anfrage den Versuch. Fehlende DB-Bereitschaft ergibt HTTP 503 Problem Details. Eine dauerhafte Nichterholung allein durch fehlenden Initialisierungsretry besteht damit nicht mehr.
-- **Offener Umfang:** Ein expliziter Initialisierungs-/Readiness-Lebenszyklus und begrenzte, getestete Betriebszustaende gemaess [8.3.7](8-3-error-handling.md#837-diagnose-und-betriebszustand) bleiben abzusichern. Tests muessen verzoegerten Datenbankstart und selbststaendige Erholung gezielt nachweisen. Historische Ergebnisse stehen im [Changelog](../changelog.md).
+- **Umsetzung:** Die Vector-API trennt `/health/live` ohne DB-Zugriff und `/health/ready` mit Schema-Pruefung. Nichtbereitschaft liefert 503 Problem Details. Initialisierung erfolgt bei Bedarf; fehlgeschlagene Versuche werden durch spaetere Requests wiederholt. Parallele Requests warten nicht auf den Initialisierungslock. Verbindungs-, Statement- und Lock-Wartezeit sind jeweils auf drei Sekunden begrenzt; kein Gesamtbudget und keine automatischen Schreib-Retries.
+- **Abnahme:** 174 Unit-Tests und vier isolierte Vector-Integrationstests bestanden. Ein eigener Pod ohne regulaere Volumes prueft API-Start vor PostgreSQL, 503 bis zum Datenbankstart, anschliessende Bereitschaft sowie Ausfall und Wiederanlauf der Datenbank bei unveraendertem API-Container ohne Neustart. Historische und aktuelle Pruefergebnisse stehen im [Changelog](../changelog.md).
 
 ### TS-08 – Kontext- und Metrikverarbeitung · P1 · Implementiert
 

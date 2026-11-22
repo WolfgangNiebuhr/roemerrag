@@ -26,26 +26,50 @@ pool_init_lock = Lock()
 def ensure_db_pool():
     """Retry initialization on later requests if PostgreSQL starts after the API."""
     global db_pool
-    with pool_init_lock:
+    if not pool_init_lock.acquire(blocking=False):
+        return
+    try:
         if db_pool is not None:
             return
         try:
             db_pool = psycopg2.pool.ThreadedConnectionPool(
                 minconn=1, maxconn=10,
                 dbname=DB_NAME, user=DB_USER, password=DB_PASSWORD,
-                host=DB_HOST, port=DB_PORT, connect_timeout=3
+                host=DB_HOST, port=DB_PORT, connect_timeout=3,
+                options="-c statement_timeout=3000 -c lock_timeout=3000"
             )
             app.logger.info("DB-Connection-Pool erstellt")
-        except OperationalError as e:
-            app.logger.error(f"DB-Pool Fehler: {e}")
+        except OperationalError:
+            app.logger.warning("Database pool initialization unavailable")
+    finally:
+        pool_init_lock.release()
 
 
 
 
 @app.before_request
 def initialize_database():
-    if request.routing_exception is None:
+    if request.routing_exception is None and request.endpoint != "liveness":
         ensure_db_pool()
+
+
+@app.get("/health/live")
+def liveness():
+    """Process-only probe: never initialize or acquire a database connection."""
+    return jsonify({"status": "alive"})
+
+
+@app.get("/health/ready")
+def readiness():
+    if db_pool is None:
+        raise Problem("dependency-unavailable", "Database is unavailable.")
+    try:
+        with transaction() as conn:
+            with conn.cursor() as cur:
+                cur.execute("SELECT chunk_id, embedding_set_id, vector, chunktext FROM vectors LIMIT 0")
+    except Exception as exc:
+        raise Problem("dependency-unavailable", "Database is unavailable.") from exc
+    return jsonify({"status": "ready"})
 
 
 @contextmanager

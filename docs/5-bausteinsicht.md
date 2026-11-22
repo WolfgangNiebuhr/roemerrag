@@ -125,3 +125,5 @@ Die APIs verwenden gemeinsame frühe Requestvalidierung und RFC-9457-Problemantw
 TS-08 (22.11.2026): Die RAG-API validiert Trefferverträge und generiert bei leerem Kontext nicht mehr. Sie liefert dann status no_context mit leeren chunks und metrics null. Ungültige Retrievalantworten ergeben HTTP 502; optionale ungültige Metriken werden null. Frühere Aussagen zur Generierung bei leeren Treffern und ungesicherter Trefferverarbeitung sind durch diese Umsetzung ersetzt; Details in Kapitel 8.3.
 
 Historische Aenderungs- und Pruefnachweise: [Changelog](../changelog.md).
+
+TS-07: Die Vector-API trennt Prozess-Liveness (`/health/live`) und Datenbank-Readiness (`/health/ready`). Poolinitialisierung ist bedarfsgesteuert und wiederholbar; gleichzeitig eintreffende Requests warten nicht auf den Initialisierungslock. Datenbankverbindungen begrenzen Verbindungs-, Statement- und Lock-Wartezeit jeweils auf drei Sekunden. Defekte Verbindungen werden verworfen; nach Datenbankwiederanlauf kann sich die API ohne Neustart erholen.
