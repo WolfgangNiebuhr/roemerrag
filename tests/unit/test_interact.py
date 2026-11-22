@@ -1,4 +1,4 @@
-﻿"""CLI boundary and TS-08 behavior without external services."""
+"""CLI boundary and TS-08 behavior without external services."""
 import sys
 from unittest.mock import Mock
 import pytest
@@ -74,3 +74,48 @@ def test_non_json_error_does_not_print_raw_body(monkeypatch):
     with pytest.raises(RuntimeError) as caught:
         cli.post_json('url', {}, 'Retrieval', 60)
     assert 'HTTP 502' in str(caught.value) and 'secret' not in str(caught.value)
+
+@pytest.mark.parametrize('extra,expected', [
+    (('--metric','L2'), ('--metric', 'L2', 'cosine', 'euclidean')),
+    (('--num_results','101'), ('--num_results', '101', '1 bis 100')),
+    (('--top_k','-1'), ('--top_k', '-1', '>= 0')),
+    (('--query',' '), ('--query', 'nichtleerer Text')),
+    (('--embedding-set-id',' '), ('--embedding-set-id', 'nichtleerer Text')),
+    (('--reranker',' '), ('--reranker', 'nichtleerer Text')),
+])
+def test_invalid_parameter_message_is_specific(monkeypatch, capsys, extra, expected):
+    arguments(monkeypatch, *extra)
+    post = Mock()
+    monkeypatch.setattr(cli.requests, 'post', post)
+    with pytest.raises(SystemExit) as caught:
+        cli.main()
+    assert caught.value.code == 2
+    error = capsys.readouterr().err
+    assert all(fragment in error for fragment in expected)
+    post.assert_not_called()
+
+@pytest.mark.parametrize('argv,fragments', [
+    ([], ('Pflichtparameter fehlen', '--query')),
+    (['--query'], ('Parameter --query', 'ein Wert muss angegeben werden')),
+    (['--query','q','--metric','L2'], ('Parameter --metric', 'L2', 'erlaubt sind cosine und euclidean')),
+    (['--query','q','--metric'], ('Parameter --metric', 'ein Wert muss angegeben werden')),
+    (['--query','q','--num_results','abc'], ('Parameter --num_results', 'abc', 'keine ganze Zahl')),
+    (['--query','q','--top_k','1.5'], ('Parameter --top_k', '1.5', 'keine ganze Zahl')),
+    (['--query','q','--embedding'], ('Parameter --embedding', 'ein Wert muss angegeben werden')),
+    (['--query','q','--embedding-set-id'], ('Parameter --embedding-set-id', 'ein Wert muss angegeben werden')),
+    (['--query','q','--reranker'], ('Parameter --reranker', 'ein Wert muss angegeben werden')),
+    (['--query','q','--unbekannt'], ('Unbekannte Argumente', '--unbekannt')),
+])
+def test_argparse_errors_are_german(monkeypatch, capsys, argv, fragments):
+    monkeypatch.setattr(sys, 'argv', ['interact.py', *argv])
+    post = Mock()
+    monkeypatch.setattr(cli.requests, 'post', post)
+    with pytest.raises(SystemExit) as caught:
+        cli.main()
+    assert caught.value.code == 2
+    message = capsys.readouterr().err
+    assert 'Aufruf:' in message and 'Fehler:' in message
+    assert all(fragment in message for fragment in fragments)
+    for english in ('invalid choice', 'invalid int value', 'expected one argument', 'required:', 'unrecognized arguments', 'error:'):
+        assert english not in message
+    post.assert_not_called()

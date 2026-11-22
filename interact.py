@@ -161,19 +161,56 @@ def export_results(query, results, filename="search_results.json"):
     except Exception as e:
         raise RuntimeError("Export fehlgeschlagen: " + str(e)) from e
 
+class GermanArgumentParser(argparse.ArgumentParser):
+    """Keep argparse diagnostics local to this CLI, without global translations."""
+    def error(self, message):
+        translations = (
+            ("the following arguments are required: ", "Folgende Pflichtparameter fehlen: "),
+            ("unrecognized arguments: ", "Unbekannte Argumente: "),
+            ("expected one argument", "ein Wert muss angegeben werden"),
+            ("ignored explicit argument", "diese Option akzeptiert keinen Wert"),
+            ("argument ", "Parameter "),
+        )
+        for original, translated in translations:
+            message = message.replace(original, translated)
+        self.print_usage(sys.stderr)
+        self.exit(2, f"{self.prog}: Fehler: {message}\n")
+
+    def format_usage(self):
+        return super().format_usage().replace("usage: ", "Aufruf: ", 1)
+
+
+def german_integer(value):
+    try:
+        return int(value)
+    except ValueError as error:
+        raise argparse.ArgumentTypeError(f"{value!r} ist keine ganze Zahl.") from error
+
+
+def metric_value(value):
+    if value not in ("cosine", "euclidean"):
+        raise argparse.ArgumentTypeError(f"{value!r} ist ungültig; erlaubt sind cosine und euclidean (L2-Distanz).")
+    return value
+
+
 def main():
-    parser = argparse.ArgumentParser(description="Interaktives KI-Tool für Embedding, Suche und Antwortgenerierung.")
-    parser.add_argument("--metric", type=str, default="cosine", help="Die zu verwendende Metrik (z.B. 'euclidean', 'cosine').")
+    parser = GermanArgumentParser(allow_abbrev=False, description="Interaktives KI-Tool für Embedding, Suche und Antwortgenerierung.")
+    parser.add_argument("--metric", type=metric_value, metavar="{cosine,euclidean}", default="cosine", help="Die zu verwendende Metrik (z.B. 'euclidean', 'cosine').")
     parser.add_argument("--embedding-set-id", "--embedding", dest="embedding", type=str, default=EMBEDDING_SET_ID, help="Die Kennung der zu verwendenden Embeddings.")
-    parser.add_argument("--num_results", type=int, default=5, help="Anzahl der zu suchenden Vektoren.")
+    parser.add_argument("--num_results", type=german_integer, default=5, help="Anzahl der zu suchenden Vektoren.")
     parser.add_argument("--query", type=str, required=True, help="Die Query, die verarbeitet werden soll.")
-    parser.add_argument("--top_k", type=int, default=6, help="Anzahl der Top-Rerank-Ergebnisse.")
+    parser.add_argument("--top_k", type=german_integer, default=6, help="Anzahl der Top-Rerank-Ergebnisse.")
     parser.add_argument("--reranker", type=str, default="cross-encoder/ms-marco-MiniLM-L6-v2", help="Zu verwendendes Reranker-Modell")
 
     args = parser.parse_args()
 
-    if args.metric not in ("cosine", "euclidean") or not 1 <= args.num_results <= 100 or args.top_k < 0 or not args.query.strip() or not args.embedding.strip() or not args.reranker.strip():
-        parser.error("Ungueltige Suchparameter: Metrik, Trefferzahl (1..100), top_k >= 0 und nichtleere Texte erforderlich.")
+    if not 1 <= args.num_results <= 100:
+        parser.error(f"--num_results: {args.num_results!r} ist ungültig; erlaubt sind ganze Zahlen von 1 bis 100.")
+    if args.top_k < 0:
+        parser.error(f"--top_k: {args.top_k!r} ist ungültig; erwartet wird eine ganze Zahl >= 0 (0 deaktiviert Reranking).")
+    for option, value in (("--query", args.query), ("--embedding-set-id/--embedding", args.embedding), ("--reranker", args.reranker)):
+        if not value.strip():
+            parser.error(f"{option}: erwartet wird ein nichtleerer Text.")
 
     metric = args.metric
     num_results = args.num_results
