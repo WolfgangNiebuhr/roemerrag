@@ -6,6 +6,7 @@ from flask import Flask, request, jsonify
 import os
 import json
 from threading import Lock
+from contextlib import contextmanager
 import psycopg2
 from psycopg2 import pool, OperationalError
 
@@ -29,7 +30,7 @@ def ensure_db_pool():
         if db_pool is not None:
             return
         try:
-            db_pool = psycopg2.pool.SimpleConnectionPool(
+            db_pool = psycopg2.pool.ThreadedConnectionPool(
                 minconn=1, maxconn=10,
                 dbname=DB_NAME, user=DB_USER, password=DB_PASSWORD,
                 host=DB_HOST, port=DB_PORT, connect_timeout=3
@@ -47,19 +48,37 @@ def initialize_database():
         ensure_db_pool()
 
 
-def get_conn():
-    global db_pool
-    if not db_pool:
-        raise RuntimeError("DB-Pool nicht verfügbar")
-    conn = db_pool.getconn()
-    # kurze Probe – bei Fehler neue Verbindung ziehen
+@contextmanager
+def transaction():
+    current_pool = db_pool
     try:
-        with conn.cursor() as cur:
-            cur.execute("SELECT 1")
-    except Exception:
-        db_pool.putconn(conn, close=True)
-        conn = db_pool.getconn()
-    return conn
+        conn = current_pool.getconn()
+    except Exception as exc:
+        raise Problem("dependency-unavailable", "Database is unavailable.") from exc
+    discard = False
+    failed = False
+    try:
+        yield conn
+        conn.commit()
+    except BaseException as exc:
+        failed = True
+        try:
+            conn.rollback()
+        except Exception:
+            discard = True
+        if isinstance(exc, psycopg2.OperationalError):
+            discard = True
+        raise
+    finally:
+        try:
+            current_pool.putconn(conn, close=True) if discard or conn.closed else current_pool.putconn(conn)
+        except Exception:
+            try:
+                conn.close()
+            except Exception:
+                pass
+            if not failed:
+                raise Problem("dependency-unavailable", "Database is unavailable.")
 
 def resolve_set_id(data, required=False):
     new = data.get("embedding_set_id")
@@ -85,9 +104,7 @@ def count_chunks():
     if not db_pool:
         raise Problem("dependency-unavailable", "Database is unavailable.")
     embedding_set_id = resolve_set_id(request.args)
-    conn = None
-    try:
-        conn = get_conn()
+    with transaction() as conn:
         with conn.cursor() as cur:
             if embedding_set_id:
                 cur.execute("SELECT COUNT(*) FROM vectors WHERE embedding_set_id = %s", (embedding_set_id,))
@@ -95,11 +112,6 @@ def count_chunks():
                 cur.execute("SELECT COUNT(*) FROM vectors")
             (cnt,) = cur.fetchone()
         return jsonify({"chunks": cnt})
-    except Exception as e:
-        raise
-    finally:
-        if conn:
-            db_pool.putconn(conn)
 
 @app.route("/chunks/<chunk_id>", methods=["GET"])
 def get_chunk(chunk_id):
@@ -107,9 +119,7 @@ def get_chunk(chunk_id):
     if not db_pool:
         raise Problem("dependency-unavailable", "Database is unavailable.")
     embedding_set_id = resolve_set_id(request.args)
-    conn = None
-    try:
-        conn = get_conn()
+    with transaction() as conn:
         with conn.cursor() as cur:
             if embedding_set_id:
                 cur.execute("""
@@ -130,11 +140,6 @@ def get_chunk(chunk_id):
                 raise Problem("not-found", "Der angefragte Chunk wurde nicht gefunden.")
             cols = [d[0] for d in cur.description]
             return jsonify(compatible_row(dict(zip(cols, row))))
-    except Exception as e:
-        raise
-    finally:
-        if conn:
-            db_pool.putconn(conn)
 
 @app.route("/vectors", methods=["POST"])
 def upsert_chunk():
@@ -150,25 +155,15 @@ def upsert_chunk():
     vector = data["vector"]            # erwartetes String-Format
     chunktext = json.dumps(data.get("chunktext")) if isinstance(data.get("chunktext"), (dict, list)) else data.get("chunktext")
 
-    conn = None
-    try:
-        conn = get_conn()
+    with transaction() as conn:
         with conn.cursor() as cur:
-            # einfache „replace“-Semantik
-            cur.execute("""
-                DELETE FROM vectors WHERE chunk_id = %s AND embedding_set_id = %s
-            """, (chunk_id, embedding_set_id))
             cur.execute("""
                 INSERT INTO vectors (chunk_id, embedding_set_id, vector, chunktext)
                 VALUES (%s, %s, %s::VECTOR, %s)
+                ON CONFLICT (chunk_id, embedding_set_id) DO UPDATE
+                SET vector = EXCLUDED.vector, chunktext = EXCLUDED.chunktext
             """, (chunk_id, embedding_set_id, vector, chunktext))
-        conn.commit()
         return jsonify({"message": "Vector stored"}), 201
-    except Exception as e:
-        raise
-    finally:
-        if conn:
-            db_pool.putconn(conn)
 
 @app.route("/chunk", methods=["DELETE"])
 def delete_chunk():
@@ -181,20 +176,12 @@ def delete_chunk():
     chunk_id = data["chunk_id"]
     embedding_set_id = resolve_set_id(data, required=True)
 
-    conn = None
-    try:
-        conn = get_conn()
+    with transaction() as conn:
         with conn.cursor() as cur:
             cur.execute("""
                 DELETE FROM vectors WHERE chunk_id = %s AND embedding_set_id = %s
             """, (chunk_id, embedding_set_id))
-        conn.commit()
         return jsonify({"message": "deleted"}), 200
-    except Exception as e:
-        raise
-    finally:
-        if conn:
-            db_pool.putconn(conn)
 
 @app.route("/search", methods=["POST"])
 def search_vectors():
@@ -215,9 +202,7 @@ def search_vectors():
         return jsonify({"error": "Nur die Metriken 'euclidean' und 'cosine' werden unterstützt"}), 400
     distance_op = operators[metric]
 
-    conn = None
-    try:
-        conn = get_conn()
+    with transaction() as conn:
         with conn.cursor() as cur:
             if embedding_filter:
                 sql = f"""
@@ -241,11 +226,6 @@ def search_vectors():
             cols = [d[0] for d in cur.description]
             rows = [compatible_row(dict(zip(cols, r))) for r in cur.fetchall()]
         return jsonify(rows)
-    except Exception as e:
-        raise
-    finally:
-        if conn:
-            db_pool.putconn(conn)
 
 @app.route("/find", methods=["GET"])
 def find_chunks():
@@ -255,18 +235,11 @@ def find_chunks():
     search_query = request.args.get("query")
     if not search_query:
         return jsonify({"error": "Parameter 'query' fehlt"}), 400
-    conn = None
-    try:
-        conn = get_conn()
+    with transaction() as conn:
         with conn.cursor() as cur:
             cur.execute("SELECT chunk_id FROM vectors WHERE chunktext ILIKE %s", (search_query,))
             chunk_ids = [row[0] for row in cur.fetchall()]
         return jsonify({"chunk_ids": chunk_ids})
-    except Exception as e:
-        raise
-    finally:
-        if conn:
-            db_pool.putconn(conn)
 
 if __name__ == "__main__":
     app.run(host="0.0.0.0", port=5500)

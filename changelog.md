@@ -14,6 +14,28 @@ agent_instructions:
 Aus README und docs übernommene Änderungshistorie. Gleichdatierte Einträge folgen der umgekehrten Reihenfolge der dortigen Nachträge. Nicht datierbare Einträge stehen am Ende. Anleitungen: [README](README.md). Fachkonzepte: [Testkonzept](docs/8-1-testkonzept.md) und [Error-Handling](docs/8-3-error-handling.md).
 
 ## 2026-11-22
+### Gemeinsamer vollstaendiger Testlauf erfolgreich
+
+`python -m pytest -c tests/pytest.ini tests --all`: **182 passed in 229.61s (0:03:49)**, Exitcode 0; keine Fehler oder uebersprungenen Tests. Der gemeinsame Lauf bestaetigt die korrigierte pytest-Konfiguration mit importlib und Helper-Suchpfaden sowie das Zusammenspiel der 171 Unit-Tests und elf Integrationstests in einer Sitzung. Alle optionalen Gruppen (RAG, Reranker, Ollama einschliesslich Ingestion und Ende-zu-Ende-Antwortgenerierung) sowie TS-06 enthalten. Ausfuehrung mit genehmigtem Podman-Zugriff ausserhalb der Sandbox; isolierte Testressourcen automatisch bereinigt. Die zuvor noch ausstehende gemeinsame Ausfuehrungspruefung ist damit abgeschlossen. Keine weiteren Code- oder Containeraenderungen erforderlich.
+
+### Optionale Integration und TS-06 im laufenden System
+
+Alle optionalen Tests ausgefuehrt: `python -m pytest -c tests/pytest.ini tests/podman --all -q`: **11 passed** in 224,12 s, ohne uebersprungene Tests. Enthalten sind RAG, echte Ingestion/Keywords, Ollama-Embeddings, Ende-zu-Ende-Antwortgenerierung, Reranker und TS-06. Isolierte Testressourcen anschliessend automatisch entfernt.
+
+Der zunaechst versuchte gemeinsame Aufruf `tests --all` scheiterte beim Einsammeln an gleichnamigen Testmodulen. `tests/pytest.ini` verwendet jetzt importlib und explizite Suchpfade fuer vorhandene Helper-Imports. Anschliessend alle **182 Tests erfolgreich eingesammelt**, **171 Unit-Tests bestanden** in 7,50 s. Vollstaendiger gemeinsamer Ausfuehrungslauf nach der Konfigurationskorrektur nicht wiederholt; Unit- und Integrationstests wurden separat erfolgreich ausgefuehrt.
+
+Laufende Vector-API enthielt zuvor weder atomare Upserts noch ThreadedConnectionPool. Neues Image `localhost/vectorapi:ts06-20261122` gebaut (ID `4d6774060f5e`), auch als `localhost/vectorapi:local` markiert und Container `vector-api` mit bisheriger Pod-/DB-Konfiguration neu erstellt. Alter Container bleibt gestoppt als `vector-api-before-ts06` erhalten. Datenbank, Volumes, RAG-API und Reranker nicht ersetzt. Quellhash von Vector/app.py im neuen Container entspricht dem Workspace (`012a94aca8ec95e22731cbf8650cd1838866bbdce927e1f7aabe10b6cbe031b0`). ThreadedConnectionPool und ON CONFLICT bestaetigt; GET /chunks innerhalb des Containers und ueber localhost:5500 erfolgreich (HTTP 200; 10378 Chunks). Keine Schreibpruefung auf regulaeren Daten vorgenommen.
+
+### TS-06: Podman-Abnahme erfolgreich
+
+Exitcode 125 auf fehlenden Sandbox-Zugriff auf Podmans SSH-Identitaet unter dem Benutzerprofil zurueckgefuehrt (`podman info`: Access is denied). Isolierte Tests mit genehmigter Ausfuehrung ausserhalb der Sandbox erfolgreich; keine Aenderung an Dockerfiles, Schluesseln oder Dateirechten erforderlich. README um die Diagnose ergaenzt.
+
+Pruefung: `python -m pytest -c tests/pytest.ini tests/podman -q`: **4 passed, 6 skipped** in 79,92 s. Anschliessend `python -m pytest -c tests/pytest.ini tests/podman/test_vector_api.py -q`: **3 passed** in 64,50 s, einschliesslich neuem echtem SQL-Fehlerpfad: Rollback einer vorherigen Einfuegung, dieselbe Verbindung wiederverwendbar und im Idle-Zustand, danach erfolgreicher API-Request. Parallele Upserts auf einen neuen Schluessel und stabile IDs bestanden. Testressourcen automatisch bereinigt; regulaere Volumes unveraendert. TS-06 abgeschlossen. Optionale RAG-, Reranker- und Ollama-Gruppen nicht aktiviert, da nicht betroffen; Unit-Tests nicht erneut ausgefuehrt, da nur Integrationstest und Dokumentation geaendert.
+
+### TS-06: atomare Upserts und Transaktionsbereinigung
+
+Vector-API auf ThreadedConnectionPool und INSERT ON CONFLICT DO UPDATE umgestellt. Zentraler Transaktionskontext behandelt Commit, Rollback, defekte Verbindungen und Poolr?ckgabefehler. Unit-Tests erg?nzt; 171 Unit-Tests bestanden. Podman-Suite versucht: vier Setupfehler beim isolierten Image-Build (Exitcode 125), sechs optionale Tests ?bersprungen. Parallelit?tspr?fung daher noch nicht abgenommen; optionale RAG-, Reranker- und Ollama-Tests nicht aktiviert, da nicht betroffen.
+
 ### Gemeinsame GPU-Nutzung untersucht; stabile Aufteilung vorgeschlagen
 
 Reranker-Startlog bestätigt cuda:0; Ollama-Logs bestätigen GPU-Offloading auf dieselbe RTX 4060 mit 8 GB. Hostmessung: rund 2454 MiB GPU-Belegung, pro Prozess unter Windows/WDDM keine verlässliche Speicherzuordnung verfügbar. Der frühere lange Batch und Ollamas CUDA-Initialisierungsfehler sind belegt, ihre Kausalität durch GPU-Konkurrenz jedoch nicht. Separate Torch-GPU-Abfragen beschreiben nicht den damaligen Speicherzustand des aktiven Rerankermodells.

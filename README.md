@@ -150,6 +150,8 @@ Die Testarten sind getrennt: containerfreie Unit-Tests liegen in `tests/unit`; P
 Die pytest-Konfiguration deaktiviert den Cache-Provider (`-p no:cacheprovider`), damit kein Zugriff auf `.pytest_cache` erforderlich ist. Die Chunking-Tests legen eindeutige UTF-8-Testdateien direkt in `tests/unit` an und löschen sie selbst. Diese Chunking-Tests benötigen keine temporären Verzeichnisse. Pytest-Tempverzeichnisse (`tmp_path`/`tmpdir`) liegen durch `tests/conftest.py` immer außerhalb des Checkouts in einem eindeutigen Unterverzeichnis des System-/Benutzer-Tempbereichs. Ein explizites `--basetemp` innerhalb des Projekts wird vor Testbeginn zurückgewiesen; auch ein Tempbereich aus Umgebungsvariablen darf nicht im Projekt liegen. `PYTEST_DEBUG_TEMPROOT` kann die Fixture-Verzeichnisse nicht ins Projekt umleiten. Migrationstests verwenden ebenfalls externe Tempverzeichnisse. Private Windows-ACLs solcher Verzeichnisse bleiben damit außerhalb des Projekts.
 
 Voraussetzungen für Unit-Tests sind Python und die Testabhängigkeiten. Podman-Integration benötigt zusätzlich eine gestartete Podman-Machine. Ollama-Tests setzen eine Host-Instanz auf `localhost:11434` und das Modell `snowflake-arctic-embed2` voraus.
+Bei Exitcode 125 zuerst `podman info` aus derselben Ausfuehrungsumgebung pruefen. Meldet Podman beim Lesen seiner SSH-Identitaet unter `%USERPROFILE%\.local\share\containers\podman\machine` einen Zugriffsfehler, benoetigt der Testprozess Zugriff auf diese Datei. In einer eingeschraenkten Agent-Sandbox die isolierten Tests mit genehmigtem Zugriff ausserhalb der Sandbox ausfuehren; Schluessel und Dateirechte unveraendert lassen.
+
 
 ```powershell
 python -m pip install -r tests/podman/requirements.txt
@@ -259,3 +261,7 @@ Alle HTTP-Aufrufe verwenden getrennte Verbindungs-/Antwortzeitlimits: 5 Sekunden
 CLI-Validierung: --metric erlaubt ausschließlich cosine und euclidean (euklidische/L2-Distanz). L2 ist kein akzeptierter Parameterwert. Ungültige Optionen werden einzeln mit Parametername und erlaubten Werten beziehungsweise Grenzen gemeldet; Exitcode 2, ohne Dienstaufruf.
 
 CLI-Validierungsfehler werden auf Deutsch ausgegeben, einschließlich fehlender Pflichtparameter/Werte, unbekannter Optionen und ungültiger Ganzzahlen. Beispiel: Parameter --metric: 'L2' ist ungültig; erlaubt sind cosine und euclidean (L2-Distanz). Parameterabkürzungen sind deaktiviert, damit Tippfehler nicht unbemerkt als andere Option interpretiert werden. Exitcode bleibt 2.
+
+Die Vector-API schreibt atomar auf dem Schl?ssel `(chunk_id, embedding_set_id)` und erh?lt dabei die interne ID. Ihr threadsicherer Pool umfasst maximal zehn Verbindungen; bei Ersch?pfung antwortet sie mit HTTP 503. Alle Datenbankzugriffe schlie?en ihre Transaktion ab oder rollen sie bei Fehlern zur?ck. Schreibzugriffe werden nicht automatisch wiederholt.
+
+Pytest verwendet `--import-mode=importlib`, damit gleichnamige Unit- und Integrationstestmodule im gemeinsamen Lauf getrennt geladen werden. Die Testverzeichnisse sind fuer bestehende Helper-Imports im Python-Suchpfad eingetragen (`tests/pytest.ini`).

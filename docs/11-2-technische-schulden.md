@@ -1,6 +1,6 @@
 # 11.2 Technische Schulden
 
-Stand: 21.11.2026. Dieses Kapitel nach arc42 dokumentiert die im Projekt untersuchten technischen Schulden und einen vorgeschlagenen Abbauplan. TS-01, TS-02 und TS-03 sind abgeschlossen (historische Nachweise im [Changelog](../changelog.md)). Der bisherige TS-04 wird als akzeptiertes Risiko [R-01](11-1-risiken.md#r-01--manuelle-zuordnung-von-importvarianten--akzeptiertes-risiko) separat geführt. Technische Schulden gelten nur bei ausdrücklicher Markierung als Risiken. TS-08 ist implementiert. Die übrigen offenen Einträge beschreiben verbleibende Maßnahmen; bereits umgesetzte Teilmaßnahmen sind jeweils ausgewiesen.
+Stand: 22.11.2026. Dieses Kapitel nach arc42 dokumentiert die im Projekt untersuchten technischen Schulden und einen vorgeschlagenen Abbauplan. TS-01, TS-02 und TS-03 sind abgeschlossen (historische Nachweise im [Changelog](../changelog.md)). Der bisherige TS-04 wird als akzeptiertes Risiko [R-01](11-1-risiken.md#r-01--manuelle-zuordnung-von-importvarianten--akzeptiertes-risiko) separat geführt. Technische Schulden gelten nur bei ausdrücklicher Markierung als Risiken. TS-06 ist abgeschlossen; TS-08 ist implementiert. Die übrigen offenen Einträge beschreiben verbleibende Maßnahmen; bereits umgesetzte Teilmaßnahmen sind jeweils ausgewiesen.
 
 Die [Bausteinsicht](5-bausteinsicht.md) beschreibt die betroffenen Komponenten, die [Laufzeitsicht](6-laufzeitsicht.md) deren Zusammenspiel und das [Testkonzept](8-1-testkonzept.md) die vorhandenen Prüfungen. Das [Error-Handling-Konzept in Kapitel 8.3](8-3-error-handling.md) konkretisiert die offenen Maßnahmen; seine Dokumentation ist kein Implementierungsnachweis. Verzeichnisse namens `k8s` sind ausgeschlossen. Bewertungsmaßstab ist der lokale Podman-Betrieb eines Systems zum Vergleich von RAG-Strategien, kein bereits zugesagter Produktionsbetrieb.
 
@@ -50,11 +50,10 @@ Historische Ergebnisse und Grenzen einzelner Analyseläufe stehen im [Changelog]
 
 ### TS-06 – Nebenläufigkeit und Schreibsemantik der Vector-API · P1
 
-- **Befund:** [Vector](../Vector/app.py) verwendet `SimpleConnectionPool` und ersetzt Datensätze durch `DELETE` plus `INSERT`. Gleichzeitige Schreibzugriffe auf denselben bisher nicht vorhandenen Schlüssel können am Unique Constraint scheitern; Updates ändern die interne `id`. Der Pool ist nicht für die nebenläufige Nutzung ausgelegt.
-- **Auswirkung:** Sporadische Schreibfehler und instabile interne Identitäten. Diese Auswirkung wurde aus dem Code abgeleitet, nicht durch Lasttests bestätigt.
-- **Abbau und Abschluss:** Atomares `INSERT … ON CONFLICT DO UPDATE`, einen für Threads geeigneten Pool und eine definierte Behandlung von Poolauslastung verwenden. Transaktionsabschluss und Ressourcenrückgabe zentralisieren. Integrationstests prüfen konkurrierende Writes, SQL-Fehler und nachfolgende erfolgreiche Requests.
-- **Präzisierung:** Die Anwendung führt kein explizites Rollback aus. Daraus allein folgt kein Nachweis dauerhaft beschädigter Poolverbindungen: Die Bereinigung durch die konkrete Poolimplementierung muss berücksichtigt werden.
-- **Konkretisierung durch Kapitel 8.3:** Transaktionslebenszyklus gemäß [8.3.5](8-3-error-handling.md#835-datenbank-und-ressourcenbereinigung) zentralisieren: Abschluss auch bei Lesezugriffen, explizites Rollback bei Fehlern, Schließen defekter Verbindungen und sichere Poolrückgabe. Poolerschöpfung kontrolliert behandeln; Schreib-Retries erst bei gesicherter Idempotenz gemäß 8.3.4 zulassen.
+- **Status:** Abgeschlossen; isolierte Podman-Abnahme und alle optionalen Integrationstests erfolgreich; im laufenden Vector-API-Container ausgerollt (22.11.2026, Nachweise im Changelog).
+- **Umsetzung:** Atomare Upserts auf `(chunk_id, embedding_set_id)` erhalten bestehende IDs. `ThreadedConnectionPool` begrenzt die parallelen Verbindungen auf zehn; Ersch?pfung ergibt 503 ohne automatische Wiederholung.
+- **Transaktionen:** Zentraler Context Manager schlie?t auch Lesezugriffe mit Commit ab, rollt Fehler zur?ck und verwirft defekte oder nicht bereinigbare Verbindungen. R?ckgabefehler verdecken den urspr?nglichen Fehler nicht.
+- **Pr?fung:** Unit-Tests f?r Commit, Rollback, Bereinigungsfehler und Poolersch?pfung; isolierte Podman-Tests f?r parallele Upserts und stabile IDs. Pr?fnachweis im Changelog.
 
 ### TS-07 ? Datenbankinitialisierung und Readiness weiter absichern ? P2
 

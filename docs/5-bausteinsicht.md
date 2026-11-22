@@ -105,7 +105,7 @@ Das zentrale Register mit Status, Prioritäten und Abschlusskriterien steht in [
 |---|---|
 | Importkennung und RAG-Standardfilter unterscheiden sich | Für Import3-Daten im Request `filter: snowflake-arctic-embed2-v2` setzen. |
 | Nicht unterstützte Suchmetrik | Vector-Suche akzeptiert `euclidean` (`<->`) und `cosine` (`<=>`); andere Werte liefern HTTP 400. |
-| Nebenläufigkeit und Transaktionsbereinigung der Vector-API offen | Frühe Requestvalidierung und RFC-9457-Fehlerantworten sind umgesetzt. Poolnutzung, atomare Schreibsemantik und explizite Transaktionsbereinigung bleiben unter TS-06 offen. |
+| Nebenläufigkeit und Transaktionsbereinigung der Vector-API (TS-06 abgeschlossen) | Frühe Requestvalidierung und RFC-9457-Fehlerantworten sind umgesetzt. TS-06 implementiert ThreadedConnectionPool, atomare Upserts und zentrale Transaktionsbereinigung; die isolierte Podman-Abnahme ist erfolgreich (siehe Changelog). |
 | Reranker nicht in RAG integriert | Kein Reranking im `/process`-Pfad. |
 | Modellantworten variabel | Leerer Kontext liefert ohne Generierung HTTP 200 mit `no_context`, leeren Chunks und `metrics: null`. Bei vorhandenem Kontext garantiert HTTP 200 keine Faktentreue. |
 | Pakete und pgvector-Quellstand nicht vollständig fixiert | Builds können variieren; pgvector wird beim Image-Build aus dem aktuellen Repositorystand gebaut. |

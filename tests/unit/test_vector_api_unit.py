@@ -18,7 +18,7 @@ def vector_module(monkeypatch):
 
     psycopg2_stub = types.ModuleType("psycopg2")
     psycopg2_stub.OperationalError = OperationalError
-    psycopg2_stub.pool = types.SimpleNamespace(SimpleConnectionPool=no_database_pool)
+    psycopg2_stub.pool = types.SimpleNamespace(ThreadedConnectionPool=no_database_pool)
     monkeypatch.setitem(sys.modules, "psycopg2", psycopg2_stub)
     module_name = "vector_app_under_test"
     app_path = Path(__file__).resolve().parents[2] / "Vector" / "app.py"
@@ -35,6 +35,7 @@ def database(monkeypatch, vector_module):
     cursor.__enter__.return_value = cursor
     cursor.description = [(name,) for name in ("id", "chunk_id", "embedding_set_id", "vector", "chunktext", "distance")]
     connection = MagicMock()
+    connection.closed = False
     connection.cursor.return_value = cursor
     pool = MagicMock()
     pool.getconn.return_value = connection
@@ -50,9 +51,8 @@ def test_count_chunks_uses_embedding_filter_and_returns_count(database):
 
     assert response.status_code == 200
     assert response.get_json() == {"chunks": 7}
-    assert cursor.execute.call_args_list[0].args[0] == "SELECT 1"
-    assert cursor.execute.call_args_list[1].args[1] == ("embed-a",)
-    assert "WHERE embedding_set_id = %s" in cursor.execute.call_args_list[1].args[0]
+    assert cursor.execute.call_args_list[0].args[1] == ("embed-a",)
+    assert "WHERE embedding_set_id = %s" in cursor.execute.call_args_list[0].args[0]
     pool.putconn.assert_called_once_with(connection)
 
 
@@ -69,7 +69,7 @@ def test_search_uses_cosine_operator_and_filter_parameters(database):
         "id": 1, "chunk_id": "chunk-1", "embedding": "embed-a", "embedding_set_id": "embed-a",
         "vector": "[1,0]", "chunktext": "text", "distance": -0.9,
     }]
-    sql, parameters = cursor.execute.call_args_list[1].args
+    sql, parameters = cursor.execute.call_args_list[0].args
     assert "vector <=> %s::VECTOR" in sql
     assert "WHERE embedding_set_id = %s" in sql
     assert parameters == ([0.9, 0.1] + [0.0] * 1022, "embed-a", [0.9, 0.1] + [0.0] * 1022, 4)
@@ -97,7 +97,7 @@ def test_find_chunks_uses_parameterized_ilike_query(database):
     response = vector_app.app.test_client().get("/find?query=%25rome%25")
     assert response.status_code == 200
     assert response.get_json() == {"chunk_ids": ["chunk-1", "chunk-2"]}
-    assert cursor.execute.call_args_list[1].args == (
+    assert cursor.execute.call_args_list[0].args == (
         "SELECT chunk_id FROM vectors WHERE chunktext ILIKE %s", ("%rome%",)
     )
     pool.putconn.assert_called_once_with(connection)
@@ -110,11 +110,12 @@ def test_api_recovers_when_database_becomes_available(vector_module, monkeypatch
     cursor.__enter__.return_value = cursor
     cursor.fetchone.return_value = (7,)
     connection = MagicMock()
+    connection.closed = False
     connection.cursor.return_value = cursor
     recovered_pool = MagicMock()
     recovered_pool.getconn.return_value = connection
     factory = MagicMock(return_value=recovered_pool)
-    monkeypatch.setattr(vector_module.psycopg2.pool, "SimpleConnectionPool", factory)
+    monkeypatch.setattr(vector_module.psycopg2.pool, "ThreadedConnectionPool", factory)
     response = client.get("/chunks")
     assert response.status_code == 200
     assert response.get_json() == {"chunks": 7}
@@ -139,3 +140,41 @@ def test_set_aliases_write_same_database_column(database, key):
     assert "embedding_set_id" in cursor.execute.call_args.args[0]
     assert cursor.execute.call_args.args[1][:2] == ("c", "set")
     connection.commit.assert_called_once()
+
+
+@pytest.mark.parametrize("failure", ["sql", "commit", "rollback", "return"])
+def test_transaction_cleanup(database, failure):
+    module, pool, conn, cursor = database
+    cursor.fetchone.return_value = (1,)
+    original = RuntimeError("original")
+    if failure in ("sql", "rollback"):
+        cursor.execute.side_effect = original
+    if failure == "commit":
+        conn.commit.side_effect = original
+    if failure == "rollback":
+        conn.rollback.side_effect = RuntimeError("cleanup")
+    if failure == "return":
+        pool.putconn.side_effect = RuntimeError("return")
+    response = module.app.test_client().get("/chunks")
+    assert response.status_code == (503 if failure == "return" else 500)
+    if failure != "return":
+        conn.rollback.assert_called_once()
+    if failure == "rollback":
+        pool.putconn.assert_called_once_with(conn, close=True)
+    if failure == "return":
+        conn.close.assert_called_once()
+
+
+def test_pool_exhaustion_is_503(database):
+    module, pool, conn, cursor = database
+    pool.getconn.side_effect = RuntimeError("exhausted")
+    assert module.app.test_client().get("/chunks").status_code == 503
+    pool.putconn.assert_not_called()
+
+
+def test_read_commits(database):
+    module, pool, conn, cursor = database
+    cursor.fetchone.return_value = (1,)
+    assert module.app.test_client().get("/chunks").status_code == 200
+    conn.commit.assert_called_once()
+    conn.rollback.assert_not_called()

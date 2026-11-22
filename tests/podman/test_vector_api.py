@@ -44,3 +44,60 @@ def test_vector_api(vector_url, test_id):
         assert request(vector_url, "/chunk", "DELETE", {"chunk_id": chunk_id, "embedding": embedding})["message"] == "deleted"
     assert request(vector_url, "/chunks?embedding=" + embedding_a)["chunks"] == 0
     assert request(vector_url, "/chunks?embedding_set_id=" + embedding_b)["chunks"] == 0
+
+
+@pytest.mark.podman
+def test_parallel_upserts_preserve_identity(vector_url, test_id):
+    from concurrent.futures import ThreadPoolExecutor
+    from threading import Barrier
+    payload = {"chunk_id": "parallel-" + test_id, "embedding_set_id": test_id,
+               "vector": vector(1), "chunktext": "initial"}
+    barrier = Barrier(6)
+    def write(index):
+        barrier.wait(timeout=30)
+        request(vector_url, "/vectors", "POST", {**payload, "chunktext": str(index)}, 201)
+    with ThreadPoolExecutor(max_workers=6) as executor:
+        list(executor.map(write, range(6)))
+    path = "/chunks/" + payload["chunk_id"] + "?embedding_set_id=" + test_id
+    initial = request(vector_url, path)
+    request(vector_url, "/vectors", "POST", payload, 201)
+    assert request(vector_url, path)["id"] == initial["id"]
+    assert request(vector_url, "/chunks?embedding_set_id=" + test_id)["chunks"] == 1
+    request(vector_url, "/chunk", "DELETE", payload)
+
+
+@pytest.mark.podman
+def test_sql_failure_rolls_back_and_reuses_connection(podman_stack):
+    import subprocess
+    script = """
+import app
+import psycopg2
+from psycopg2.extensions import TRANSACTION_STATUS_IDLE
+app.ensure_db_pool()
+with app.transaction() as conn:
+    with conn.cursor() as cursor:
+        cursor.execute("CREATE TEMP TABLE ts06_rollback (value integer)")
+try:
+    with app.transaction() as conn:
+        with conn.cursor() as cursor:
+            cursor.execute("INSERT INTO ts06_rollback VALUES (1)")
+            cursor.execute("SELECT 1 / 0")
+except psycopg2.errors.DivisionByZero:
+    pass
+else:
+    raise AssertionError("SQL failure expected")
+reused = app.db_pool.getconn()
+assert reused is conn
+assert reused.get_transaction_status() == TRANSACTION_STATUS_IDLE
+app.db_pool.putconn(reused)
+with app.transaction() as conn:
+    with conn.cursor() as cursor:
+        cursor.execute("SELECT count(*) FROM ts06_rollback")
+        assert cursor.fetchone() == (0,)
+assert conn.get_transaction_status() == TRANSACTION_STATUS_IDLE
+assert app.app.test_client().get("/chunks").status_code == 200
+app.db_pool.closeall()
+"""
+    container = "rag-test-vector-" + podman_stack["id"]
+    subprocess.run(["podman", "exec", container, "python", "-c", script],
+                   check=True, capture_output=True, text=True, timeout=30)

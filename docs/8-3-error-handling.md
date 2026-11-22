@@ -85,6 +85,8 @@ Jeder Datenbankzugriff hat einen eindeutig begrenzten Transaktions- und Verbindu
 
 Upserts erfolgen atomar über `INSERT ... ON CONFLICT DO UPDATE` auf dem bestehenden Schlüssel `(chunk_id, embedding_set_id)`. Der Pool muss zur Nebenläufigkeit des Servers passen. Poolerschöpfung und Nichterreichbarkeit werden kontrolliert behandelt; verzögerter Datenbankstart darf durch spätere Initialisierungsversuche aufgeholt werden. Bereinigung darf den ursprünglichen Fehler nicht verdecken.
 
+TS-06 ist in Vector/app.py umgesetzt: zentraler Transaktionskontext, ThreadedConnectionPool (maximal zehn Verbindungen), atomarer Upsert mit stabiler ID. Poolersch?pfung ergibt 503; automatische Schreibwiederholungen erfolgen nicht. Unit- und isolierte Podman-Pruefungen bestehen: parallele Upserts, stabile IDs sowie SQL-Rollback und Poolwiederverwendung sind nachgewiesen (siehe Changelog).
+
 ## 8.3.6 Fachliche Ergebnisse und Importabschluss
 
 Eine leere Suchtrefferliste ist ein erfolgreiches fachliches Ergebnis. Die RAG-API beendet dann die Verarbeitung ohne Generierung mit HTTP 200, `status: "no_context"`, `chunks: []` und einer kontrollierten Ablehnungsantwort. Nicht ausgeführte Generierungsmetriken werden als nicht vorhanden gekennzeichnet, nicht als gemessene Nullwerte. Ein Retrievalausfall darf niemals in eine leere Trefferliste umgewandelt werden.
