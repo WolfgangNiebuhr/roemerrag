@@ -17,6 +17,9 @@ Ein aktueller Codezustand belegt nicht die historische Herkunft bereits gespeich
 | `snowflake-arctic-embed2-v2` | Unten dokumentierter aktueller Standard von Import3 | Aus dem Code vom 21.11.2026 abgeleitet. Nicht als vollständiger Herkunftsnachweis aller Bestandsvektoren bestätigt. |
 | `embedding1` | Unbekannt | Bei der Bestandsaufnahme zur Set-ID-Migration vorgefunden; ursprüngliche Parameter nicht belegt. |
 | `embedding2` | Unbekannt | Bei der Bestandsaufnahme zur Set-ID-Migration vorgefunden; ursprüngliche Parameter nicht belegt. |
+| `test-recursive-1000` | [Pipeline-Konfiguration](../Ingest/experiments/test-recursive-1000.json), 1000/150 Zeichen mit Zeichen-Fallback, ohne Keywords | Konfiguriertes Zielset |
+| `snowflake-arctic-embed-v1` | [Pipeline-Konfiguration](../Ingest/experiments/snowflake-arctic-embed-v1.json), 1000/100 Zeichen, LangChain-Standardtrennzeichen, ohne Keywords | Konfiguriertes Zielset |
+| `snowflake-arctic-embed-v2` | [Pipeline-Konfiguration](../Ingest/experiments/snowflake-arctic-embed-v2.json), Chunkgrenzen und Keyword-Prompt nach Import3 | Konfiguriertes Zielset; Kompatibilitaet in separaten Test-Sets geprueft |
 
 ### `snowflake-arctic-embed2-v2`: dokumentierter Import3-Standard
 
@@ -25,10 +28,10 @@ Ein aktueller Codezustand belegt nicht die historische Herkunft bereits gespeich
 | Importpfad | [Ingest/import3.py](../Ingest/import3.py), `process_file` |
 | Quelle | UTF-8-Textdateien; vollständige Dateiliste und Inhaltsstände des historischen Bestands unbekannt |
 | Chunking | LangChain `RecursiveCharacterTextSplitter`, Zeichenbasis, `chunk_size=1000`, `chunk_overlap=150` |
-| Trennzeichen | In dieser Reihenfolge: `"\n\n"`, `".\n"`, `". "`; siehe [chunking.py](../Ingest/chunking.py) |
-| Keyword-Anreicherung | Aktiv, über Ollama `/api/chat`, Modell `gemma3:4b`, `temperature=0.0`, `stream=false`; siehe [gateway.py](../Ingest/gateway.py) |
+| Trennzeichen | In dieser Reihenfolge: `"\n\n"`, `".\n"`, `". "`; siehe [chunking.py](../Ingest/utils/chunking.py) |
+| Keyword-Anreicherung | Aktiv, über Ollama `/api/chat`, Modell `gemma3:4b`, `temperature=0.0`, `stream=false`; siehe [gateway.py](../Ingest/utils/gateway.py) |
 | Keyword-Anzahl | Aus der Länge des ursprünglichen Chunks: unter 200 Zeichen Aufforderung zu einem Keyword; 200–399 zu 1, 400–599 zu 2, 600–799 zu 3, ab 800 zu 4 Keywords |
-| Keyword-Prompts | Momentaufnahme unten; Implementierung: [keywords.py](../Ingest/keywords.py) |
+| Keyword-Prompts | Momentaufnahme unten; Implementierung: [keywords.py](../Ingest/utils/keywords.py) |
 | Eingabe fürs Embedding | Unveränderte Keyword-Antwort + `"\n"` + ursprünglicher Chunk; kein zusätzlicher Embedding-Prompt oder Präfix |
 | Embeddingmodell | `snowflake-arctic-embed2`, Ollama `/api/embeddings`; tatsächliche Modellrevision unbekannt |
 | Normalisierung | Division durch die L2-Norm des Embeddingvektors vor Speicherung |

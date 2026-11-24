@@ -40,7 +40,10 @@ podman machine start
 # Gestoppten Pod wieder starten
 podman pod start vectorpod
 
-# Mit DB verbinden
+# Mit lokal installiertem psql direkt vom Windows-Host verbinden
+psql -h 127.0.0.1 -p 5432 -U admin -d vector_db
+
+# Mit psql im DB-Container verbinden
 podman exec -it vectordb psql -U admin -d vector_db
 
 # Aktuelles Schema: vectors(id, chunk_id, embedding_set_id, vector, chunktext).

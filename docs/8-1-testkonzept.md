@@ -141,6 +141,17 @@ Historische Ergebnisse und Grenzen einzelner Analyseläufe stehen im [Changelog]
 
 ### Integration des realen Importpfads
 
+Der Set-ID-Test in tests/podman/test_import_pipeline_integration.py verwendet die drei Pipeline-Beispiele direkt. Er prueft die gespeicherte Set-ID und den Chunktext per Einzelabruf, die Ruecksuche desselben Vektors mit Set-Filter und die leeren frueheren Set-IDs im isolierten Testvolume. Aktivierung mit --include-ollama.
+
+
+Der Kompatibilitaetstest in tests/podman/test_import_pipeline_integration.py fuehrt Import3 und die Pipeline mit snowflake-arctic-embed-v2.json am selben Testtext aus. Er vergleicht die Keyword-Praefixe exakt und die gespeicherten 1024-dimensionalen Vektoren komponentenweise mit absoluter Toleranz 1e-6. Beide Importpfade verwenden getrennte Test-Sets im isolierten Stack.
+
+
+
+`tests/unit/test_import_pipeline.py` prueft die CLI-Einstiege fuer Chunking und Import mit gemockten Diensten. Faelle umfassen feste Chunkgrenzen und Overlap bei langen ungetrennten Passagen, unveraenderten Text ohne Keywords, denselben angereicherten Text fuer Embedding und Speicherung, Wiederverwendung von Artefakten und Abbruch bei fehlerhaften Providern oder Writes.
+
+`tests/podman/test_import_pipeline_integration.py` prueft denselben Pipeline-Einstieg mit echten Ollama-Keywords, normalisierten Embeddings und Ruecksuche ueber die Vector-API im isolierten Teststack. Der Test verwendet ein eigenes Embedding-Set und entfernt die Testchunks im finally-Block. Aktivierung mit `--include-ollama`; benoetigte Modelle sind `gemma3:4b` und `snowflake-arctic-embed2`.
+
 `tests/podman/test_import3_integration.py` ruft `import3.process_file` mit realem Chunking, Keyword-Gateway (`gemma3:4b`), Embedding (`snowflake-arctic-embed2`) und Vector-API im isolierten Podman-Teststack auf. Nur Endpunkte und die eindeutige Importvariante werden konfiguriert. Der Test kontrolliert Chunkanzahl, nicht leeres Keyword-Präfix, unver?nderten Quelltext und Retrieval des gespeicherten Vektors durch erneutes Embedding der angereicherten Metadaten. Modellantworten werden nicht wortgenau verglichen. Testchunks werden im finally-Block entfernt. Aktivierung: `--include-ollama` oder `--all`; Host-Adresse ?ber `OLLAMA_HOST_URL`. Der RAG-Container ist nicht erforderlich. Der CLI-Argumentparser ist nicht Teil dieser Pr?fung.
 
 ## Set-Kennung und Bestandsmigration (TS-01)

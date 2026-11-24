@@ -1,6 +1,6 @@
 # 8.4 Variantenfaehiges Importkonzept
 
-Stand: 22.11.2026. Dieses Kapitel beschreibt den **Zielzustand**, keine bereits implementierte Importfunktion. Unterstuetzter aktueller Einstieg ist `Ingest/import3.py`; `Ingest/import.py` ist eine fehlerhafte Altvariante. Alle nachfolgenden Modulnamen, Dateiformate und CLI-Aufrufe sind Entwuerfe. Es werden weder Bestandsdaten noch laufende Dienste umgestellt.
+Stand: 24.11.2026. Der gemeinsame Import ist als `python -m Ingest.pipeline` verfuegbar. Er unterstuetzt rekursives Chunking, keine Anreicherung oder Keywords und denselben Chunktext fuer Embedding und Speicherung. `Ingest/import3.py` bleibt als eigenstaendiger Einstieg erhalten. Die Abschnitte kennzeichnen offene Teile des Zielbilds.
 
 Das Konzept konkretisiert [TS-05, TS-12, TS-14 und TS-17](11-2-technische-schulden.md) und baut auf [Error-Handling, Kapitel 8.3](8-3-error-handling.md), dem [Testkonzept](8-1-testkonzept.md) und der [manuellen Set-Zuordnung](8-2-embedding-sets.md) auf.
 
@@ -37,51 +37,13 @@ flowchart LR
 | Embedding | Gemeinsamer chunktext zu geprueftem Vektor | Modellaufruf, Normalisierung, Dimension und endliche Werte |
 | Schreiben/Abschluss | Vollstaendiges Ergebnis zu freigegebenem Import | Identitaet, Fehlerbericht, Vollstaendigkeit, Altlasten und Aktivierung |
 
-Die Schritte sind auch einzeln ausfuehrbar. Ein anderer Embeddingversuch muss vorhandenes Chunking oder eine teure Keywordgenerierung nicht erneut ausfuehren. Lokale Artefakte bilden die Uebergaben; die Aufteilung entspricht dem Gedanken hinter den RAG-Endpunkten `/evaluate/retrieve`, `/evaluate/rerank` und `/evaluate/generate`.
+Chunking ist einzeln ausfuehrbar. Die Pipeline kann mit vorhandenen Chunk- oder Anreicherungsartefakten beginnen. Ein anderer Embeddingversuch muss vorhandenes Chunking oder eine teure Keywordgenerierung nicht erneut ausfuehren. Lokale Artefakte bilden die Uebergaben; die Aufteilung entspricht dem Gedanken hinter den RAG-Endpunkten `/evaluate/retrieve`, `/evaluate/rerank` und `/evaluate/generate`.
 
 ## 8.4.3 Strategieimplementierung und Aufruf
 
-Vorgeschlagene Struktur:
+`Ingest/pipeline.py` waehlt die Strategiefunktionen ueber explizite Registries. `Ingest/utils/chunking.py` enthaelt die gemeinsame rekursive Textzerlegung, `Ingest/utils/keywords.py` den fuer beide Importer verwendeten Keyword-Prompt. Die Pipeline verwendet Absatz- und Satztrennzeichen in der bisherigen Reihenfolge und ergaenzt einen Zeichen-Fallback fuer lange ungetrennte Passagen. Die Standardwerte sind 1000 Zeichen und 150 Zeichen Ueberlappung. Die Versuchskonfiguration liegt unter `Ingest/experiments`.
 
-```text
-Ingest/
-  chunkers/
-    recursive.py
-    paragraphs.py
-  enrichers/
-    none.py
-    keywords.py
-  experiments/
-    recursive-1000.json
-  pipeline.py
-  chunk.py
-```
-
-Ein Chunker wird als Python-Datei definiert. Andere Groessen oder Overlaps verwenden dieselbe Funktion; semantisches oder dokumentstrukturbezogenes Chunking darf ein neues Modul erhalten. Die einfache Textschnittstelle kann anfangs so aussehen:
-
-```python
-# Ingest/chunkers/recursive.py -- Entwurf
-from langchain.text_splitter import RecursiveCharacterTextSplitter
-
-
-def chunk(text: str, *, size: int = 1000, overlap: int = 150) -> list[str]:
-    if size <= 0 or not 0 <= overlap < size:
-        raise ValueError("Erwartet: size > 0 und 0 <= overlap < size")
-    splitter = RecursiveCharacterTextSplitter(
-        chunk_size=size,
-        chunk_overlap=overlap,
-        separators=["\n\n", ".\n", ". "],
-    )
-    return splitter.split_text(text)
-```
-
-Der Ablauf liest das Dokument und ruft die gewaehlte Funktion auf:
-
-```python
-CHUNKERS = {"recursive": recursive_chunk, "paragraphs": paragraph_chunk}
-chunker = CHUNKERS[config["strategy"]]
-chunks = chunker(document_text, **config.get("parameters", {}))
-```
+Versuche koennen `chunking.parameters.separators` als geordnete Liste literaler Trennzeichen ueberschreiben. Ein optionales leeres Trennzeichen steht ausschliesslich am Ende und aktiviert bei Bedarf den Zeichen-Fallback. Ohne dieses Element koennen Chunks die konfigurierte Groesse ueberschreiten. `Ingest/experiments/snowflake-arctic-embed-v1.json` verwendet die LangChain-Standardtrennzeichen `["\n\n", "\n", " ", ""]`, 1000 Zeichen und 100 Zeichen Overlap. `Ingest/experiments/snowflake-arctic-embed-v2.json` verwendet die Absatz- und Satztrennzeichen ohne Zeichen-Fallback, 1000 Zeichen, 150 Zeichen Overlap, den gemeinsamen Keyword-Prompt mit `gemma3:4b` und normalisierte Embeddings mit `snowflake-arctic-embed2`. Die Konfiguration bildet den Verarbeitungspfad bei erfolgreichen Providerantworten ab. Die Pipeline verwendet ihr eigenes Embedding-Set und bricht beim ersten Fehler ab. Artefakte des bisherigen Formats 1 ohne Trennzeichenliste werden mit der bisherigen Pipeline-Reihenfolge gelesen.
 
 Unbekannte Strategien und Parameter werden vor externen Aufrufen zurueckgewiesen. Die Strategie prueft ihre eigenen Parameter. Falls eine spaetere Idee Seiten, Ueberschriften oder Quellpositionen benoetigt, wird die Schnittstelle gezielt auf strukturierte Dokumente/Chunks erweitert. Es werden keine unzuverlaessigen Positionen durch blosse Textsuche erfunden. Deterministische Chunker erhalten fuer dieselbe Eingabe dieselbe Reihenfolge; modellbasierte Chunker dokumentieren ihre Modell-/Zufallsparameter und speichern ihr Ergebnis.
 
@@ -110,7 +72,7 @@ Algorithmus und Versuch sind getrennt. JSON wird zunaechst bevorzugt, weil es ke
 }
 ```
 
-Das Beispiel beschreibt die Keyword-Variante mit einem gemeinsamen Text: Keywords, Zeilenumbruch und Originalchunk werden zusammen eingebettet und als chunktext gespeichert. Derselbe Text wird spaeter fuer Reranking und Antwortgenerierung verwendet. Ohne Anreicherung wird der Originalchunk verwendet. Ein texts-Abschnitt oder eine getrennte Auswahl fuer Suche und Kontext ist nicht vorgesehen. Das entspricht dem Prinzip von import3.py; fuer einen verhaltensgleichen Umbau bleiben auch Trennzeichenreihenfolge, Prompts und sonstige Defaults explizit erhalten. Die beispielhafte Set-ID ist keine Herkunftsaussage ueber bestehende Sets.
+Das Beispiel beschreibt die Keyword-Variante mit einem gemeinsamen Text: Keywords, Zeilenumbruch und Originalchunk werden zusammen eingebettet und als chunktext gespeichert. Derselbe Text wird spaeter fuer Reranking und Antwortgenerierung verwendet. Ohne Anreicherung wird der Originalchunk verwendet. Ein texts-Abschnitt oder eine getrennte Auswahl fuer Suche und Kontext ist nicht vorgesehen. Das entspricht dem Prinzip von import3.py; die Pipeline erhaelt Trennzeichenreihenfolge und Prompt und aktiviert standardmaessig den Zeichen-Fallback. Die beispielhafte Set-ID ist keine Herkunftsaussage ueber bestehende Sets.
 
 Die vollstaendig aufgeloesten Einstellungen eines Laufs werden im lokalen Laufbericht festgehalten. Bei gleicher Versuchskonfiguration sollen geaenderte Defaults nicht unbemerkt das Ergebnis aendern. Die Konfiguration enthaelt keine Zugangsdaten. Modellrevisionen, Code-/Buildstand und Promptinhalt oder dessen eindeutige Version gehoeren, soweit bekannt, in den Nachweis; ein Modellname allein belegt keine unveraenderlichen Gewichte.
 
@@ -129,51 +91,53 @@ Originaltext und Anreicherung bleiben fuer Nachvollziehbarkeit und Wiederverwend
 
 Mit Keywords lautet chunktext: Keywords + Zeilenumbruch + source_text. Ohne Anreicherung ist chunktext identisch zu source_text. Der tatsaechlich eingebettete Text wird unveraendert in der vorhandenen Spalte chunktext gespeichert und von dort an Reranker und Antwortmodell gegeben. Dafuer werden weder embedding_text/context_text-Felder noch eine neue Textauswahl oder Schemaerweiterung benoetigt. Die spaetere Trennungsmoeglichkeit ist ausschliesslich in Abschnitt 8.4.10 beschrieben und gehoert nicht zum aktuellen Umsetzungsumfang.
 
-Zwischenergebnisse werden pro Stufe als versionierte JSON-Artefakte gespeichert, beispielsweise document.json, chunks.json, enriched.json und embeddings.json. Jedes Artefakt nennt Quellkennung/-version, Eingabeartefakt, Stufe, Strategieparameter und geordnete Ergebnisse. Laufbericht und Metriken nennen Lauf-ID, Modellangaben sowie vorhandene Laufzeit-/Tokenwerte; fehlende Werte bleiben null. Artefaktformate erhalten eine format_version.
+Die Pipeline schreibt versionierte Artefakte `chunks.json`, `enriched.json` und `embeddings.json` fuer die ausgefuehrten Stufen. Sie enthalten Quellpfad, SHA-256 der Quelldatei, Stufe, Strategieparameter und geordnete Ergebnisse. `run.json` dokumentiert Lauf-ID, Eingabe, aufgeloeste Konfiguration, erzeugte Artefakte, Stufenzeiten und Speicherausgang. Ein separates Dokumentartefakt und Provider-Metriken bleiben offen.
 
 Ein Chunkingartefakt koennte gekuerzt so aussehen:
 
 ```json
 {
   "format_version": 1,
-  "document_id": "roman-history/pg3060",
+  "stage": "chunks",
+  "document_id": "pg3060",
+  "source": "<absoluter Quellpfad>",
   "source_version": "<Inhaltsdigest der Quelldatei>",
   "chunking": {
     "strategy": "recursive",
     "parameters": {"size": 1000, "overlap": 150}
   },
   "chunks": [
-    {"index": 0, "source_text": "Erster Textabschnitt ..."},
-    {"index": 1, "source_text": "Zweiter Textabschnitt ..."}
+    {"chunk_id": "pg3060-1", "source_text": "Erster Textabschnitt ..."},
+    {"chunk_id": "pg3060-2", "source_text": "Zweiter Textabschnitt ..."}
   ]
 }
 ```
 
 Wiederverwendung ist explizit: Der Anwender waehlt ein gespeichertes Eingabeartefakt. Kein automatischer globaler Cache ist erforderlich. Der Ablauf prueft Dateiformat und benoetigte Felder; die Verwendung einer vorhandenen Anreicherung behauptet nicht, das Modell erneut ausgefuehrt zu haben. Neue Laufzeiten werden von gespeicherten Herkunftsmetriken getrennt. Artefakte werden erst nach vollstaendigem Schreiben als verwendbar markiert; abgebrochene Dateien sind keine erfolgreichen Zwischenergebnisse.
 
-## 8.4.6 CLI-Zielbild
+## 8.4.6 CLI
 
-Die folgenden Befehle sind noch zu implementieren. Ausfuehrung aus dem Projektstamm, jeweils ohne die anderen Stufen implizit zu starten:
+Die folgenden Befehle werden aus dem Projektstamm ausgefuehrt. Jeder Pipeline-Aufruf erfordert ein neues Ausgabeverzeichnis.
 
 ```powershell
 # Nur Chunking
 python -m Ingest.chunk --file Ingest/pg3060.txt `
-  --config Ingest/experiments/recursive-1000.json `
-  --output artifacts/recursive-1000/chunks.json
+  --config Ingest/experiments/test-recursive-1000.json `
+  --output artifacts/test-recursive-1000/chunks.json
 
 # Vollstaendiger Import mit derselben Versuchskonfiguration
 python -m Ingest.pipeline --file Ingest/pg3060.txt `
-  --config Ingest/experiments/recursive-1000.json `
-  --output-dir artifacts/recursive-1000/run-001
+  --config Ingest/experiments/test-recursive-1000.json `
+  --output-dir artifacts/test-recursive-1000/run-001
 
 # Ab vorhandenen Chunks: Anreicherung, Embedding und Schreiben
 python -m Ingest.pipeline --from chunks `
-  --input artifacts/recursive-1000/chunks.json `
-  --config Ingest/experiments/recursive-1000.json `
-  --output-dir artifacts/recursive-1000/run-002
+  --input artifacts/test-recursive-1000/chunks.json `
+  --config Ingest/experiments/test-recursive-1000.json `
+  --output-dir artifacts/test-recursive-1000/run-002
 ```
 
-Der reine Chunkingaufruf benoetigt nur den chunking-Abschnitt der Konfiguration und keinen Datenbank- oder Modellzugriff. Weitere Einzelstufen werden nach demselben Muster ergaenzt. Der gemeinsame Ablauf fuehrt auf Wunsch die restlichen Stufen aus; fuer isolierte Versuche wird nur die benoetigte Einzelstufe aufgerufen.
+Der reine Chunkingaufruf benoetigt nur den chunking-Abschnitt der Konfiguration und keinen Datenbank- oder Modellzugriff. Mit `--from enriched --input <Pfad zu enriched.json>` beginnt der Ablauf beim Embedding. Die Chunkingparameter und bei Anreicherungsartefakten auch die Anreicherungsparameter muessen uebereinstimmen. Fuer ein anderes Embedding werden das Modell und die manuell zugeordnete Set-ID angepasst. Die Wiederverwendung von Embeddingartefakten zum isolierten Schreiben und weitere einzeln ausfuehrbare Stufen bleiben Teil des Zielbilds.
 
 ## 8.4.7 Identitaet, Wiederholung und Abschluss
 
@@ -183,7 +147,7 @@ Chunker liefern Reihenfolge und Text. Der gemeinsame Ablauf vergibt daraus die I
 
 Gleiche Staemme wie rom.txt und rom.md fuehren innerhalb desselben Sets zu denselben Chunk-IDs. Dasselbe gilt fuer gleichnamige Dateien aus verschiedenen Verzeichnissen. Diese Faelle werden durch manuelle Namenswahl oder getrennte Sets vermieden; eine zusaetzliche technische Kollisionsabsicherung ist derzeit nicht vorgesehen. Das bewusst akzeptierte Restrisiko ist in [R-02](11-1-risiken.md#r-02-dateistamm-als-dokumentidentitaet) festgehalten.
 
-Die Dateistammregel ist seit 22.11.2026 in import3.py mit Path.stem umgesetzt und fuer mehrteilige Namen sowie Namen ohne Erweiterung getestet. Der uebrige Importerumbau bleibt Zielkonzept. Fuer mehrteilige Namen aendern sich gegenueber der alten Erste-Punkt-Logik die Schluessel; alte Eintraege werden nicht automatisch migriert oder entfernt. Vor einem Wiederholungsimport bestehender Quellen muss deren Altbestand explizit geprueft und eine Bereinigung geplant werden; vorhandene Daten wurden durch diese Codekorrektur nicht veraendert.
+Die Dateistammregel ist seit 22.11.2026 in import3.py mit Path.stem umgesetzt und fuer mehrteilige Namen sowie Namen ohne Erweiterung getestet. Die Pipeline verwendet dieselbe Dateistammregel. Fuer mehrteilige Namen aendern sich gegenueber der alten Erste-Punkt-Logik die Schluessel; alte Eintraege werden nicht automatisch migriert oder entfernt. Vor einem Wiederholungsimport bestehender Quellen muss deren Altbestand explizit geprueft und eine Bereinigung geplant werden; vorhandene Daten wurden durch diese Codekorrektur nicht veraendert.
 
 Ein fachlich vollstaendiger Import umfasst auch den Umgang mit alten Chunks: Ein kuerzerer Neuimport darf keine ueberzaehligen alten Treffer aktiv lassen. Neue und alte Versionen duerfen waehrend eines fehlgeschlagenen Imports nicht unbemerkt als vollstaendiger Stand vermischt werden. Ziel ist eine vorbereitete Version, deren Vollstaendigkeit geprueft und erst danach freigegeben wird; bei Fehlern bleibt die vorherige vollstaendige Version nutzbar.
 
@@ -191,7 +155,7 @@ Die technische Umsetzung dieser Freigabe bleibt Teil von TS-05: Dokument-/Versio
 
 ## 8.4.8 Fehler, Wiederaufnahme und Metriken
 
-Es gelten die Regeln aus Kapitel 8.3: standardmaessig Abbruch beim ersten Fehler; optionales Fortsetzen nur bei isolierten Chunkfehlern, Abbruch bei systemischen Stoerungen. Ein teilweise erfolgreicher Lauf wird nicht als vollstaendig aktiviert.
+Die Pipeline bricht beim ersten Fehler ab und schreibt nach dem Anlegen des Laufverzeichnisses einen Bericht mit Fehlerphase, Chunk-ID, Fehlerklasse und bestaetigten Schreibvorgaengen. Erfolgreich abgeschlossene lokale Stufen koennen explizit wiederverwendet werden. Exitcodes sind 0 fuer Erfolg, 1 fuer Abbruch und 2 fuer ungueltige CLI-Argumente, Konfiguration oder Eingabeartefakte. Wiederaufnahme ueber einen Laufbericht und Fortsetzen nach isolierten Chunkfehlern sind offen. Dafuer gelten als Ziel die Regeln aus Kapitel 8.3: standardmaessig Abbruch beim ersten Fehler; optionales Fortsetzen nur bei isolierten Chunkfehlern, Abbruch bei systemischen Stoerungen. Ein teilweise erfolgreicher Lauf wird nicht als vollstaendig aktiviert.
 
 Der Laufbericht nennt erwartete, erfolgreiche und fehlgeschlagene Dokumente/Chunks, Fehlerphase, Ursache in sicherer Form und verwendete Artefakte. Exitcodes: 0 vollstaendiger Erfolg, 1 Abbruch, 2 ungueltiger Aufruf, 3 abgeschlossener Lauf mit Teilfehlern. Wiederaufnahme waehlt einen vorhandenen Laufbericht und dessen unveraenderte Eingaben; geaenderte Quelle oder Strategie startet einen neuen Versuch. Ein blosser --start-Index ist kein ausreichender Resume-Vertrag.
 
@@ -211,7 +175,7 @@ Die Einfuehrung erfolgt schrittweise:
 
 Abnahme gemaess Kapitel 8.1: deterministische Tests fuer Parameter, Grenzen, Overlap, Reihenfolge, Identitaet und Artefaktruecklesen; Vertragstests fuer Textbildung und das Ueberspringen bereits ausgefuehrter Stufen; isolierte Integration fuer Keyword-/Embeddingprovider und Speicherung. Namenskollisionen, verkuerzte Neuimporte, Fehler vor Freigabe und Resume benoetigen eigene Tests. Bei Qualitaetsvergleichen werden moeglichst einzelne Faktoren geaendert; ein anderer Chunker mit gleichzeitig anderer Anreicherung ist kein isolierter Chunkingvergleich.
 
-Dieses Konzept schliesst keine technischen Schulden ab. Es legt die Richtung fuer deren Umsetzung fest; Codeaenderungen, Tests, Bestandsmigration und eine spaetere Gold-Evaluation bleiben eigene Arbeitspakete.
+Die Einfuehrung des gemeinsamen Ablaufs und die Wiederverwendung von Chunk- und Anreicherungsartefakten sind umgesetzt. Dokumentweiter Importabschluss, Bestandsmigration und Gold-Evaluation bleiben eigene Arbeitspakete.
 
 ## 8.4.10 Moegliche spaetere Erweiterung: Embeddingtext und Kontext trennen
 

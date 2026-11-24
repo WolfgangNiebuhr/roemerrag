@@ -1,7 +1,7 @@
 import os
 import argparse
-from chunking import split_text_into_chunks
-from keywords import get_keywords_ollama
+from utils.chunking import split_text_into_chunks
+from utils.keywords import get_keywords_ollama
 
 CHUNK_SIZE = 1000  # Größe der Chunks in Zeichen
 OVERLAP = 150

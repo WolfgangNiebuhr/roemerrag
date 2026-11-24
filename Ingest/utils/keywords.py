@@ -1,7 +1,4 @@
-if __package__:
-    from .gateway import call_ollama_gateway
-else:
-    from gateway import call_ollama_gateway
+from .gateway import call_ollama_gateway
 import logging
 
 MAX_SIZE = 1000  # Max Size für 5 Keywords
@@ -27,7 +24,7 @@ def get_keyword_question2(chunk):
                     )
     return question
 
-def get_keywords_ollama(chunk):
+def keyword_messages(chunk):
     """Generiert eine Antwort basierend auf dem Kontext und der Frage über die Ollama-API."""
     system_prompt = (
         "Du bist ein Experte für die Analyse von Texten. Du extrahierst keywords aus Texten die als Kontext übergeben werden."
@@ -48,6 +45,11 @@ def get_keywords_ollama(chunk):
 
     query = f"<<BEGINN KONTEXT>>:\n{chunk}\n<<ENDE KONTEXT>>\nFrage: {question}\nBerücksichtige, dass als Antwort eusschließliche ien Mommaseparierte Liste von Keywords gewünscht ist, keine weiteren Erläuterungen oder Ergänzungen."
 
+    return system_prompt, query, question
+
+
+def get_keywords_ollama(chunk):
+    system_prompt, query, question = keyword_messages(chunk)
     response = call_ollama_gateway(chunk, system_prompt, query)
 
     data = response.json()

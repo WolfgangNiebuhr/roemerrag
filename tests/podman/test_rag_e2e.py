@@ -6,7 +6,7 @@ from pathlib import Path
 import pytest
 
 from common import request
-from Ingest.chunking import split_text_into_chunks
+from Ingest.utils.chunking import split_text_into_chunks
 
 
 @pytest.mark.podman

@@ -1,0 +1,14 @@
+{
+  "format_version": 1,
+  "name": "snowflake-arctic-embed-v2",
+  "embedding_set_id": "snowflake-arctic-embed-v2",
+  "chunking": {
+    "strategy": "recursive",
+    "parameters": {"size": 1000, "overlap": 150, "separators": ["\n\n", ".\n", ". "]}
+  },
+  "enrichment": {
+    "strategy": "keywords",
+    "parameters": {"model": "gemma3:4b", "prompt": "keywords-v1"}
+  },
+  "embedding": {"model": "snowflake-arctic-embed2", "normalize": true, "dimensions": 1024}
+}

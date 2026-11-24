@@ -27,8 +27,9 @@ flowchart TB
             engine -. verwaltet .-> rerank
         end
         cli -->|"Podman-Befehle"| engine
-        cli -->|"localhost:5600 / 5500 / 5432"| infra
-        cli -->|"localhost:5000"| rerank
+        cli -->|"127.0.0.1:5600 / 5500"| infra
+        cli -->|"127.0.0.1:5432"| infra
+        cli -->|"127.0.0.1:5000"| rerank
         cli -->|"localhost:11434"| ollama
         rag -->|"ermittelte Windows-Adresse:11434"| ollama
         ollama --- models
@@ -60,9 +61,9 @@ Die Tabelle beschreibt den Neuaufbau; „Hostport“ ist der vom Windows-Host ve
 
 | Dienst | Port des Dienstes | Hostport im Neuaufbau | Nutzung |
 |---|---|---|---|
-| PostgreSQL | 5432/TCP | 5432, am Pod veröffentlicht | Hostwerkzeuge; Vector-API nutzt intern `127.0.0.1:5432`. |
+| PostgreSQL | 5432/TCP | 5432, am Pod veröffentlicht | Windows-Clients verbinden sich über `127.0.0.1:5432` auf dem Host. Die Vector-API verwendet dieselbe Adresse innerhalb des Pods. |
 | Vector-API | 5500/TCP | 5500, am Pod veröffentlicht | Import und Analyse vom Host; RAG im selben Pod nutzt intern Port 5500. |
-| RAG-API | 5600/TCP | 5600, am Pod veröffentlicht | `POST http://localhost:5600/process` vom Host. |
+| RAG-API | 5600/TCP | 5600, am Pod veröffentlicht | `POST http://127.0.0.1:5600/process` vom Host. |
 | Reranker | 5000/TCP | 5000, am separaten Container veröffentlicht | Optional `/health` und `/rerank`. |
 | Windows-Ollama | 11434/TCP | Kein Podman-Mapping | Windows-Aufrufe über `localhost`; Container über erreichbare Windows-Adresse. |
 

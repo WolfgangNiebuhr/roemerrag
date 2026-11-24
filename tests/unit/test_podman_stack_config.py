@@ -37,12 +37,13 @@ def test_stack_uses_allocated_ports_and_internal_retrieval(monkeypatch, reranker
     fixture = stack.podman_stack.__wrapped__(request)
     try:
         urls = next(fixture)
-        assert urls["vector_url"] == "http://localhost:45100"
-        assert urls["rag_url"] == "http://localhost:45101"
+        assert urls["vector_url"] == "http://127.0.0.1:45100"
+        assert urls["rag_url"] == "http://127.0.0.1:45101"
+        assert urls["reranker_url"] == ("http://127.0.0.1:45102" if reranker else None)
         create = next(call for call in calls if call[:2] == ("pod", "create"))
         assert create[4:] == (("-p", "5500", "-p", "5600", "-p", "5000") if reranker else ("-p", "5500", "-p", "5600"))
         rag_run = next(call for call in calls if "VECTOR_API_URL=http://127.0.0.1:5500/search" in call)
         assert rag_run[0] == "run"
-        assert ready == ([45100, 45101, "http://localhost:45102"] if reranker else [45100, 45101])
+        assert ready == ([45100, 45101, "http://127.0.0.1:45102"] if reranker else [45100, 45101])
     finally:
         fixture.close()

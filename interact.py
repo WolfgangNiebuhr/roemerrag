@@ -40,7 +40,7 @@ def post_json(url, payload, operation, timeout):
 
 
 from rag.embedding_config import EMBEDDING_SET_ID, ANSWER_MODEL
-RAG_API_URL = os.getenv("RAG_API_URL", "http://localhost:5600/process")
+RAG_API_URL = os.getenv("RAG_API_URL", "http://127.0.0.1:5600/process")
 ANSWER_MODEL_NAME = ANSWER_MODEL
 
 

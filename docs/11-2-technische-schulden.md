@@ -43,6 +43,7 @@ Historische Ergebnisse und Grenzen einzelner Analyseläufe stehen im [Changelog]
 
 ### TS-05 – Kollidierende Chunk-IDs und unvollständige Wiederholungsimporte · P1 - Offen
 
+- **Teilweise umgesetzt (24.11.2026):** Die [Importpipeline](../Ingest/pipeline.py) verwendet stabile Chunk-IDs, bricht beim ersten Fehler ab und dokumentiert bestaetigte Writes. Lokale Chunk- und Anreicherungsartefakte lassen sich erneut verwenden. Dokumentweite Aktivierung, Bereinigung und Wiederaufnahme anhand eines Laufberichts bleiben offen.
 - **Teilweise umgesetzt (22.11.2026):** [Import3](../Ingest/import3.py) verwendet Path(file_path).stem fuer Chunk-IDs und Logdateistamm. rom.band1.txt und rom.band2.txt erzeugen unterschiedliche Staemme; Namen ohne Erweiterung bleiben erhalten. [Unit-Tests](../tests/unit/test_import3.py) pruefen echte Mehrfachzerlegung, gespeicherte IDs und Logdateinamen fuer diese Faelle. Kuerzere Wiederholungsimporte entfernen weiterhin keine ueberzaehligen Chunks; ein zusammenfassender Fehlerstatus fehlt.
 - **Auswirkung:** Quellen werden vermischt; veraltete und neue Inhalte bleiben gemeinsam abrufbar. Ein Teilimport kann als erfolgreicher Lauf erscheinen.
 - Mit Testdoubles blieb bei einem Wechsel von drei auf zwei Chunks der dritte alte Chunk erhalten. Bei einem simulierten Fehler blieb auch die alte Fassung des betroffenen Chunks stehen. Der Lauf schrieb nachfolgende Chunks und kehrte regulär zurück. [Import3](../Ingest/import3.py)
@@ -93,8 +94,9 @@ Historische Ergebnisse und Grenzen einzelner Analyseläufe stehen im [Changelog]
 
 ### TS-12 – Unvollständige Adapter und ungenutzte Konfiguration · P2 - Offen
 
-- **Befund:** [gateway.py](../Ingest/gateway.py) gibt rohe `requests.Response`-Objekte zurück; [keywords.py](../Ingest/keywords.py) kennt weiterhin die jeweiligen Providerformate. Der Gatewayparameter `chunk` wird nicht genutzt. Import3 verwirft die gelieferten Metriken und die Frage. In [RAG](../rag/app.py) definierte Ollama-Endpunktkonstanten steuern die echten Aufrufe nicht; diese verwenden den Resolver. Tests orientieren sich teilweise an den Konstanten. Auch `QUERY` und `NUM_RESULTS` sind dort ungenutzt.
+- **Befund:** [gateway.py](../Ingest/utils/gateway.py) gibt rohe `requests.Response`-Objekte zurück; [keywords.py](../Ingest/utils/keywords.py) kennt weiterhin die jeweiligen Providerformate. Der Gatewayparameter `chunk` wird nicht genutzt. Import3 verwirft die gelieferten Metriken und die Frage. In [RAG](../rag/app.py) definierte Ollama-Endpunktkonstanten steuern die echten Aufrufe nicht; diese verwenden den Resolver. Tests orientieren sich teilweise an den Konstanten. Auch `QUERY` und `NUM_RESULTS` sind dort ungenutzt.
 - **Auswirkung:** Die scheinbar gemeinsame Abstraktion kapselt Providerdetails nicht; Änderungen und Tests können sich auf wirkungslose Konfiguration beziehen.
+- **Teilweise umgesetzt (24.11.2026):** Die Pipeline nutzt denselben Keyword-Prompt wie Import3, validiert Keyword- und Embeddingantworten, setzt explizite Timeouts und protokolliert keine Providerantworten. Altes Gateway und gemeinsamer Provider-Ergebnistyp bleiben offen.
 - **Abbau und Abschluss:** Einen kleinen gemeinsamen Ergebnistyp für Keyword-Provider einführen. Unbenutzte Argumente und Konstanten entfernen; benötigte Versuchsdaten strukturiert speichern. Tests prüfen die tatsächlich aufgelösten Adressen und das gemeinsame Providerergebnis.
 - **Konkretisierung durch Kapitel 8.3:** Adapter übersetzen technische Fehler und verletzte Antwortverträge gemäß [8.3.1–8.3.3](8-3-error-handling.md#831-ziele-und-verantwortlichkeiten) in gemeinsame Anwendungsfehler unter Erhalt der Ursache. Tests sichern die Übersetzung ab; rohe Providerantworten nicht als öffentliche Fehlertexte weiterreichen.
 
@@ -109,7 +111,9 @@ Historische Ergebnisse und Grenzen einzelner Analyseläufe stehen im [Changelog]
 
 ### TS-14 – Fehlerhafte Analyse und unklare Alt-Einstiegspunkte · P1 - Offen
 
-- **Befund:** In [analyze.py](../analyze.py) umfasst `GOLDCHUNK` nur die Keyword-Zeile; die folgenden Stringliterale sind eigenständige Ausdrücke. Dies wurde per AST-Auswertung bestätigt. [import.py](../Ingest/import.py) verwendet `np` ohne Import und übergibt ein nicht unterstütztes Argument `metadata` an die Speicherfunktion. Der [lokale Reranker](../reranker/reranker-local.py) dupliziert Serverlogik mit anderem Standardmodell.
+- **Teilweise umgesetzt (24.11.2026):** README und Kapitel 8.4 dokumentieren den gemeinsamen Import und benennen Import3 als separaten Einstieg. Die fehlerhafte alte Importvariante wurde entfernt. Der Goldtext und die Einordnung der uebrigen Alt-Einstiegspunkte bleiben offen.
+
+- **Befund:** In [analyze.py](../analyze.py) umfasst `GOLDCHUNK` nur die Keyword-Zeile; die folgenden Stringliterale sind eigenständige Ausdrücke. Dies wurde per AST-Auswertung bestätigt. Der [lokale Reranker](../reranker/reranker-local.py) dupliziert Serverlogik mit anderem Standardmodell.
 - **Auswirkung:** Irreführende Ähnlichkeitsmessungen und erst im Fehlerpfad sichtbare Defekte; unklarer Wartungsumfang.
 - **Abbau und Abschluss:** Den Goldtext korrigieren und durch einen gezielten Regressionstest sichern. Unterstützte Einstiegspunkte festlegen; andere ausdrücklich archivieren oder entfernen. Für unterstützte Varianten Smoke- und Fehlerpfadtests vorsehen. P1 betrifft die Messkorrektheit; die Providerkonsolidierung aus TS-09 ist bereits umgesetzt.
 
@@ -131,9 +135,10 @@ Historische Ergebnisse und Grenzen einzelner Analyseläufe stehen im [Changelog]
 
 ### TS-17 – Testabdeckung umgeht relevante Verarbeitungspfade · P1, begleitend - Offen
 
+- **Pipeline (24.11.2026):** [Unit-Tests](../tests/unit/test_import_pipeline.py) pruefen rekursive Grenzen, Artefaktwiederverwendung, Textgleichheit, Konfiguration und Fehlerabbruch. Die [Integration](../tests/podman/test_import_pipeline_integration.py) deckt Keywords, Embedding, Speicherung und Ruecksuche ab.
 - **Bereits erledigt:** [Chunkingtests](../tests/unit/test_chunking.py) pruefen echte Mehrfachsplits mit Grenzen und Overlap. [Importintegration](../tests/podman/test_import3_integration.py) verwendet process_file inklusive echter Keywords, Embeddings, Speicherung und Ruecksuche im isolierten Set. [Vectorintegration](../tests/podman/test_vector_api.py) prueft parallele Upserts, stabile IDs, SQL-Rollback/Poolwiederverwendung sowie verzoegerten DB-Start und Erholung ohne API-Neustart. Eingangsvalidierung, Problem Details, no_context, Reranking und Metriken sind getestet. [RAG-E2E](../tests/podman/test_rag_e2e.py) prueft echte Verarbeitung mit/ohne Reranking und die Evaluationskette. Ein separat vorbereiteter RAG-E2E-Test ist neben der eigenen Importintegration keine pauschale Import-Abdeckungsluecke mehr.
 - **Restumfang:** Importfehler, kuerzere Neuimporte und fachlich abgesicherter Resume fehlen passend zu TS-05; gleichstaemmige Quellen sind als R-02 akzeptiert; --start allein ist kein Resume-Nachweis. Goldtextkorrektheit/Alt-Einstiege (TS-14), Reranker-Health bei Laden/Inferenz (TS-13), Persistenz nach DB-Neuerstellung mit demselben Testvolume sowie repraesentative Last-/Suchplannachweise bleiben offen. Der TS-07-Test mit tmpfs belegt Erholung, keine Volume-Persistenz.
-- Für TS-19 bis TS-21 fehlen gezielte Regressionstests für unvollständige Reranker-Ergebnisse, gemischte Treffer mit fehlendem Text und überlange Passagen ohne passende Trennzeichen.
+- Fuer TS-19 und TS-20 fehlen gezielte Regressionstests fuer unvollstaendige Reranker-Ergebnisse und gemischte Treffer mit fehlendem Text. Ein Pipeline-Regressionstest deckt lange Passagen ohne passende Trennzeichen ab (TS-21).
 - **Abbau und Abschluss:** Resttests jeweils mit TS-05/10/11/12/13/14/15/16/19/20/21 liefern; deterministische und echte Modelltests getrennt halten. Fuer geplante Qualitaetsmessungen Gold-Antworten, erwartete Treffer, Bewertungsmetriken und Versuchsmatrizen definieren. /evaluate stellt bislang die technische Schnittstelle bereit, keinen Qualitaetsnachweis. Manuell genutzte Daten und Volumes erhalten.
 
 ### TS-18 – Experimenteller Betriebsrahmen · P3, bedarfsabhängig - Offen
@@ -158,7 +163,8 @@ Historische Ergebnisse und Grenzen einzelner Analyseläufe stehen im [Changelog]
 
 ### TS-21 – Überschrittene Chunkgröße bei langen Passagen · P2 - Offen
 
-- Der Splitter verwendet Absatz- und Satztrennzeichen ohne Fallback für lange Passagen. Bei einer Konfiguration von 1.000 Zeichen und 150 Zeichen Überlappung waren im lesenden Durchlauf über die sechs Beispieldateien 34 von 10.373 Chunks länger als 1.000 Zeichen. Der größte Chunk hatte 1.790 Zeichen. [Chunking](../Ingest/chunking.py), [Import3-Standardwerte](../Ingest/import3.py)
+- Die Pipeline begrenzt lange Passagen standardmaessig durch einen Zeichen-Fallback. Der folgende Befund gilt fuer Import3 und die Pipeline-Beispielkonfiguration `snowflake-arctic-embed-v2.json` mit deaktiviertem Fallback.
+- Der Splitter verwendet Absatz- und Satztrennzeichen ohne Fallback für lange Passagen. Bei einer Konfiguration von 1.000 Zeichen und 150 Zeichen Überlappung waren im lesenden Durchlauf über die sechs Beispieldateien 34 von 10.373 Chunks länger als 1.000 Zeichen. Der größte Chunk hatte 1.790 Zeichen. [Chunking](../Ingest/utils/chunking.py), [Import3-Standardwerte](../Ingest/import3.py)
 - Versuche zur Chunkgröße brauchen einen expliziten Größenvertrag pro Strategie und Angaben zu den tatsächlich erzeugten Längen. Für Strategien mit garantierter Obergrenze einen Fallback und Regressionstests mit langen Passagen ohne Trennzeichen vorsehen. Ändert sich die Verarbeitung, die neue Variante gemäß R-01 einer eigenen Set-ID zuordnen.
 
 ### TS-22 – Veraltete Angaben in der Bausteinsicht · P2 - Offen

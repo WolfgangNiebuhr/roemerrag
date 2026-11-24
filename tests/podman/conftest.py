@@ -34,7 +34,7 @@ def _wait_tcp(port, timeout=120):
                 return
         except OSError:
             time.sleep(2)
-    raise RuntimeError(f"Timed out waiting for localhost:{port}")
+    raise RuntimeError(f"Timed out waiting for 127.0.0.1:{port}")
 
 
 def _wait_reranker_ready(base_url, timeout=600):
@@ -151,14 +151,14 @@ def podman_stack(request):
         if include_rag:
             _wait_tcp(rag_port)
         if include_reranker:
-            _wait_reranker_ready(f"http://localhost:{reranker_port}")
+            _wait_reranker_ready(f"http://127.0.0.1:{reranker_port}")
         yield {
             "id": test_id,
             "db_container": db,
             "rag_container": f"rag-test-app-{test_id}" if include_rag else None,
-            "vector_url": f"http://localhost:{vector_port}",
-            "rag_url": f"http://localhost:{rag_port}" if include_rag else None,
-            "reranker_url": f"http://localhost:{reranker_port}" if include_reranker else None,
+            "vector_url": f"http://127.0.0.1:{vector_port}",
+            "rag_url": f"http://127.0.0.1:{rag_port}" if include_rag else None,
+            "reranker_url": f"http://127.0.0.1:{reranker_port}" if include_reranker else None,
         }
     except Exception:
         if pod_created:

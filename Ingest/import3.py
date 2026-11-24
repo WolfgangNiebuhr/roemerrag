@@ -5,11 +5,11 @@ import logging
 import numpy as np
 from datetime import datetime
 if __package__:
-    from .keywords import get_keywords_ollama
-    from .chunking import split_text_into_chunks
+    from .utils.keywords import get_keywords_ollama
+    from .utils.chunking import split_text_into_chunks
 else:
-    from keywords import get_keywords_ollama
-    from chunking import split_text_into_chunks
+    from utils.keywords import get_keywords_ollama
+    from utils.chunking import split_text_into_chunks
 
 # Konfiguration
 OLLAMA_URL = "http://localhost:11434/api/embeddings"

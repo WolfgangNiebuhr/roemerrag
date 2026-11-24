@@ -1,0 +1,8 @@
+{
+  "format_version": 1,
+  "name": "test-recursive-1000",
+  "embedding_set_id": "test-recursive-1000",
+  "chunking": {"strategy": "recursive", "parameters": {"size": 1000, "overlap": 150}},
+  "enrichment": {"strategy": "none"},
+  "embedding": {"model": "snowflake-arctic-embed2", "normalize": true, "dimensions": 1024}
+}

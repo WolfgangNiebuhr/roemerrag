@@ -13,6 +13,96 @@ agent_instructions:
 
 Aus README und docs übernommene Änderungshistorie. Gleichdatierte Einträge folgen der umgekehrten Reihenfolge der dortigen Nachträge. Nicht datierbare Einträge stehen am Ende. Anleitungen: [README](README.md). Fachkonzepte: [Testkonzept](docs/8-1-testkonzept.md) und [Error-Handling](docs/8-3-error-handling.md).
 
+## 2026-11-24
+
+### Alle Podman-Integrations- und Ende-zu-Ende-Tests ausgefuehrt
+
+`python -m pytest -c tests/pytest.ini tests/podman --all -v`: **16 passed, 1 failed in 138.44s**. Alle drei RAG-E2E-Tests bestanden. Im separaten Import3-Test beendete sich der Ollama-Embeddingprozess bei der CUDA-Initialisierung (Exitstatus 0xc0000409). Der isolierte Wiederholungslauf dieses Tests mit `--include-ollama` bestand (**1 passed in 46.94s**). Kein erneuter Gesamtlauf.
+
+Die Unit-Suite war nicht Teil des Auftrags. Die Teststaende nutzten isolierte Podman-Ressourcen.
+
+### PostgreSQL per SQL vom Windows-Host geprueft
+
+Ein temporaerer psycopg-Client erreichte vector_db direkt auf 127.0.0.1:5432. Eine SELECT-Abfrage bestaetigte transaction_read_only=on sowie 11243 Zeilen in vectors. Die Transaktion wurde zurueckgerollt und der temporaere Client anschliessend entfernt. Keine Daten geaendert.
+
+### Windows-Zugriff auf PostgreSQL ueber IPv4 dokumentiert
+
+Host-Aufrufe mit psql verwenden 127.0.0.1:5432. Verteilungssicht und Anleitungen benennen dieselbe Adresse. Die bestehenden Migrations- und Testaufrufe laufen im DB-Container beziehungsweise ueber dessen lokale Verbindung.
+
+Pruefung: TCP zu 127.0.0.1:5432 sofort erfolgreich, Verbindungsversuch zu ::1 nach rund 2 Sekunden abgelehnt. Windows-psql war nicht im PATH. Unit- und Podman-Suite wurden fuer die reine Dokumentationsaenderung nicht erneut ausgefuehrt.
+
+### Windows- und Testaufrufe der lokalen APIs auf IPv4 umgestellt
+
+Die Windows-Aufrufe fuer Vector-API, RAG und Reranker sowie die HTTP-Aufrufe an dynamische Podman-Testports verwenden 127.0.0.1. Die Dokumentation und die Fixture-Erwartungen sind angepasst. Ollama-Adressen und Import3 blieben unveraendert.
+
+Pruefung: Gesamtsuite mit --all **253 passed in 142.28s**, einschliesslich der isolierten Podman- und Ollama-Tests. CLI-Standardadresse, PowerShell-Syntax und git diff --check ebenfalls geprueft.
+
+### Pipeline nutzt IPv4 fuer die lokale Vector-API
+
+Der Standard fuer IMPORT_VECTOR_URL lautet http://127.0.0.1:5500/vectors. Die Ingest-Anleitung dokumentiert die lokal gemessene Wartezeit beim IPv6-Verbindungsversuch ueber localhost. Import3 behaelt seine bisherige Adresse.
+
+Pruefung: **236 Unit-Tests** bestanden, einschliesslich der Standardadresse ohne Umgebungsvariable. Podman-Integration nicht erneut ausgefuehrt, da ihre Testfaelle die Vector-Adresse explizit setzen.
+
+### Fehlerhaften Altimport entfernt
+
+Der fehlerhafte Altimport und seine Verweise wurden entfernt. Der Regressionstest fuer snowflake-arctic-embed-v1 vergleicht die Chunkgrenzen direkt mit dem LangChain-Splitter. Die Versuchskonfiguration bleibt erhalten.
+
+Pruefung: **236 Unit-Tests** und git diff --check erfolgreich. Podman- und Ollama-Integration wurden nicht erneut ausgefuehrt, da die aktiven Importpfade unveraendert blieben.
+
+### Import-Helfer nach Ingest/utils verschoben
+
+Chunking, Keyword-Aufbereitung und Gateway liegen in Ingest/utils. Pipeline, Import3, Chunk-Testskript, Tests und Dokumentationslinks verwenden die neuen Modulpfade.
+
+Pruefung: **236 Unit-Tests** und **7 betroffene Podman-Integrationstests** fuer Import, Ollama und RAG bestanden. CLI-Hilfen fuer Import3 als Skript und Modul, Chunk-Testskript und Pipeline erfolgreich. Weitere Integrationstests wurden fuer die Modulverschiebung nicht erneut ausgefuehrt.
+
+### Pipeline-Anleitung nach Ingest verschoben
+
+Ingest/README.md beschreibt den Dokumentimport, die Beispielkonfigurationen, die Wiederverwendung von Artefakten und die Diensteinstellungen. Das Projekt-README verweist auf die Anleitung.
+
+Pruefung: Lokale Links, der dokumentierte Chunking-Aufruf, die Pipeline-CLI-Hilfe und git diff --check erfolgreich. Unit- und Integrationstests wurden fuer die reine Dokumentationsaenderung nicht erneut ausgefuehrt.
+
+### Neue Set-IDs im isolierten Teststack geprueft
+
+Die drei unveraenderten Experimentdateien importierten early_rome.txt mit echten Ollama-Modellen in test-recursive-1000, snowflake-arctic-embed-v1 und snowflake-arctic-embed-v2. Einzelabruf und Vektorsuche ueber die Vector-API lieferten den Chunk jeweils mit der angefragten Set-ID. Die drei frueheren Kennungen waren im Testvolume leer.
+
+Gezielter Podman-/Ollama-Lauf: **1 passed, 2 deselected in 48.47s**. Der Stack verwendete ein eigenes Testvolume. Bestandsdaten und import3.py blieben unveraendert. Weitere Tests wurden fuer die gezielte Integrationspruefung nicht erneut ausgefuehrt.
+
+### Set-IDs an Experimentnamen angeglichen
+
+Die drei Pipeline-Beispiele verwenden jetzt test-recursive-1000, snowflake-arctic-embed-v1 und snowflake-arctic-embed-v2 als Set-IDs. Die Set-Zuordnung und die Retrieval-Anleitung sind aktualisiert. Bestehende Daten und der Import3-Standard wurden nicht migriert.
+
+Pruefung: Alle drei Konfigurationen geladen und Set-IDs mit den Dateinamen abgeglichen; **11 Pipeline-Unit-Tests** bestanden. Weitere Tests wurden fuer die reine Kennungsaenderung nicht erneut ausgefuehrt.
+
+### Importexperimente umbenannt
+
+Die Konfigurationsdateien und ihre Namensfelder heissen jetzt test-recursive-1000, snowflake-arctic-embed-v2 (Import3) und snowflake-arctic-embed-v1 (LangChain-Standardchunking). Embedding-Set-IDs und Verarbeitungseinstellungen bleiben erhalten. Tests und aktuelle Dokumentation verwenden die neuen Dateinamen.
+
+Pruefung: **236 Unit-Tests** und der gezielte Ollama-/Podman-Kompatibilitaetstest (**1 passed, 1 deselected**) bestanden. Weitere Integrationstests wurden bei der Umbenennung nicht erneut ausgefuehrt.
+
+### Import3-Kompatibilitaet mit echten Ollama-Modellen geprueft
+
+Der neue Vergleichstest importiert early_rome.txt mit import3.py und der Pipeline-Konfiguration import3-compatible.json in getrennte Sets desselben isolierten Podman-Teststacks. Die Keyword-Praefixe aus gemma3:4b waren exakt gleich und die maximale Komponentenabweichung der gespeicherten, normalisierten 1024-dimensionalen snowflake-arctic-embed2-Vektoren war 0.
+
+Gezielter Vergleich: **1 passed, 1 deselected in 41.58s**. Testressourcen wurden ueber die Testfixture bereinigt. Weitere Tests wurden nicht erneut ausgefuehrt, da lediglich der Vergleichstest und die Dokumentation ergaenzt wurden. Bestandsdaten und import3.py blieben unveraendert.
+
+### Import3-Verarbeitung als Pipeline-Versuch
+
+Der Zeichen-Fallback bleibt Standard und kann in der Trennzeichenliste entfallen. Die Beispielkonfiguration import3-compatible.json verwendet die Chunking-, Keyword- und Embedding-Defaults von import3.py mit einem eigenen Embedding-Set. import3.py ist unveraendert.
+
+Pruefung: **236 Unit-Tests** erfolgreich. Ein Vergleich mit simulierten HTTP-Antworten bestaetigt die gleichen Keyword- und Embedding-Anfragen und numerisch uebereinstimmende normalisierte Vektoren. Alle sechs Beispieldateien lieferten dieselben Chunktexte in derselben Reihenfolge. Podman- und Ollama-Integration nicht erneut ausgefuehrt, da sich die Provideradapter und die Speicherung nicht aendern.
+
+### Konfigurierbare Trennzeichen fuer den Import
+
+Die Pipeline akzeptiert eine geordnete Trennzeichenliste und kann bestehende Zwischenartefakte ohne dieses Feld weiterverwenden. Eine Beispielkonfiguration bildet die LangChain-Standardtrennzeichen mit 1000 Zeichen und 100 Zeichen Ueberlappung ab.
+
+Pruefung: **235 Unit-Tests** erfolgreich. Die vollstaendigen Chunkfolgen aller sechs Beispieldateien stimmten mit der damaligen LangChain-Referenzzerlegung ueberein. Podman- und Modellintegration nicht erneut ausgefuehrt, da die Aenderung die lokale Chunkzerlegung und Artefaktpruefung betrifft.
+
+### Gemeinsamer Import nach Kapitel 8.4
+
+`Ingest.pipeline` importiert mit rekursivem Chunking und optionalen Keywords. Der neue Zeichen-Fallback begrenzt ueberlange ungetrennte Passagen. Derselbe Chunktext geht an Ollama und die Vector-API. Versionierte Artefakte erlauben den Einstieg nach Chunking oder Anreicherung. `Ingest.chunk` erzeugt Chunks ohne Dienstzugriff. `Ingest/import3.py` bleibt erhalten. TS-05 bleibt fuer dokumentweite Freigabe, Altlastenbereinigung und Wiederaufnahme anhand des Laufberichts offen.
+
+Pruefung: **231 Unit-Tests** erfolgreich. Beide Import-Integrationstests mit echten Ollama-Modellen, isoliertem Podman-Teststack und Ruecksuche erfolgreich (**2 passed**). Beide CLI-Hilfen und `git diff --check` erfolgreich. Die uebrigen Integrationstests wurden nicht erneut ausgefuehrt, da die Aenderung die Importpfade betrifft.
+
 ## 2026-11-22
 ### Neue Befunde im Schuldenregister priorisiert
 

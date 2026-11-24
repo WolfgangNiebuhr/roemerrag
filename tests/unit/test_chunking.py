@@ -4,7 +4,7 @@ import tempfile
 from unittest.mock import Mock
 from pathlib import Path
 
-import Ingest.chunking as chunking
+import Ingest.utils.chunking as chunking
 import pytest
 
 
@@ -37,7 +37,7 @@ def test_chunking_reads_utf8_and_passes_size_overlap_and_separators(monkeypatch)
     splitter_instance = Mock()
     splitter_instance.split_text.return_value = ["Römischer Satz.", "Karthagischer Satz."]
     splitter_class = Mock(return_value=splitter_instance)
-    monkeypatch.setattr("Ingest.chunking.RecursiveCharacterTextSplitter", splitter_class)
+    monkeypatch.setattr("Ingest.utils.chunking.RecursiveCharacterTextSplitter", splitter_class)
 
     try:
         chunks = chunking.split_text_into_chunks(str(source), size=18, overlap=5)

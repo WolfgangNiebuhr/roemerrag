@@ -33,7 +33,7 @@ flowchart LR
 
 | Baustein | Verantwortung | Maßgebliche Implementierung |
 |---|---|---|
-| Dokumentimport | Chunking, optionale Keywords, normalisierte Embeddings und Speicherung | [import3.py](../Ingest/import3.py), [chunking.py](../Ingest/chunking.py), [keywords.py](../Ingest/keywords.py), [gateway.py](../Ingest/gateway.py) |
+| Dokumentimport | Chunking, optionale Keywords, normalisierte Embeddings und Speicherung | [pipeline.py](../Ingest/pipeline.py), [import3.py](../Ingest/import3.py), [chunking.py](../Ingest/utils/chunking.py), [keywords.py](../Ingest/utils/keywords.py), [gateway.py](../Ingest/utils/gateway.py) |
 | RAG-API | Embedding, Retrieval, Kontext und Antwort orchestrieren | [app.py](../rag/app.py), [ollama_endpoint.py](../rag/ollama_endpoint.py), [Dockerfile](../rag/Dockerfile) |
 | Vector-API | CRUD und Ähnlichkeitssuche über PostgreSQL | [app.py](../Vector/app.py), [Dockerfile.api](../Vector/Dockerfile.api) |
 | Vektorspeicher | Chunks, Varianten und Vektoren persistent speichern | [init.sql](../Vector/init.sql), [Dockerfile](../Vector/Dockerfile) |
@@ -41,7 +41,7 @@ flowchart LR
 | Reranker | Frage-Dokument-Paare bewerten und sortieren | [app.py](../reranker/app.py), [Dockerfile](../reranker/Dockerfile) |
 | Lokale Werkzeuge | Direkte RAG-Abfragen und Analysen | [interact.py](../interact.py), [analyze.py](../analyze.py), `Vector/analyze_data.py` |
 
-Der Reranker bleibt ein eigenstaendiger Dienst; die RAG-API ruft ihn bei top_k > 0 auf. Ältere Importvarianten sind keine austauschbaren Einstiegspunkte: `import.py` verwendet `/vectors` und enthält weitere Aufruffehler; `import3.py` schreibt auf den aktuellen Endpunkt `/vectors`.
+Der Reranker bleibt ein eigenstaendiger Dienst; die RAG-API ruft ihn bei top_k > 0 auf. Pipeline und Import3 schreiben auf den Endpunkt `/vectors`.
 
 ## 5.3 Ebene 2 – zentrale Bausteine
 
@@ -49,7 +49,7 @@ Der Reranker bleibt ein eigenstaendiger Dienst; die RAG-API ruft ihn bei top_k >
 
 `import3.py: process_file()` vergibt IDs `<Dateibasis>-<laufende Nummer>`, unterstützt `--start` und protokolliert Fehler pro Chunk. Das Chunking nutzt LangChains `RecursiveCharacterTextSplitter` mit 1000 Zeichen und 150 Zeichen Überlappung. `gateway.py` verwendet für lokale Keywords `gemma3:4b`. Keywords werden dem Originaltext vorangestellt. Embeddings stammen aus `snowflake-arctic-embed2`, werden normalisiert und unter der Variantenkennung `snowflake-arctic-embed2-v2` gespeichert.
 
-Die Importskripte verwenden eigene fest konfigurierte Dienstadressen. `OLLAMA_HOST_URL` ist eine Option des E2E-Testimports, keine allgemeine Konfiguration von `import3.py`.
+Die Pipeline konfiguriert die Dienstadressen ueber `OLLAMA_HOST_URL` und `IMPORT_VECTOR_URL`. Import3 verwendet fest konfigurierte Dienstadressen. `OLLAMA_HOST_URL` ist eine Option des E2E-Testimports, keine allgemeine Konfiguration von `import3.py`.
 
 ### 5.3.2 RAG-API
 
@@ -134,4 +134,4 @@ Die RAG-Antwort trennt Server-Laufzeiten in timings (embedding_duration, retriev
 
 Die RAG-API stellt zusaetzlich /evaluate/retrieve, /evaluate/rerank und /evaluate/generate bereit. Diese HTTP-Adapter nutzen die bestehenden Providerfunktionen und geben serialisierbare next_request-Objekte fuer den jeweils folgenden Schritt aus. Identitaet und Trefferfelder bleiben erhalten; Evaluation schreibt keine Vektoren und besitzt keinen Sitzungszustand. Goldvergleich und aggregierte Qualitaetsmessung sind noch nicht implementiert.
 
-Das Zielbild fuer einen gemeinsamen Importablauf mit austauschbaren Chunking-/Anreicherungsstrategien, lokalen Zwischenartefakten und geprueftem Importabschluss steht in [Kapitel 8.4](8-4-importkonzept.md). Es ist noch nicht implementiert und ersetzt die aktuelle Import3-Beschreibung nicht.
+Die Pipeline fuehrt den gemeinsamen Import mit rekursivem Chunking, optionalen Keywords und versionierten Zwischenartefakten aus. [Kapitel 8.4](8-4-importkonzept.md) beschreibt Aufrufe und den noch offenen dokumentweiten Importabschluss.

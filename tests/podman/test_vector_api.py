@@ -139,7 +139,7 @@ def test_delayed_database_start_and_recovery(podman_stack):
         run("run", "-d", "--name", api, "--pod", pod, api_image)
         infra = run("pod", "inspect", "--format", "{{.InfraContainerID}}", pod)
         port = run("port", infra, "5500/tcp").splitlines()[0].rsplit(":", 1)[1]
-        base = "http://localhost:" + port
+        base = "http://127.0.0.1:" + port
         api_id = run("inspect", api, "--format", "{{.Id}}")
         wait_status("/health/live", 200)
         status, problem, media = wait_status("/health/ready", 503)

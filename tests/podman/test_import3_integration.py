@@ -2,7 +2,8 @@
 
 import os
 from pathlib import Path
-from Ingest import import3 as importer, gateway
+from Ingest import import3 as importer
+from Ingest.utils import gateway
 
 import pytest
 import requests

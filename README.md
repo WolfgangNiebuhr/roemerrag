@@ -20,6 +20,8 @@ Die arc42-Dokumentation beginnt mit [Einführung und Zielen](docs/1-einfuehrung-
 - Python für Import- und Analysewerkzeuge
 - Ollama, falls lokale Sprach- oder Embedding-Modelle verwendet werden
 
+**IPv6 und `localhost` unter Windows.** Python kann `localhost` zuerst zu `::1` auflösen. Ist der veröffentlichte Podman-Port der Vector-API nur über IPv4 erreichbar, wartet Python auf die Ablehnung der IPv6-Verbindung, bevor es `127.0.0.1` versucht. In der lokalen Messung kostete das rund zwei Sekunden pro Verbindungsversuch. Da die Pipeline jeden Chunk einzeln speichert, summiert sich die Wartezeit. Der Standard `127.0.0.1` verbindet sich direkt über IPv4. Für einen anderen Host oder Port lässt sich `IMPORT_VECTOR_URL` weiterhin setzen. Die Windows-Beispiele fuer Vector-API, RAG-API und Reranker sowie die HTTP-Aufrufe an den Podman-Teststack verwenden daher ebenfalls `127.0.0.1`.
+
 ## Lokalen Stack starten
 
 Die Befehle gelten für PowerShell im Projektstamm und einen Neuaufbau. Bereits vorhandene Container nicht erneut unter denselben Namen anlegen. PostgreSQL/pgvector, Vector-API und RAG-API laufen mit Podman; Ollama läuft als Windows-Hintergrund-App. Der Reranker wird optional durch die RAG-API aufgerufen. PostgreSQL-Daten bleiben im Named Volume erhalten; Ollama verwaltet seine Modelle separat im Windows-Benutzerprofil. Eine GPU ist für den Grundbetrieb nicht erforderlich.
@@ -63,6 +65,12 @@ podman run -d --name vectordb --pod vectorpod -e POSTGRES_USER=admin -e POSTGRES
 # Erst fortfahren, sobald der folgende Befehl Erfolg meldet; ggf. wiederholen:
 podman exec vectordb pg_isready -U admin -d vector_db
 podman run -d --name vector-api --pod vectorpod -e DB_HOST=127.0.0.1 -e DB_PORT=5432 -e DB_USER=admin -e DB_PASSWORD=admin -e POSTGRES_DB=vector_db localhost/vectorapi:local
+```
+
+Für den direkten Zugriff mit einem auf Windows installierten PostgreSQL-Client den veröffentlichten Port über IPv4 ansprechen. Auch Port 5432 war bei der lokalen Messung nur per IPv4 erreichbar. Der Verbindungsversuch zu `::1` wurde nach rund zwei Sekunden abgelehnt.
+
+```powershell
+psql -h 127.0.0.1 -p 5432 -U admin -d vector_db
 ```
 
 ### RAG-API starten
@@ -122,7 +130,7 @@ Die Ollama-Ermittlung prüft zuerst `host.containers.internal:11434`. Unter WSL 
 
 ```powershell
 podman run -d --name reranker -p 5000:5000 localhost/reranker:local
-Invoke-RestMethod http://localhost:5000/health
+Invoke-RestMethod http://127.0.0.1:5000/health
 ```
 
 Der erste Health-Aufruf lädt das Modell in den Prozess und kann dauern. Das Image lädt `cross-encoder/ms-marco-MiniLM-L6-v2` bereits beim Build herunter. Der Standardstart reicht keine GPU durch; Hinweise für einen optionalen GPU-Start stehen unten.
@@ -130,7 +138,7 @@ Der erste Health-Aufruf lädt das Modell in den Prozess und kann dauern. Das Ima
 Das Rerankermodell lässt sich pro Anfrage ohne erneuten Containerstart auswählen:
 
 ```powershell
-Invoke-RestMethod http://localhost:5000/rerank -Method Post -ContentType application/json -Body '{"model":"cross-encoder/ms-marco-TinyBERT-L2-v2","query":"Was ist Rom?","documents":["Rom ist eine Stadt.","Ein Fisch schwimmt."]}'
+Invoke-RestMethod http://127.0.0.1:5000/rerank -Method Post -ContentType application/json -Body '{"model":"cross-encoder/ms-marco-TinyBERT-L2-v2","query":"Was ist Rom?","documents":["Rom ist eine Stadt.","Ein Fisch schwimmt."]}'
 python interact.py --query "Was ist Rom?" --reranker cross-encoder/ms-marco-TinyBERT-L2-v2
 ```
 
@@ -252,7 +260,7 @@ Auch bei pytest-Aufrufen aus tests, tests/unit und tests/podman greift die gemei
 
 ## CLI verwenden: Fehlerbehandlung und Validierung
 
-`interact.py` ruft ausschliesslich die RAG-API auf (`RAG_API_URL`, Standard `http://localhost:5600/process`). Ollama, Vector-API und Reranker werden durch die API orchestriert. Die CLI behaelt Argumentpruefung, Ausgabe und lokalen Export nach `search_results.json`. Fortschrittsmeldungen und Export nach spaeteren Verarbeitungsfehlern entfallen. Exitcodes: 0 Erfolg einschliesslich no_context, 1 Verarbeitungs-/Exportfehler, 2 Argumentfehler.
+`interact.py` ruft ausschliesslich die RAG-API auf (`RAG_API_URL`, Standard `http://127.0.0.1:5600/process`). Ollama, Vector-API und Reranker werden durch die API orchestriert. Die CLI behaelt Argumentpruefung, Ausgabe und lokalen Export nach `search_results.json`. Fortschrittsmeldungen und Export nach spaeteren Verarbeitungsfehlern entfallen. Exitcodes: 0 Erfolg einschliesslich no_context, 1 Verarbeitungs-/Exportfehler, 2 Argumentfehler.
 
 Die CLI sendet metric=cosine, num_results=5, top_k=6 und das Rerankermodell explizit. `--top_k 0` deaktiviert Reranking. `--answer-model` waehlt das Antwortmodell; Standard ist fuer CLI und API `ANSWER_MODEL` beziehungsweise `gemma4:e4b`. `--embedding-set-id` und `--embedding` bleiben erhalten. Der Export enthaelt die urspruenglichen nichtleeren Retrievalpassagen; ausgegebene ausgewaehlte Chunks entsprechen der Kontextreihenfolge. Bei no_context erfolgt kein Export.
 
@@ -262,7 +270,7 @@ Der API-Container benoetigt bei Reranking `RERANKER_URL` (Standard `http://host.
 
 Transportkonfiguration: `RAG_CONNECT_TIMEOUT=5`, `RAG_EMBEDDING_TIMEOUT=300`, `RAG_RETRIEVAL_TIMEOUT=60`, `RAG_RERANKING_TIMEOUT=600`, `RAG_GENERATION_TIMEOUT=600`, `RAG_TOTAL_TIMEOUT=1800` (Sekunden). Restbudget begrenzt jeden Folgeaufruf; nach Ablauf wird keine erfolgreiche Pipelineantwort geliefert. Requests-Zeitlimits sind Socket-Zeitlimits; ein blockierender Aufruf kann nicht aktiv abgebrochen werden. Embedding, Retrieval und Reranking werden bei Timeout/Verbindungsfehler hoechstens einmal wiederholt, Generierung und Writes nie. HTTP-Fehler werden nicht wiederholt. X-Request-ID wird weitergegeben. Die CLI hat `RAG_CLI_TIMEOUT=1800` als eigenes Antwortzeitlimit. Fehlende Metriken werden als nicht verfuegbar angezeigt.
 
-Analyse verwendet dieselben Providerfunktionen und denselben Prompt wie die API. Fuer Host-Ausfuehrung `OLLAMA_BASE_URL=http://localhost:11434` und `VECTOR_API_URL=http://localhost:5500/search` setzen. Import3 verwendet `IMPORT_CONNECT_TIMEOUT=5`, `IMPORT_EMBED_TIMEOUT=300` und `IMPORT_STORE_TIMEOUT=60` ohne automatische Schreibwiederholung.
+Analyse verwendet dieselben Providerfunktionen und denselben Prompt wie die API. Fuer Host-Ausfuehrung `OLLAMA_BASE_URL=http://localhost:11434` und `VECTOR_API_URL=http://127.0.0.1:5500/search` setzen. Import3 verwendet `IMPORT_CONNECT_TIMEOUT=5`, `IMPORT_EMBED_TIMEOUT=300` und `IMPORT_STORE_TIMEOUT=60` ohne automatische Schreibwiederholung.
 
 CLI-Validierung: --metric erlaubt ausschließlich cosine und euclidean (euklidische/L2-Distanz). L2 ist kein akzeptierter Parameterwert. Ungültige Optionen werden einzeln mit Parametername und erlaubten Werten beziehungsweise Grenzen gemeldet; Exitcode 2, ohne Dienstaufruf.
 
@@ -297,7 +305,7 @@ results enthalten mindestens `chunk_id` und `chunktext`. Zum Ueberspringen von R
 Beispiel in PowerShell:
 
 ```powershell
-$base = 'http://localhost:5600'
+$base = 'http://127.0.0.1:5600'
 $retrieved = Invoke-RestMethod "$base/evaluate/retrieve" -Method Post -ContentType 'application/json' -Body (@{
     query = 'Wer beherrschte das westliche Mittelmeer?'
     num_results = 5
@@ -319,3 +327,7 @@ Reranking behaelt Distanzen und sonstige Trefferfelder bei. original_index bezie
 Eigene user_prompt-Vorlagen erlauben ausschliesslich `{context}` und `{question}` als Platzhalter, ohne Formatierung oder Attributzugriff; literale Klammern muessen verdoppelt werden. Ohne Vorlagen gelten dieselben Prompts wie bei `/process`. Die drei Endpunkte verwenden query/results/reranker/answer_model/system_prompt/user_prompt; die historischen Felder question/chunks/modelname/systemprompt/userprompt der ConfigMap sind keine API-Aliase. Vor Live-Nutzung RAG-Image neu bauen und Container ersetzen.
 
 Import3 bildet Chunk-IDs aus `Path(file_path).stem` und der Chunknummer ab 1: `rom.band1.txt` ergibt `rom.band1-1`, eine Datei `rom` ergibt `rom-1`. Logdateien verwenden denselben Stamm. Der Stamm muss innerhalb eines Embedding-Sets eindeutig sein; etwa `rom.txt` und `rom.md` kollidieren weiterhin (akzeptiertes Risiko R-02). Gegenueber alten Imports mehrteiliger Dateinamen entstehen andere IDs. Vor deren Wiederholungsimport den Altbestand pruefen und Bereinigung planen; alte Schluessel werden nicht automatisch entfernt oder migriert.
+
+## Dokumentimport
+
+Aufrufe, Versuchskonfigurationen und Zwischenartefakte beschreibt die [Anleitung zum Dokumentimport](Ingest/README.md).
