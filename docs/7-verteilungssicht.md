@@ -1,8 +1,17 @@
+<!--
+---
+agent_instructions:
+  - "In diesem Kapitel nur den aktuellen Stand und ausdrücklich als offen gekennzeichnete Ziele beschreiben."
+  - "Weiterhin gültige Änderungen direkt in den fachlich passenden Abschnitt einarbeiten und überholte Aussagen ersetzen."
+  - "Keine datierten Nachträge, Änderungshistorie, Prüfergebnisse oder Ausrollstände in dieses Kapitel aufnehmen. Diese ausschließlich in ../changelog.md dokumentieren."
+---
+-->
+
 # 7 Verteilungssicht nach arc42 – Römer-RAG
 
-Stand: 15.11.2026. Beschrieben werden die Windows-/WSL-Umgebung, der Neuaufbau gemäß [README](../README.md), die bereits geprüfte alternative Betriebsvariante und die isolierte pytest-Umgebung. Grundlage sind die aktuellen Dockerfiles und [Testfixtures](../tests/podman/conftest.py). Historische `k8s`-Verzeichnisse sind nicht Bestandteil dieser Sicht. Komponenten erklärt die [Bausteinsicht](5-bausteinsicht.md), Aufrufreihenfolge und Ollama-Ermittlung die [Laufzeitsicht](6-laufzeitsicht.md).
+Diese Sicht beschreibt den Windows-/WSL-Betrieb mit gemeinsamem Pod oder separater RAG-API sowie die isolierte Testverteilung. Die [Bausteinsicht](5-bausteinsicht.md) erklärt die Komponenten. Die [Laufzeitsicht](6-laufzeitsicht.md) erklärt Aufrufreihenfolge und Ollama-Ermittlung. Startbefehle stehen im [README](../README.md).
 
-## 7.1 Infrastruktur und Verteilung im Neuaufbau
+## 7.1 Infrastruktur und gemeinsamer Pod
 
 ```mermaid
 flowchart TB
@@ -32,15 +41,16 @@ flowchart TB
         cli -->|"127.0.0.1:5000"| rerank
         cli -->|"localhost:11434"| ollama
         rag -->|"ermittelte Windows-Adresse:11434"| ollama
+        rag -->|"optional: veröffentlichter Port 5000"| rerank
         ollama --- models
     end
 ```
 
 Der Podman-Client läuft auf Windows, die Container-Engine innerhalb der WSL2-Machine. Images, Containerdateisysteme und Named Volumes werden von dieser Linux-Engine verwaltet. Ollama ist ein Windows-Prozess und kein Container in diesem Aufbau.
 
-Ein Pod ist eine Gruppe von Containern mit gemeinsamer Netzwerkumgebung. Deshalb erreichen sich die Dienste in `vectorpod` über `127.0.0.1`, obwohl sie in getrennten Containern laufen. Der Infrastrukturcontainer hält diese Umgebung und die Portzuordnungen. `localhost` aus PowerShell bezeichnet dagegen Windows. Die veröffentlichen Ports erlauben den Zugriff vom Windows-Host auf die Dienste in der Machine.
+Ein Pod ist eine Gruppe von Containern mit gemeinsamer Netzwerkumgebung. Deshalb erreichen sich die Dienste in `vectorpod` über `127.0.0.1`, obwohl sie in getrennten Containern laufen. Der Infrastrukturcontainer hält diese Umgebung und die Portzuordnungen. `localhost` aus PowerShell bezeichnet dagegen Windows. Die veröffentlichten Ports erlauben den Zugriff vom Windows-Host auf die Dienste in der Machine.
 
-Der Standardaufbau benötigt keine GPU. Der optionale Reranker läuft separat und ist nicht in den RAG-Aufrufpfad eingebunden. Ein optionaler WSL-GPU-Start reicht `/dev/dxg` und `/usr/lib/wsl/lib` an diesen Container weiter; Voraussetzungen und Startvariante stehen im README. Die Standard-Testfixture reicht keine GPU durch.
+Der Standardaufbau benötigt keine GPU. Der optionale Reranker läuft separat. Bei aktivem Reranking erreicht ihn die RAG-API über `RERANKER_URL`. Ein optionaler WSL-GPU-Start reicht `/dev/dxg` und `/usr/lib/wsl/lib` an diesen Container weiter; Voraussetzungen und Startvariante stehen im README. Die Standard-Testfixture reicht keine GPU durch.
 
 ## 7.2 Container und Images
 
@@ -48,28 +58,28 @@ Der Standardaufbau benötigt keine GPU. Der optionale Reranker läuft separat un
 |---|---|---|
 | `vectordb` | `localhost/vectordb:local`, [Dockerfile](../Vector/Dockerfile), Basis PostgreSQL 17 | In `vectorpod`; pgvector wird beim Image-Build kompiliert. Datenbank `vector_db`, Beispielbenutzer `admin`. |
 | `vector-api` | `localhost/vectorapi:local`, [Dockerfile.api](../Vector/Dockerfile.api) | In `vectorpod`; `DB_HOST=127.0.0.1`, `DB_PORT=5432`, weitere Zugangsdaten über Umgebungsvariablen. |
-| `rag-api` | `localhost/rag-api:local`, [Dockerfile](../rag/Dockerfile) | Im README-Neuaufbau in `vectorpod`; `VECTOR_API_URL=http://127.0.0.1:5500/search`. Ollama-Adresse automatisch oder über `OLLAMA_BASE_URL`. |
+| `rag-api` | `localhost/rag-api:local`, [Dockerfile](../rag/Dockerfile) | Im gemeinsamen Aufbau in `vectorpod`; `VECTOR_API_URL=http://127.0.0.1:5500/search`. Ollama-Adresse automatisch oder über `OLLAMA_BASE_URL`. |
 | `reranker`, optional | `localhost/reranker:local`, [Dockerfile](../reranker/Dockerfile) | Separater Container; Standardmodell `cross-encoder/ms-marco-MiniLM-L6-v2` wird beim Build heruntergeladen. |
 | Ollama | Installierte Windows-App | Außerhalb von WSL/Containern; persistente Benutzervariable `OLLAMA_HOST=0.0.0.0:11434`. |
 | Import und Analyse | Python-Dateien im Repository | Auf Windows; direkte HTTP-Aufrufe zu Ollama und Vector-API. |
 
-Anwendungscode und Python-Abhängigkeiten liegen in den Images. Eine Codeänderung erfordert einen Image-Neubau und die Neuerstellung des betreffenden Containers. Die im README verwendeten Startbefehle konfigurieren keinen automatischen Wiederanlauf der Podman-Container nach einem Host-Neustart; eine laufende Podman-Machine allein startet diese Dienste nicht garantiert. Vorhandene Container können über `podman start` beziehungsweise einen Pod über `podman pod start` wieder gestartet werden; PostgreSQL muss vor der Vector-API bereit sein.
+Anwendungscode und Python-Abhängigkeiten liegen in den Images. Eine Codeänderung erfordert einen Image-Neubau und die Neuerstellung des betreffenden Containers. Die im README verwendeten Startbefehle konfigurieren keinen automatischen Wiederanlauf der Podman-Container nach einem Host-Neustart; eine laufende Podman-Machine allein startet diese Dienste nicht garantiert. Vorhandene Container können über `podman start` beziehungsweise einen Pod über `podman pod start` wieder gestartet werden; Die Vector-API kann vor PostgreSQL starten. `GET /health/live` prüft den Prozess, `GET /health/ready` meldet bis zur Datenbankbereitschaft HTTP 503. Nach dem Start oder Wiederanlauf der Datenbank verbindet sich die API bei späteren Anfragen erneut.
 
 ## 7.3 Ports und Netzwerkgrenzen
 
-Die Tabelle beschreibt den Neuaufbau; „Hostport“ ist der vom Windows-Host verwendete Port. Eine `EXPOSE`-Angabe im Dockerfile allein veröffentlicht keinen Port. Dafür sind die `-p`-Optionen beim Erstellen des Pods beziehungsweise separaten Containers erforderlich.
+Die Tabelle beschreibt den gemeinsamen Aufbau; „Hostport“ ist der vom Windows-Host verwendete Port. Eine `EXPOSE`-Angabe im Dockerfile allein veröffentlicht keinen Port. Dafür sind die `-p`-Optionen beim Erstellen des Pods beziehungsweise separaten Containers erforderlich.
 
-| Dienst | Port des Dienstes | Hostport im Neuaufbau | Nutzung |
+| Dienst | Port des Dienstes | Hostport im gemeinsamen Aufbau | Nutzung |
 |---|---|---|---|
 | PostgreSQL | 5432/TCP | 5432, am Pod veröffentlicht | Windows-Clients verbinden sich über `127.0.0.1:5432` auf dem Host. Die Vector-API verwendet dieselbe Adresse innerhalb des Pods. |
 | Vector-API | 5500/TCP | 5500, am Pod veröffentlicht | Import und Analyse vom Host; RAG im selben Pod nutzt intern Port 5500. |
 | RAG-API | 5600/TCP | 5600, am Pod veröffentlicht | `POST http://127.0.0.1:5600/process` vom Host. |
-| Reranker | 5000/TCP | 5000, am separaten Container veröffentlicht | Optional `/health` und `/rerank`. |
+| Reranker | 5000/TCP | 5000, am separaten Container veröffentlicht | Optional `/health` und `/rerank`. RAG verwendet standardmäßig `http://host.containers.internal:5000/rerank`. |
 | Windows-Ollama | 11434/TCP | Kein Podman-Mapping | Windows-Aufrufe über `localhost`; Container über erreichbare Windows-Adresse. |
 
 Die README-Portmappings ohne spezielle Bindungsadresse sind nicht auf Windows-Loopback beschränkt. Ebenso nimmt `OLLAMA_HOST=0.0.0.0:11434` Verbindungen auf allen IPv4-Schnittstellen an. Den Zugriff über die Firewall auf die benötigte Umgebung begrenzen.
 
-Für Ollama prüft die RAG-API zunächst `host.containers.internal:11434` und unter WSL zusätzlich die sichtbaren Default-Gateways. Der Windows-Gateway ist im hier geprüften WSL-NAT-Betrieb ein erreichbares Ziel; seine IP wird nicht fest in der Anwendung gespeichert. Bei anderen Netzwerken kann eine explizite `OLLAMA_BASE_URL` nötig sein. Für die Vector-API existiert keine entsprechende automatische Ermittlung. Die [Laufzeitsicht](6-laufzeitsicht.md) erläutert diese Unterschiede und die Fehlerdiagnose.
+Für Ollama prüft die RAG-API zunächst `host.containers.internal:11434` und unter WSL zusätzlich die sichtbaren Default-Gateways. Im WSL-NAT-Betrieb kann Windows-Ollama über den Windows-Gateway erreichbar sein. Der Resolver ermittelt dessen Adresse aus den sichtbaren Routen. Bei anderen Netzwerken kann eine explizite `OLLAMA_BASE_URL` nötig sein. Für die Vector-API existiert keine entsprechende automatische Ermittlung. Die [Laufzeitsicht](6-laufzeitsicht.md) erläutert diese Unterschiede und die Fehlerdiagnose.
 
 ## 7.4 Persistente Daten und Lebensdauer
 
@@ -79,15 +89,13 @@ Für Ollama prüft die RAG-API zunächst `host.containers.internal:11434` und un
 | Ollama-Modellgewichte | Windows-Benutzerprofil, üblicherweise `.ollama/models`; eine eigene Ollama-Modellpfadkonfiguration kann abweichen | Unabhängig von RAG-/Datenbankcontainern. |
 | Reranker-Standardmodell | Modellcache im gebauten Reranker-Image | Im selben Image erneut verfügbar; der README-Start richtet kein eigenes Modellvolume ein. Zusätzliche Laufzeitdownloads können im Containerdateisystem liegen. |
 | RAG- und Vector-API-Code | Images bzw. daraus erzeugte Container | Keine eigenen Datenvolumes im dokumentierten Start; Datenzugriffe gehen an PostgreSQL. |
-| Importquelldateien und Importprotokolle | Windows-Dateisystem, gemäß lokalen Skripten | Unabhängig von Podman-Volumes. |
+| Importquelldateien und Zwischenartefakte | Windows-Dateisystem, gemäß Eingabe- und Ausgabepfaden des Imports | Unabhängig von Podman-Volumes. |
 
 `init.sql` wird nur bei Initialisierung eines leeren PostgreSQL-Datenverzeichnisses ausgeführt. Ein Image-Neubau aktualisiert kein bestehendes Schema und importiert keine Daten. Bei bereits vorhandenen Installationen vor einem Umbau die tatsächlichen Mounts mit `podman inspect vectordb` prüfen; der Name eines vorhandenen Volumes allein beweist nicht, dass der laufende Container es nutzt. Weder ein Pod-Neuaufbau noch ein Containerwechsel erfordert das Löschen von Datenvolumes. Ein Named Volume ersetzt keine Datensicherung.
 
 ## 7.5 Alternative: bestehender Datenbank-Pod und separate RAG-API
 
-Im am 15.11.2026 geprüften Betrieb veröffentlicht der ältere `vectorpod` nur 5432 und 5500. Um den bestehenden Pod mit Datenbank und Vector-API zu erhalten, läuft `rag-api` separat mit `-p 5600:5600`. Seine Suchadresse ist der Standard `http://host.containers.internal:5500/search`, der in dieser Umgebung die veröffentlichte Vector-API erreicht.
-
-Diese Variante und der gemeinsame Pod aus Abschnitt 7.1 sind Alternativen. Beim separaten RAG-Container würde `127.0.0.1:5500` nicht die Vector-API im anderen Pod erreichen. Ist die veröffentlichte Adresse in einer anderen Netzwerkkonfiguration nicht erreichbar, muss `VECTOR_API_URL` angepasst werden. Datenbankcontainer und Datenmounts bleiben bei einem Wechsel allein des RAG-Containers erhalten.
+PostgreSQL und Vector-API können in einem Pod bleiben, der nur 5432 und 5500 veröffentlicht. In dieser Variante veröffentlicht der separate `rag-api`-Container Port 5600 selbst. Als Suchadresse verwendet er standardmäßig `http://host.containers.internal:5500/search`, sofern diese Adresse aus dem Container erreichbar ist. Bei anderen Netzwerken wird `VECTOR_API_URL` explizit gesetzt. Ein Austausch allein des RAG-Containers erfordert keinen Wechsel von Datenbankcontainer oder Datenvolume.
 
 ## 7.6 Isolierte Testverteilung
 
@@ -105,7 +113,3 @@ Die pytest-Fixture erstellt pro Sitzung einen separaten Pod `rag-test-<id>`, ein
 Die Fixture liest die zugewiesenen Hostports am Infrastrukturcontainer aus. Deshalb können Teststack und regulärer Stack mit ihren festen Ports parallel laufen. Testdaten werden nur in der Testdatenbank gespeichert. Ollama-Rechenleistung und Modellzustand werden gemeinsam genutzt; Tests können daher die Laufzeiten regulärer Modellanfragen beeinflussen.
 
 Nach dem Lauf werden die eigenen Container, der Pod, das Testvolume und die Test-Image-Tags entfernt. `--keep-podman` erhält diese Ressourcen zur Diagnose. Bestehende Betriebscontainer und Datenvolumes werden nicht zum Testziel umgewidmet. Optionen und fachliche Testgrenzen stehen im [Testkonzept](8-1-testkonzept.md).
-
-## 7.7 Geltungsbereich der Prüfung
-
-Historische Aenderungs- und Pruefnachweise: [Changelog](../changelog.md).

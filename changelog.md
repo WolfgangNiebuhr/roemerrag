@@ -1,3 +1,4 @@
+<!--
 ---
 purpose: "Änderungshistorie des Römer-RAG-Projekts; Anleitungen stehen in README.md."
 order: "Neueste Änderungen zuerst (umgekehrt chronologisch)."
@@ -8,12 +9,51 @@ agent_instructions:
   - "Änderungen, Prüfungen und Ausrollstände hier protokollieren; dauerhafte Anleitungen in README.md pflegen."
   - "Historische Prüfergebnisse als damaligen Stand erhalten, nicht als neuen Testlauf ausgeben."
 ---
+-->
 
 # Changelog
 
 Aus README und docs übernommene Änderungshistorie. Gleichdatierte Einträge folgen der umgekehrten Reihenfolge der dortigen Nachträge. Nicht datierbare Einträge stehen am Ende. Anleitungen: [README](README.md). Fachkonzepte: [Testkonzept](docs/8-1-testkonzept.md) und [Error-Handling](docs/8-3-error-handling.md).
 
 ## 2026-11-25
+
+### Fachkapitel mit ausgeblendeten Pflegevorgaben versehen
+
+Bausteinsicht, Laufzeitsicht, Verteilungssicht und Testkonzept verlangen in ausgeblendeten Pflegevorgaben, gültige Änderungen in die Fachabschnitte einzuarbeiten und Historie ausschließlich im Changelog zu führen.
+
+### Laufzeit- und Verteilungssicht auf den aktuellen Stand konsolidiert
+
+Reranking, Laufzeitmessung und schrittweise Evaluation sind in die Fragebeantwortung integriert. Die Laufzeitsicht beschreibt die Pipeline mit Teilimport und Bereinigung. Die Verteilungssicht beschreibt gemeinsamen und separaten Podman-Betrieb sowie die bedarfsgesteuerte Datenbankverbindung. Datierte Betriebs- und Diagnoseangaben entfallen in den Fachkapiteln.
+
+Die frühere Laufzeitsicht dokumentierte eine Diagnose, bei der `host.containers.internal` im Container auf `169.254.1.2` zeigte und Windows-Ollama über den WSL-Gateway `172.24.64.1` erreichbar war. Diese Adressen waren damalige Beobachtungen.
+
+Lokale Dokumentlinks und `git diff --check` geprüft. Für die reine Dokumentationsänderung wurden keine Anwendungstests ausgeführt.
+
+### Testkonzept und Bausteinsicht auf den aktuellen Stand konsolidiert
+
+Gültige Nachträge sind in die Abschnitte zu Import, RAG, Vector-API, Teststufen und Prüfungen integriert. Datierte Nachträge und historische Prüfvermerke entfallen in den Fachkapiteln. Die Bausteinsicht beschreibt den aktuellen Set-Default, Upserts sowie Pool und Readiness. TS-22 ist behoben.
+
+Lokale Dokumentlinks und `git diff --check` geprüft. Für die reine Dokumentationsänderung wurden keine Anwendungstests ausgeführt.
+
+### Ausgeblendete Pflegevorgaben in AGENTS.md verankert
+
+Agenten prüfen vor Änderungen an Markdown-Dateien den Quelltext auf ausgeblendete Pflegevorgaben und beachten diese bei der Bearbeitung.
+
+### Pflegevorgaben in der Markdown-Vorschau ausgeblendet
+
+Die YAML-Pflegevorgaben im Changelog und im Schuldenregister stehen in HTML-Kommentaren. Die Blöcke bleiben im Quelltext lesbar und sind weiterhin als YAML parsebar.
+
+### Schuldenregister auf den aktuellen Status umgestellt
+
+Kapitel 11.2 verwendet vier verbindliche Statuswerte. Teilweise behobene Einträge führen die verbleibende Arbeit unter „Noch offen“. Die ursprünglichen Befunde bleiben erhalten. Pflegevorgaben stehen im Frontmatter. Änderungs-, Prüf- und Ausrollhistorie gehören in dieses Changelog.
+
+YAML-Frontmatter, Statusstruktur aller 22 Einträge, lokale Linkziele und `git diff --check` geprüft. Anwendungstests entfallen bei dieser Dokumentationsänderung.
+
+### Neue Vector-API im lokalen Podman-Stack ausgerollt
+
+`vector-api` läuft im bestehenden `vectorpod` mit dem neu gebauten Image `localhost/vectorapi:local` (`1b4b486a630a`). PostgreSQL und das bestehende Volume wurden für den Austausch weiterverwendet. Der zuvor laufende API-Container `vector-api-before-ts08-20261122` bleibt gestoppt für einen Rückwechsel erhalten.
+
+Live-Prüfung erfolgreich. `GET /health/ready` meldet `ready`, `DELETE /chunks` weist eine ungültige Bereichsgrenze mit HTTP 400 zurück und `GET /chunks` meldet vor und nach dem Austausch 11.243 Chunks. Die Prüfung hat keine Chunks gelöscht. Eine Datenbankmigration war nicht erforderlich.
 
 ### Risiko und Architekturentscheidung im Importkonzept verlinkt
 
@@ -542,7 +582,7 @@ Zusätzlich bestanden folgende Betriebsprüfungen: Vector-Zählung über `GET /c
 
 #### Quelle: `docs/8-3-error-handling.md`
 
-Der Datenbankcontainer wurde weder ersetzt noch neu gestartet; das Volume `pgvector-data` blieb unverändert eingebunden. Vorherige und anschließende SQL-Zählung ergaben jeweils 10.378 Zeilen. Ports, Pod-Zuordnung, Geräte einschließlich GPU, Mounts und Startkonfiguration der APIs wurden erhalten und abgeglichen; lediglich automatisch vergebene Container-Hostnamen änderten sich. Die bisherigen API-Container bleiben gestoppt mit dem Suffix `-before-ts03-20261121` als Rückweg erhalten. Den ausführlichen Prüfnachweis führt [TS-03 in Kapitel 11.2](docs/11-2-technische-schulden.md#ts-03--requestvalidierung-und-fehlerverträge--p1--abgeschlossen). Die weiteren Zielmaßnahmen dieses Konzepts bleiben davon unberührt.
+Der Datenbankcontainer wurde weder ersetzt noch neu gestartet; das Volume `pgvector-data` blieb unverändert eingebunden. Vorherige und anschließende SQL-Zählung ergaben jeweils 10.378 Zeilen. Ports, Pod-Zuordnung, Geräte einschließlich GPU, Mounts und Startkonfiguration der APIs wurden erhalten und abgeglichen; lediglich automatisch vergebene Container-Hostnamen änderten sich. Die bisherigen API-Container bleiben gestoppt mit dem Suffix `-before-ts03-20261121` als Rückweg erhalten. Den aktuellen Status führt [TS-03 in Kapitel 11.2](docs/11-2-technische-schulden.md#ts-03--requestvalidierung-und-fehlerverträge). Die weiteren Zielmaßnahmen dieses Konzepts bleiben davon unberührt.
 
 #### Quelle: `docs/8-3-error-handling.md`
 

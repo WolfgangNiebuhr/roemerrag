@@ -1,6 +1,15 @@
+<!--
+---
+agent_instructions:
+  - "In diesem Kapitel nur den aktuellen Stand und ausdrücklich als offen gekennzeichnete Ziele beschreiben."
+  - "Weiterhin gültige Änderungen direkt in den fachlich passenden Abschnitt einarbeiten und überholte Aussagen ersetzen."
+  - "Keine datierten Nachträge, Änderungshistorie, Prüfergebnisse oder Ausrollstände in dieses Kapitel aufnehmen. Diese ausschließlich in ../changelog.md dokumentieren."
+---
+-->
+
 # 5 Bausteinsicht nach arc42 – Römer-RAG
 
-Stand: 15.11.2026. Grundlage sind die aktuellen Python-Dateien, Dockerfiles, das SQL-Schema und die pytest-Fixtures. Verzeichnisse namens `k8s` sind historische Referenzen und wurden nicht zur Beschreibung des aktuellen Betriebs herangezogen. Die [Laufzeitsicht](6-laufzeitsicht.md) beschreibt Aufrufreihenfolge und Netzwerkverhalten; das [README](../README.md) enthält Setup und Startbefehle.
+Die [Laufzeitsicht](6-laufzeitsicht.md) beschreibt Aufrufreihenfolge und Netzwerkverhalten; das [README](../README.md) enthält Setup und Startbefehle.
 
 ## 5.1 Gesamtsystem als Blackbox
 
@@ -8,8 +17,8 @@ Das System erschließt Texte zur römischen Geschichte und beantwortet Fragen an
 
 | Nachbar / Rolle | Eingabe | Ausgabe / Nutzung |
 |---|---|---|
-| Fragesteller über HTTP | Frage, Variantenfilter, Metrik, Trefferanzahl | Antwort, Chunk-IDs, Generierungsmetriken |
-| Importierender | UTF-8-Dateien, optional Start-Chunk | gespeicherte Chunks und Embeddings, Importprotokolle |
+| Fragesteller über HTTP | Frage, Set, Metrik, Trefferanzahl und optionale Reranking-Parameter | Antwort, Treffer und Laufzeitmetriken |
+| Importierender | UTF-8-Dateien, optional Start-Chunk | gespeicherte Chunks und Embeddings, Zwischenartefakte und Startnummer bei Fehlern |
 | Experimentierender | Fragen, Texte und Trefferlisten | Retrievaldiagnose, Modell- und Reranking-Ergebnisse |
 | Modell- und Paketquellen | Downloads beim Build bzw. Modellbereitstellen | Python-Pakete, pgvector-Quellcode und Modellgewichte |
 
@@ -25,6 +34,7 @@ flowchart LR
     ingest --> vector[Vector-API · 5500]
     rag --> ollama
     rag --> vector
+    rag --> rerank
     vector --> db[(PostgreSQL 17 + pgvector · 5432)]
     tools[Lokale Analysewerkzeuge] --> ollama
     tools --> vector
@@ -34,52 +44,59 @@ flowchart LR
 | Baustein | Verantwortung | Maßgebliche Implementierung |
 |---|---|---|
 | Dokumentimport | Chunking, optionale Keywords, normalisierte Embeddings und Speicherung | [pipeline.py](../Ingest/pipeline.py), [import3.py](../Ingest/import3.py), [chunking.py](../Ingest/utils/chunking.py), [keywords.py](../Ingest/utils/keywords.py), [gateway.py](../Ingest/utils/gateway.py) |
-| RAG-API | Embedding, Retrieval, Kontext und Antwort orchestrieren | [app.py](../rag/app.py), [ollama_endpoint.py](../rag/ollama_endpoint.py), [Dockerfile](../rag/Dockerfile) |
+| RAG-API | Embedding, Retrieval, optionales Reranking, Kontext und Generierung orchestrieren | [app.py](../rag/app.py), [ollama_endpoint.py](../rag/ollama_endpoint.py), [Dockerfile](../rag/Dockerfile) |
 | Vector-API | CRUD und Ähnlichkeitssuche über PostgreSQL | [app.py](../Vector/app.py), [Dockerfile.api](../Vector/Dockerfile.api) |
 | Vektorspeicher | Chunks, Varianten und Vektoren persistent speichern | [init.sql](../Vector/init.sql), [Dockerfile](../Vector/Dockerfile) |
 | Ollama | Embedding-, Antwort- und Keyword-Modelle ausführen | Windows-Hintergrund-App; Bereitstellung gemäß README |
 | Reranker | Frage-Dokument-Paare bewerten und sortieren | [app.py](../reranker/app.py), [Dockerfile](../reranker/Dockerfile) |
 | Lokale Werkzeuge | Direkte RAG-Abfragen und Analysen | [interact.py](../interact.py), [analyze.py](../analyze.py), `Vector/analyze_data.py` |
 
-Der Reranker bleibt ein eigenstaendiger Dienst; die RAG-API ruft ihn bei top_k > 0 auf. Pipeline und Import3 speichern einzelne Chunks über `POST /vectors`. Die Pipeline bereinigt überzählige Chunks am Ende über `DELETE /chunks`.
+Die APIs validieren Anfragen über [rag_common/http_errors.py](../rag_common/http_errors.py) vor Datenbank- oder Modellzugriffen. Fehler erhalten RFC-9457-Problemantworten mit stabiler Typ-URI und Request-ID. Die [Fehlerverträge](8-3-error-handling.md) beschreiben die Regeln im Detail.
 
 ## 5.3 Ebene 2 – zentrale Bausteine
 
 ### 5.3.1 Dokumentimport
 
-`import3.py: process_file()` vergibt IDs `<Dateibasis>-<laufende Nummer>`, unterstützt `--start` und protokolliert Fehler pro Chunk. Das Chunking nutzt LangChains `RecursiveCharacterTextSplitter` mit 1000 Zeichen und 150 Zeichen Überlappung. `gateway.py` verwendet für lokale Keywords `gemma3:4b`. Keywords werden dem Originaltext vorangestellt. Embeddings stammen aus `snowflake-arctic-embed2`, werden normalisiert und unter der Variantenkennung `snowflake-arctic-embed2-v2` gespeichert.
+`Ingest.pipeline` liest die Versuchskonfiguration und verwendet rekursives Chunking, optionale Keyword-Anreicherung und normalisierbare Embeddings. Versionierte Zwischenartefakte erlauben die Wiederverwendung bereits erzeugter Chunks oder Anreicherungen. Chunks haben IDs aus Dateistamm und Nummer ab 1. Die Pipeline schreibt jeden Chunk über `POST /vectors` und bereinigt nach erfolgreichem Abschluss überzählige Chunks mit `DELETE /chunks`. Bei Abbruch bleiben bestätigte Chunks abrufbar und die Pipeline gibt den Wert für `--start` aus. Dienstadressen werden über `OLLAMA_HOST_URL` und `IMPORT_VECTOR_URL` konfiguriert. Aufrufe und Artefakte beschreibt das [Importkonzept](8-4-importkonzept.md).
 
-Die Pipeline konfiguriert die Dienstadressen ueber `OLLAMA_HOST_URL` und `IMPORT_VECTOR_URL`. Import3 verwendet fest konfigurierte Dienstadressen. `OLLAMA_HOST_URL` ist eine Option des E2E-Testimports, keine allgemeine Konfiguration von `import3.py`.
+Der separate Einstieg `import3.py` nutzt LangChains `RecursiveCharacterTextSplitter` mit 1000 Zeichen und 150 Zeichen Overlap sowie das Keyword-Gateway mit `gemma3:4b`. Er speichert normalisierte Embeddings und den angereicherten Text einzeln über `POST /vectors`, unterstützt `--start` und protokolliert Fehler pro Chunk. Er verwendet im Skript konfigurierte Dienstadressen und HTTP-Zeitlimits. Import3, CLI und RAG beziehen gemeinsame Modell- und Set-Defaults aus [embedding_config.py](../rag/embedding_config.py).
 
 ### 5.3.2 RAG-API
 
 | Teil | Verantwortung / Konfiguration |
 |---|---|
-| HTTP-Einstieg | `POST /process` liest `query`, `filter`, `metric`, `num_results`. Defaults: Filter `snowflake-arctic-embed2`, Metrik `euclidean`, fünf Treffer. |
+| HTTP-Einstieg | `POST /process` liest `query`, `embedding_set_id` (Alias `filter`), `metric`, `num_results` und optionale Modell- und Reranking-Parameter. Standard sind Set `snowflake-arctic-embed2-v2`, Metrik `euclidean` und fünf Treffer. |
 | Ollama-Resolver | `OLLAMA_BASE_URL` hat Vorrang. Sonst Prüfung des Podman-Hostnamens und unter WSL der sichtbaren IPv4-Default-Gateways über `/api/tags`. Erfolgreiche Auswahl wird pro Prozess gespeichert. |
 | Embeddingadapter | `/api/embeddings`, Modell `snowflake-arctic-embed2`, Normalisierung des Fragevektors. |
 | Retrievaladapter | `VECTOR_API_URL`, Standard `http://host.containers.internal:5500/search`. Im gemeinsamen Pod explizit `http://127.0.0.1:5500/search` setzen. |
-| Kontextbildung | Verknüpft `chunktext` der Treffer und sammelt `chunk_id`. |
+| Reranking | Ruft den separaten Reranker bei vorhandenen Treffern und `top_k > 0` auf. Standardmäßig ist Reranking für `/process` deaktiviert. |
+| Kontextbildung | Validiert `chunk_id` und `chunktext` und verknüpft die nicht leeren Texte der ausgewählten Treffer. |
 | Generierungsadapter | `/api/generate`, Modell `gemma4:e4b`, ohne Streaming; liefert Antwort und Laufzeit-/Tokenmetriken. |
 
-Die Antwort enthält `response`, `chunks` und `metrics`. Der Prompt verlangt Antworten nur aus dem Kontext; eine technische Garantie für Faktentreue besteht nicht. Resolvergrenzen, Wiederholungsverhalten und Netzwerkdiagnose stehen in der [Laufzeitsicht](6-laufzeitsicht.md).
+Die Antwort enthält `response`, `chunks`, `metrics` sowie getrennte `retrieved_results` und `selected_results`. Leerer Kontext führt zu HTTP 200 mit `status: no_context`, leeren `chunks` und `metrics: null`. Ungültige Retrievalantworten ergeben HTTP 502. Die Serverzeiten `embedding_duration`, `retrieval_duration` und `pipeline_duration` stehen in `timings`, auch bei `no_context`. Generierungsmetriken verwenden `generation_duration` mit `total_duration` als Alias. Ungültige optionale Metriken werden als `null` ausgegeben. Der Prompt begrenzt die Antwort auf den Kontext. Ein erfolgreicher API-Aufruf garantiert keine Faktentreue.
+
+Die Evaluationsendpunkte `POST /evaluate/retrieve`, `POST /evaluate/rerank` und `POST /evaluate/generate` verwenden dieselben Providerfunktionen. `next_request` verbindet die Schritte über serialisierbare Eingaben. Trefferidentität und Trefferfelder bleiben erhalten. Die Endpunkte speichern weder Vektoren noch Sitzungszustand.
+
+`interact.py` validiert CLI-Argumente, ruft `/process` auf und übernimmt Ausgabe und lokalen Export. `analyze.py` verwendet die Providerfunktionen und den Prompt aus `rag/app.py`. Die Transportadapter begrenzen Zeitlimits und Wiederholungen für sicher wiederholbare Aufrufe. Generierung und Writes werden nicht automatisch wiederholt. Die [Laufzeitsicht](6-laufzeitsicht.md) beschreibt Aufrufreihenfolge, Netzwerk und Retry-Verhalten.
 
 ### 5.3.3 Vector-API und Datenhaltung
 
-Die Vector-API initialisiert bei gültigen Anfragen bei Bedarf einen PostgreSQL-Pool mit einer bis zehn Verbindungen; fehlgeschlagene Initialisierung wird bei späteren gültigen Anfragen erneut versucht. Einstellungen: `POSTGRES_DB`, `DB_HOST`, `DB_PORT`, `DB_USER`, `DB_PASSWORD`. Bis PostgreSQL bereit ist, liefern gültige Datenbankanfragen HTTP 503 Problem Details.
+Die Vector-API initialisiert den `ThreadedConnectionPool` erst nach der Eingabevalidierung. Er umfasst eine bis zehn Verbindungen. Fehlgeschlagene Initialisierungen werden bei späteren Anfragen erneut versucht. Gleichzeitige Anfragen warten nicht auf den Initialisierungslock. Verbindungs-, Statement- und Lock-Wartezeit sind jeweils auf drei Sekunden begrenzt. Der Transaktionskontext führt Commit oder Rollback aus und verwirft defekte Verbindungen. Einstellungen sind `POSTGRES_DB`, `DB_HOST`, `DB_PORT`, `DB_USER` und `DB_PASSWORD`.
+
+`GET /health/live` prüft nur den Prozess. `GET /health/ready` prüft Datenbankzugriff und Schema. Fehlende Bereitschaft und Poolerschöpfung ergeben HTTP 503. Nach einem Datenbankwiederanlauf kann sich die API ohne Neustart erholen.
 
 | Methode / Pfad | Aufgabe |
 |---|---|
 | `GET /chunks?embedding_set_id=...` | Zeilen zählen; Antwortfeld `chunks`, Filter optional |
 | `GET /chunks/<chunk_id>?embedding_set_id=...` | Einzelnen Chunk lesen; Filter optional |
-| `POST /vectors` | Datensatz anhand von `chunk_id` und `embedding_set_id` ersetzen; HTTP 201 |
-| `GET /find?query=...` | Chunk-IDs anhand eines case-insensitiven Metadatenmusters (`ILIKE`) finden |
+| `POST /vectors` | Datensatz anhand von `chunk_id` und `embedding_set_id` per Upsert speichern und interne ID bei Updates erhalten. HTTP 201 |
+| `GET /find?query=...` | Chunk-IDs anhand eines case-insensitiven Musters in `chunktext` (`ILIKE`) finden |
 | `DELETE /chunks` | Kanonische Chunknummern in einem Dokument und Set im inklusiven Bereich `from` bis `to` löschen |
 | `POST /search` | Suche mit `vector`, optional `embedding_set_id`, `metric`, `num_results`; `euclidean` (`<->`) und `cosine` (`<=>`) werden unterstützt, ungültige Metriken liefern HTTP 400 |
 
 Der JSON-Body für `DELETE /chunks` enthält `document_id` (Dateistamm), `embedding_set_id` und die positive Ganzzahl `from`. `to` ist optional und muss als Ganzzahl mindestens so groß wie `from` sein. Gleiche Grenzen löschen einen einzelnen Chunk. Ohne `to` reicht der Bereich bis zum Ende. IDs im Format `<Dateistamm>-<Nummer ab 1>` werden exakt dem Dokument zugeordnet. HTTP 200 gibt mit `{"deleted": 2}` die Anzahl gelöschter Zeilen an. Ungültige Angaben ergeben HTTP 400.
 
-Die Tabelle `vectors` enthält `id SERIAL PRIMARY KEY`, `chunk_id TEXT NOT NULL`, `embedding_set_id TEXT NOT NULL`, `vector VECTOR(1024)` und `chunktext TEXT`. `embedding_set_id` ist die Variantenkennung, kein numerischer Vektor. `UNIQUE(chunk_id, embedding_set_id)` trennt Importvarianten. Einzelwrites verwenden Upserts und sind nach der jeweiligen Transaktion abrufbar. Die abschließende Bereinigung verwendet eine eigene Transaktion. Ein HNSW-Index mit `vector_l2_ops` unterstützt euklidische Suche. JSON-Vektorlisten werden in den Integrationstests und im E2E-Test verwendet; die alten String-Beispiele in den Python-Docstrings sind kein vollständiger API-Vertrag.
+Die Tabelle `vectors` enthält `id SERIAL PRIMARY KEY`, `chunk_id TEXT NOT NULL`, `embedding_set_id TEXT NOT NULL`, `vector VECTOR(1024)` und `chunktext TEXT`. `embedding_set_id` ist die Variantenkennung, kein numerischer Vektor. `UNIQUE(chunk_id, embedding_set_id)` trennt Importvarianten. Einzelwrites verwenden Upserts und sind nach der jeweiligen Transaktion abrufbar. Die abschließende Bereinigung verwendet eine eigene Transaktion. Ein HNSW-Index mit `vector_l2_ops` unterstützt euklidische Suche. Die Vector-API prüft Vektoren auf 1024 endliche Zahlen und akzeptiert JSON-Listen sowie JSON-kodierte Listenstrings. `embedding` ist ein Alias für `embedding_set_id`. Einzelchunk- und Suchantworten enthalten beide Namen. Widersprüchliche Angaben ergeben HTTP 400.
 
 ### 5.3.4 Ollama und Reranker
 
@@ -91,49 +108,19 @@ Das Reranker-Image installiert Flask, sentence-transformers und torch und laedt 
 
 Die [Verteilungssicht](7-verteilungssicht.md) zeigt die Infrastruktur mit Windows, WSL, Pods und Containern sowie die konkreten Ports, Volumes und Betriebsvarianten.
 
-Die Dockerfiles installieren Pakete und kopieren Anwendungscode beim Image-Build. Codeänderungen werden durch Image-Neubau und Container-Neuerstellung übernommen; ConfigMaps oder Paketinstallation beim regulären Start sind nicht Teil dieses Ablaufs.
+Die Dockerfiles installieren Pakete und kopieren Anwendungscode beim Image-Build. [build_image.py](../scripts/build_image.py) baut API-Images aus temporären Kontexten mit explizit ausgewählten Quelldateien und `rag_common`. Codeänderungen werden über ein neues Image und einen neu erstellten Container übernommen.
 
 Im README-Neuaufbau teilen PostgreSQL, Vector-API und RAG-API den Pod `vectorpod`. PostgreSQL speichert Daten im Named Volume `pgvector-data`; `init.sql` wird nur bei Initialisierung eines leeren Datenverzeichnisses ausgeführt. Ein Image-Neubau migriert keine vorhandene Datenbank. Der optionale Reranker läuft separat auf Port 5000. Ollama läuft als Windows-Hintergrund-App auf Port 11434.
 
-Bereits bestehende Pods können abweichende Portmappings haben. Im am 15.11.2026 geprüften Betrieb blieb der ältere Datenbank-Pod mit Ports 5432/5500 erhalten; `rag-api` wurde separat auf Hostport 5600 gestartet und erreicht die Vector-API über ihre veröffentlichte Adresse. Das ist eine Alternative zum gemeinsamen Pod, kein erforderlicher Datenbankumbau.
+Die RAG-API kann auch separat auf Port 5600 laufen und die Vector-API über deren veröffentlichten Port erreichen. Bestehende Datenbanken werden bei Schemaänderungen mit dem Backup- und Migrationsverfahren aus dem README aktualisiert.
 
 Die Testfixture baut einen eigenen Pod mit eindeutigen Container-/Image-Namen und eigenem Volume auf. API-Hostports vergibt Podman dynamisch, PostgreSQL wird nicht am Host veröffentlicht. Die Test-RAG-API sucht innerhalb des Test-Pods. Nur Ollama wird mit dem Host geteilt. Details stehen im [Testkonzept](8-1-testkonzept.md).
 
 ## 5.5 Offene Punkte
 
-Das zentrale Register mit Status, Prioritäten und Abschlusskriterien steht in [Kapitel 11.2 – Technische Schulden](11-2-technische-schulden.md). Die folgende Tabelle fasst die Auswirkungen auf die Bausteinsicht zusammen; die Abbaureihenfolge wird in Kapitel 11 gepflegt.
+Das [Schuldenregister](11-2-technische-schulden.md) führt aktuelle Befunde und Schweregrade. Für die Bausteinsicht sind insbesondere folgende Einschränkungen relevant:
 
-| Befund | Auswirkung |
-|---|---|
-| Importkennung und RAG-Standardfilter unterscheiden sich | Für Import3-Daten im Request `filter: snowflake-arctic-embed2-v2` setzen. |
-| Nicht unterstützte Suchmetrik | Vector-Suche akzeptiert `euclidean` (`<->`) und `cosine` (`<=>`); andere Werte liefern HTTP 400. |
-| Nebenläufigkeit und Transaktionsbereinigung der Vector-API (TS-06 abgeschlossen) | Frühe Requestvalidierung und RFC-9457-Fehlerantworten sind umgesetzt. TS-06 implementiert ThreadedConnectionPool, atomare Upserts und zentrale Transaktionsbereinigung; die isolierte Podman-Abnahme ist erfolgreich (siehe Changelog). |
-| Reranking in RAG integriert | Optional im `/process`-Pfad; top_k=0 deaktiviert es. |
-| Modellantworten variabel | Leerer Kontext liefert ohne Generierung HTTP 200 mit `no_context`, leeren Chunks und `metrics: null`. Bei vorhandenem Kontext garantiert HTTP 200 keine Faktentreue. |
-| Pakete und pgvector-Quellstand nicht vollständig fixiert | Builds können variieren; pgvector wird beim Image-Build aus dem aktuellen Repositorystand gebaut. |
-| Experimentelle Betriebsabsicherung | Flask-Entwicklungsserver, keine API-Authentifizierung, Beispiel-DB-Zugangsdaten; kein einheitlicher Readiness-Endpunkt aller Dienste. |
-| Import-/Analysevarianten und CLI-Konfiguration | Eigene feste URLs und teils veraltete Aufrufe. Import3 hat konfigurierte HTTP-Zeitlimits; Analyse verwendet die RAG-Providerfunktionen. interact.py ist ein reiner RAG-HTTP-Client. |
-
-## Quellen und Prüfumfang
-
-Repository-Konfiguration und aktuelle Implementierung bilden die Grundlage dieser Sicht. Historische Dateien und das separate Structurizr-Modell koennen vom aktuellen Podman-Aufbau abweichen.
-
-Die Vector-API akzeptiert weiterhin `embedding` als Alias und liefert beide Namen in Einzelchunk- und Suchantworten. Konflikte ergeben HTTP 400. Import3, CLI und RAG verwenden `rag/embedding_config.py` mit unabhaengigen Modell- und Set-Defaults. Bestandsmigration mit Backup: siehe README.
-
-## Ergänzung TS-03 (21.11.2026)
-
-Die APIs verwenden gemeinsame frühe Requestvalidierung und RFC-9457-Problemantworten aus rag_common/http_errors.py; Einzelheiten und verbleibende Zielzustände stehen in Kapitel 8.3. Die Vector-API initialisiert den Pool erst nach erfolgreicher Eingangsvalidierung und versucht es bei späteren Anfragen erneut. Die zuvor genannten Lücken bei Requestvalidierung und JSON-Fehlerausgabe sind damit behoben; Transaktions- und Poolnebenläufigkeit bleiben offen. API-Images werden über scripts/build_image.py aus temporären Kontexten mit explizit aufgelisteten Quelldateien und rag_common gebaut; gesperrte lokale Testverzeichnisse werden nicht durchsucht.
-
-TS-08 (22.11.2026): Die RAG-API validiert Trefferverträge und generiert bei leerem Kontext nicht mehr. Sie liefert dann status no_context mit leeren chunks und metrics null. Ungültige Retrievalantworten ergeben HTTP 502; optionale ungültige Metriken werden null. Frühere Aussagen zur Generierung bei leeren Treffern und ungesicherter Trefferverarbeitung sind durch diese Umsetzung ersetzt; Details in Kapitel 8.3.
-
-Historische Aenderungs- und Pruefnachweise: [Changelog](../changelog.md).
-
-TS-07: Die Vector-API trennt Prozess-Liveness (`/health/live`) und Datenbank-Readiness (`/health/ready`). Poolinitialisierung ist bedarfsgesteuert und wiederholbar; gleichzeitig eintreffende Requests warten nicht auf den Initialisierungslock. Datenbankverbindungen begrenzen Verbindungs-, Statement- und Lock-Wartezeit jeweils auf drei Sekunden. Defekte Verbindungen werden verworfen; nach Datenbankwiederanlauf kann sich die API ohne Neustart erholen.
-
-TS-09: `/process` orchestriert Embedding, Retrieval, optional Reranking und Generierung. interact.py uebernimmt nur CLI-Validierung, einen API-Aufruf, Anzeige und lokalen Export. analyze.py verwendet dieselben Providerfunktionen und denselben Prompt aus rag/app.py. Modellunterschiede sind explizite Parameter; Antwortmodellstandard ist gemma4:e4b. Die API gibt urspruengliche und ausgewaehlte Treffer getrennt zurueck. Transportadapter begrenzen Timeouts und sichere Retries; Generierung und Writes werden nicht automatisch wiederholt.
-
-Die RAG-Antwort trennt Server-Laufzeiten in timings (embedding_duration, retrieval_duration, pipeline_duration) von Ollama-Generierungsmetriken. Deren generation_duration ersetzt die mehrdeutige Bezeichnung total_duration; letzteres bleibt Kompatibilitaetsalias. no_context enthaelt ebenfalls timings.
-
-Die RAG-API stellt zusaetzlich /evaluate/retrieve, /evaluate/rerank und /evaluate/generate bereit. Diese HTTP-Adapter nutzen die bestehenden Providerfunktionen und geben serialisierbare next_request-Objekte fuer den jeweils folgenden Schritt aus. Identitaet und Trefferfelder bleiben erhalten; Evaluation schreibt keine Vektoren und besitzt keinen Sitzungszustand. Goldvergleich und aggregierte Qualitaetsmessung sind noch nicht implementiert.
-
-Die Pipeline fuehrt den gemeinsamen Import mit rekursivem Chunking, optionalen Keywords und versionierten Zwischenartefakten aus. [Kapitel 8.4](8-4-importkonzept.md) beschreibt Aufrufe, Teilimporte und Wiederaufnahme.
+- Einzelabrufe ohne Set und die ID-Suche können bei mehreren Sets mehrdeutig sein. Die Vektorausgabe ist an die Datenbankdarstellung gekoppelt.
+- Paketversionen und pgvector-Quellstand sind nicht vollständig fixiert. Der HNSW-Index unterstützt euklidische Distanz.
+- Die Dienste verwenden Flask-Entwicklungsserver ohne API-Authentifizierung. Für RAG und Reranker fehlt eine vergleichbare Trennung von Liveness und Readiness.
+- Die Evaluationsendpunkte ermöglichen Einzelversuche. Goldvergleich und aggregierte Qualitätsmessung sind offen.
