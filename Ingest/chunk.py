@@ -1,3 +1,5 @@
+# Erzeugt ein Chunk-Artefakt aus einer UTF-8-Quelldatei.
+
 """Create a reusable chunk artifact without accessing services."""
 
 import argparse
@@ -6,6 +8,7 @@ from pathlib import Path
 from .pipeline import make_chunks, read_json, resolve_config, write_json
 
 
+# Prueft die Chunking-Konfiguration und schreibt das Chunk-Artefakt.
 def main(argv=None):
     parser = argparse.ArgumentParser(description=__doc__)
     parser.add_argument("--file", required=True, type=Path)

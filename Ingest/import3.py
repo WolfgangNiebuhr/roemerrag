@@ -1,3 +1,5 @@
+# Importiert Textdateien mit Keyword-Anreicherung und normalisierten Embeddings.
+
 import os
 import requests
 import argparse
@@ -25,6 +27,7 @@ MODEL_NAME = EMBEDDING_MODEL
 CHUNK_SIZE = 1000  # Größe der Chunks in Zeichen
 OVERLAP = 150  # Überlappung zwischen den Chunks
 
+# Konfiguriert eine datierte Logdatei pro Quelldatei.
 def setup_logging(file_path):
     base = Path(file_path).stem
     timestamp = datetime.now().strftime("%Y-%m-%d_%H-%M-%S")
@@ -39,6 +42,7 @@ def setup_logging(file_path):
 
 
 
+# Ruft Ollama fuer einen Chunk auf und normalisiert den Vektor.
 def generate_embedding(chunk):
     """Erzeugt ein Embedding für einen Text-Chunk über die Ollama-API."""
     payload = {
@@ -53,6 +57,7 @@ def generate_embedding(chunk):
     else:
         raise Exception(f"Fehler beim Abrufen des Embeddings: {response.text}")
 
+# Uebergibt Chunktext und Vektor mit ihren Kennungen an die Vector-API.
 def store_vector_in_db(chunk_id, embedding_set_id, vector, chunk):
     """Speichert einen Chunk mit Embedding in der Vektor-Datenbank."""
     payload = {
@@ -67,6 +72,7 @@ def store_vector_in_db(chunk_id, embedding_set_id, vector, chunk):
     else:
         raise Exception(f"Fehler beim Speichern in der Vektor-DB: {response.text}")
 
+# Importiert die Chunks einer Datei ab der gewaehlten Startnummer.
 def process_file(file_path, start):
     """Verarbeitet eine Datei: Zerlegen, Embeddings generieren, in DB speichern."""
     file_name = Path(file_path).stem

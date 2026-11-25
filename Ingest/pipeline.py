@@ -1,3 +1,5 @@
+# Steuert Chunking, optionale Anreicherung, Embedding und Speicherung eines Importlaufs.
+
 """Run a configured import through the existing Ollama and Vector APIs."""
 
 import argparse
@@ -20,6 +22,7 @@ from .utils.keywords import keyword_messages
 DEFAULT_SEPARATORS = ("\n\n", ".\n", ". ", "")
 
 
+# Erstellt die Nachrichten fuer die kurze Keyword-Promptversion.
 def concise_keyword_messages(text):
     return (
         "Extrahiere bis zu fuenf aussagekraeftige Stichwoerter aus dem Quelltext. "
@@ -43,6 +46,7 @@ def post(url, payload, timeout, status):
     return response.json()
 
 
+# Ermittelt Keywords mit Ollama und erfasst die Anfrage- und Providermetriken.
 def keywords(text, *, model, prompt, ollama, timeout, system_prompt=None):
     if system_prompt is None:
         system, query, _ = KEYWORD_PROMPTS[prompt](text)
@@ -89,6 +93,7 @@ def nonempty(value):
     return isinstance(value, str) and bool(value.strip())
 
 
+# Validiert die Konfiguration und ergaenzt die Standardwerte der angeforderten Stufen.
 def resolve_config(config, *, chunk_only=False, enrichment_only=False):
     fields(config, "format_version name embedding_set_id chunking enrichment embedding")
     require(type(config.get("format_version")) is int and config["format_version"] == 1,
@@ -140,6 +145,7 @@ def resolve_config(config, *, chunk_only=False, enrichment_only=False):
             "embedding": embedding}
 
 
+# Zerlegt eine UTF-8-Quelle in Chunks und versieht sie mit stabilen IDs.
 def make_chunks(path, config):
     raw = path.read_bytes()
     source = raw.decode("utf-8").replace("\r\n", "\n").replace("\r", "\n")
@@ -159,6 +165,7 @@ def chunktext(row):
     return row["enrichment"] + "\n" + row["source_text"] if row["enrichment"] else row["source_text"]
 
 
+# Wendet die Anreicherungsstrategie an und setzt den gemeinsamen Chunktext zusammen.
 def enrich_chunk(source, strategy, ollama, timeout):
     enrichment, metrics = ENRICHERS[strategy["strategy"]](
         source["source_text"], **strategy["parameters"], ollama=ollama, timeout=timeout,
@@ -167,6 +174,7 @@ def enrich_chunk(source, strategy, ollama, timeout):
     return {**row, "chunktext": chunktext(row)}
 
 
+# Liest die Ollama-Adresse und validiert die Zeitlimits fuer Keyword-Anfragen.
 def enrichment_connection():
     ollama = os.getenv("OLLAMA_HOST_URL", "http://localhost:11434").rstrip("/")
     timeout = (float(os.getenv("IMPORT_CONNECT_TIMEOUT", "5")),
@@ -176,6 +184,7 @@ def enrichment_connection():
     return ollama, timeout
 
 
+# Prueft Format, Konfiguration und Chunks eines vorhandenen Zwischenartefakts.
 def validate_artifact(data, stage, config):
     require(isinstance(data, dict) and type(data.get("format_version")) is int
             and data["format_version"] == 1 and data.get("stage") == stage,
@@ -203,6 +212,7 @@ def validate_artifact(data, stage, config):
                     and row.get("chunktext") == chunktext(row), "Invalid artifact enrichment")
 
 
+# Ruft das Embedding ab, prueft den Vektor und normalisiert ihn bei Bedarf.
 def embed(text, config, ollama, timeout):
     data = post(ollama + "/api/embeddings",
                 {"model": config["model"], "prompt": text}, timeout, 200)
@@ -219,6 +229,7 @@ def read_json(path):
     return json.loads(path.read_text(encoding="utf-8"))
 
 
+# Schreibt ein JSON-Artefakt atomar ueber eine Datei im Zielverzeichnis.
 def write_json(path, data):
     path.parent.mkdir(parents=True, exist_ok=True)
     with NamedTemporaryFile(dir=path.parent, delete=False) as temp:
@@ -231,6 +242,7 @@ def write_json(path, data):
         temporary.unlink(missing_ok=True)
 
 
+# Fuehrt die ausstehenden Importstufen aus und protokolliert Ergebnis oder Fehler im Laufbericht.
 def run(args, config, artifact):
     ollama, keyword_timeout = enrichment_connection()
     vector_url = os.getenv("IMPORT_VECTOR_URL", "http://127.0.0.1:5500/vectors")
@@ -299,6 +311,7 @@ def run(args, config, artifact):
     return 1 if report["error"] else 0
 
 
+# Verarbeitet die CLI-Argumente und startet den Import aus einer Quelle oder einem Artefakt.
 def main(argv=None):
     parser = argparse.ArgumentParser(description=__doc__)
     source = parser.add_mutually_exclusive_group(required=True)

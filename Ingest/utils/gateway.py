@@ -1,3 +1,5 @@
+# Kapselt die Ollama-Chat-Anfragen des Import3-Keywordpfads.
+
 import requests
 import logging
 import time
@@ -7,6 +9,7 @@ OLLAMA_HOST = "http://localhost:11434"
 OLLAMA_CHAT_URL = f"{OLLAMA_HOST}/api/chat"
 OLLAMA_MODEL = "gemma3:4b"
 
+# Sendet die Chat-Anfrage und wiederholt sie bei einer Ratenbegrenzung.
 def call_ollama_gateway(chunk, system_prompt, query):
     """
     Sendet messages an Ollama /api/chat mit dem konfigurierten lokalen Modell.

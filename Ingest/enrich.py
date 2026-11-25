@@ -1,3 +1,5 @@
+# Fuehrt die Anreicherung vorhandener Chunks als einzelnen Verarbeitungsschritt aus.
+
 """Enrich a chunk artifact and save the results without importing vectors."""
 
 import argparse
@@ -9,6 +11,7 @@ from .pipeline import (
 )
 
 
+# Validiert das Chunk-Artefakt und schreibt die vollstaendige Anreicherung.
 def main(argv=None):
     parser = argparse.ArgumentParser(description=__doc__)
     parser.add_argument("--input", required=True, type=Path)

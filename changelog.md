@@ -15,6 +15,10 @@ Aus README und docs übernommene Änderungshistorie. Gleichdatierte Einträge fo
 
 ## 2026-11-25
 
+### Zweckkommentare im Importmodul ergaenzt
+
+Acht Python-Dateien in Ingest und 23 Funktionen mit mehr als fuenf Quellzeilen erhielten Zweckkommentare. Die Python-Syntaxbaeume blieben identisch und **238 Unit-Tests** bestanden. Integrationstests wurden fuer die reine Kommentaraenderung nicht erneut ausgefuehrt.
+
 ### Alte Keyword-Experimente entfernt
 
 Keyword-Experimente laufen ueber `Ingest.enrich`. Die zwei alten manuellen Skripte und ihre Verweise wurden entfernt.

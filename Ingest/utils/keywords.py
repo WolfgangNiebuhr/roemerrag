@@ -1,8 +1,11 @@
+# Definiert den Import3-Keyword-Prompt und wertet die zugehoerige Ollama-Antwort aus.
+
 from .gateway import call_ollama_gateway
 import logging
 
 MAX_SIZE = 1000  # Max Size für 5 Keywords
 
+# Waehlt anhand der Chunklaenge eine Frage mit passender Keyword-Anzahl.
 def get_keyword_question2(chunk):
     chunk_len = len(chunk)
     fifth = MAX_SIZE // 5
@@ -24,6 +27,7 @@ def get_keyword_question2(chunk):
                     )
     return question
 
+# Baut den Systemprompt und die kontextbezogene Keyword-Anfrage zusammen.
 def keyword_messages(chunk):
     """Generiert eine Antwort basierend auf dem Kontext und der Frage über die Ollama-API."""
     system_prompt = (
@@ -48,6 +52,7 @@ def keyword_messages(chunk):
     return system_prompt, query, question
 
 
+# Liest Keyword-Text und Laufzeit aus der Ollama-Antwort fuer Import3.
 def get_keywords_ollama(chunk):
     system_prompt, query, question = keyword_messages(chunk)
     response = call_ollama_gateway(chunk, system_prompt, query)
