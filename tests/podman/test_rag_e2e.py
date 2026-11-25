@@ -20,7 +20,7 @@ def test_early_rome_question_end_to_end(vector_url, rag_url, test_id, e2e_ollama
     corpus = Path(__file__).parent / "fixtures" / "early_rome.txt"
     chunks = split_text_into_chunks(str(corpus), size=300, overlap=0)
     assert len(chunks) == 3
-    chunk_ids = [f"rome-e2e-{test_id}-{index}" for index in range(len(chunks))]
+    chunk_ids = [f"{variant}-{index}" for index in range(1, len(chunks) + 1)]
 
     try:
         for chunk_id, text in zip(chunk_ids, chunks):
@@ -74,8 +74,9 @@ def test_early_rome_question_end_to_end(vector_url, rag_url, test_id, e2e_ollama
         assert metrics["prompt_tokens"] > 0, metrics
         assert metrics["answer_tokens"] > 0, metrics
     finally:
-        for chunk_id in chunk_ids:
-            request(vector_url, "/chunk", "DELETE", {"chunk_id": chunk_id, "embedding": variant})
+        request(vector_url, "/chunks", "DELETE", {
+            "document_id": variant, "embedding": variant, "from": 1,
+        })
 
 
 @pytest.mark.podman
@@ -84,7 +85,7 @@ def test_early_rome_question_end_to_end(vector_url, rag_url, test_id, e2e_ollama
 @pytest.mark.ollama
 def test_rag_reranking_through_api(vector_url, rag_url, test_id, e2e_ollama_url):
     variant = "rerank-api-" + test_id
-    chunk = {"chunk_id":variant, "embedding_set_id":variant,
+    chunk = {"chunk_id":f"{variant}-1", "embedding_set_id":variant,
              "vector":[1.0] + [0.0] * 1023,
              "chunktext":"Karthago beherrschte das westliche Mittelmeer."}
     try:
@@ -93,12 +94,14 @@ def test_rag_reranking_through_api(vector_url, rag_url, test_id, e2e_ollama_url)
             'embedding_set_id':variant, 'top_k':1,
             'reranker':'cross-encoder/ms-marco-MiniLM-L6-v2', 'answer_model':'phi3:mini'}, timeout=1000)
         assert result['status'] == 'ok'
-        assert result['chunks'] == [variant]
+        assert result['chunks'] == [chunk["chunk_id"]]
         assert result['selected_results'] == result['retrieved_results']
         assert result['reranking']['model'] == 'cross-encoder/ms-marco-MiniLM-L6-v2'
         assert result['reranking']['duration'] >= 0
     finally:
-        request(vector_url, '/chunk', 'DELETE', chunk)
+        request(vector_url, '/chunks', 'DELETE', {
+            'document_id': variant, 'embedding_set_id': variant, 'from': 1,
+        })
 
 
 @pytest.mark.podman
@@ -107,26 +110,28 @@ def test_rag_reranking_through_api(vector_url, rag_url, test_id, e2e_ollama_url)
 @pytest.mark.ollama
 def test_evaluation_endpoints_chain(vector_url, rag_url, test_id, e2e_ollama_url):
     variant = 'evaluation-' + test_id
-    chunk = {'chunk_id':variant, 'embedding_set_id':variant,
+    chunk = {'chunk_id':f'{variant}-1', 'embedding_set_id':variant,
              'vector':[1.0]+[0.0]*1023, 'chunktext':'Karthago beherrschte das westliche Mittelmeer.'}
     try:
         request(vector_url, '/vectors', 'POST', chunk, 201)
         retrieved = request(rag_url, '/evaluate/retrieve', 'POST', {
             'query':'Wer beherrschte das westliche Mittelmeer?', 'embedding_set_id':variant,
             'top_k':1, 'answer_model':'phi3:mini'}, timeout=600)
-        assert retrieved['results'][0]['chunk_id'] == variant
+        assert retrieved['results'][0]['chunk_id'] == chunk['chunk_id']
         assert len(retrieved['vector']) == 1024
         assert 'distance' in retrieved['results'][0]
         assert retrieved['timings']['retrieval_duration'] >= 0
         ranked = request(rag_url, '/evaluate/rerank', 'POST', retrieved['next_request'], timeout=600)
-        assert ranked['results'][0]['chunk_id'] == variant
+        assert ranked['results'][0]['chunk_id'] == chunk['chunk_id']
         assert isinstance(ranked['results'][0]['rerank_score'], (int,float))
         generated = request(rag_url, '/evaluate/generate', 'POST', ranked['next_request'], timeout=1000)
         assert generated['status'] == 'ok'
         assert generated['response'].strip()
-        assert generated['chunks'] == [variant]
+        assert generated['chunks'] == [chunk["chunk_id"]]
         assert generated['metrics']['generation_duration'] >= 0
         # The stored generation request can be replayed independently.
         assert generated['request'] == ranked['next_request']
     finally:
-        request(vector_url, '/chunk', 'DELETE', chunk)
+        request(vector_url, '/chunks', 'DELETE', {
+            'document_id': variant, 'embedding_set_id': variant, 'from': 1,
+        })

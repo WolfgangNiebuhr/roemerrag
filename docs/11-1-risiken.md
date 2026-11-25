@@ -1,13 +1,13 @@
 # 11.1 Risiken
 
-Stand: 22.11.2026. Dieses Register enthält ausschließlich ausdrücklich als Risiko markierte Einträge. Technische Schulden werden separat in [Abschnitt 11.2](11-2-technische-schulden.md) geführt und gelten nicht automatisch als Risiken. Risiken erhalten eine eigene Nummerierung mit dem Präfix R.
+Stand: 25.11.2026. Dieses Register enthält ausschließlich ausdrücklich als Risiko markierte Einträge. Technische Schulden werden separat in [Abschnitt 11.2](11-2-technische-schulden.md) geführt und gelten nicht automatisch als Risiken. Risiken erhalten eine eigene Nummerierung mit dem Präfix R.
 
 ## R-01 – Manuelle Zuordnung von Importvarianten · Akzeptiertes Risiko
 
 - **Befund:** `embedding_set_id` ist eine frei gewählte Kennung. Import3 und Retrieval können Modell und Set unabhängig konfigurieren; die Datenbank speichert und prüft keine vollständige Verarbeitungskonfiguration. Eine Set-ID allein belegt daher weder Chunking, Anreicherung und Prompts noch das tatsächlich verwendete Modell und die Normalisierung.
 - **Entscheidung vom 21.11.2026:** Keine zusätzliche technische Speicherung oder Absicherung dieser Konfiguration. Stattdessen wird die Zuordnung manuell im [Set-ID-Verzeichnis, arc42-Abschnitt 8.2](8-2-embedding-sets.md) gepflegt. Die [Architekturentscheidung 9.3](9-architekturentscheidungen.md#93-set-konfiguration-manuell-dokumentieren-21112026) ersetzt den bisherigen Vorschlag einer persistierten Variantenkonfiguration.
 - **Manuelle Behandlung:** Vor einem Import die tatsächlichen Parameter zum Set dokumentieren; bei geänderter Verarbeitung eine neue Set-ID verwenden. Evaluationen nennen die verwendete Set-ID. Unbekannte historische Angaben bleiben ausdrücklich unbekannt; der aktuelle Codezustand ist kein vollständiger Herkunftsnachweis für Bestandsvektoren. Ein erneutes Embedding ist hierfür nicht erforderlich.
-- **Akzeptiertes Restrisiko:** Eine falsche Kennung oder veraltete Dokumentation kann unterschiedliche Verarbeitungen unter derselben Set-ID vermischen. Gleiche `(chunk_id, embedding_set_id)` können überschrieben werden; Vergleiche werden dadurch schwer erklärbar oder nicht wiederholbar. Das Verzeichnis unterstützt die Nachvollziehbarkeit, verhindert solche Fehler aber nicht technisch. Es besteht kein offener Implementierungsauftrag für die ursprünglich vorgeschlagene Konfigurationspersistenz. Importlaufprobleme bleiben TS-05; Modellrevisionen und Buildstände behandelt TS-15.
+- **Akzeptiertes Restrisiko:** Eine falsche Kennung oder veraltete Dokumentation kann unterschiedliche Verarbeitungen unter derselben Set-ID vermischen. Gleiche `(chunk_id, embedding_set_id)` können überschrieben werden; Vergleiche werden dadurch schwer erklärbar oder nicht wiederholbar. Das Verzeichnis unterstützt die Nachvollziehbarkeit, verhindert solche Fehler aber nicht technisch. Es besteht kein offener Implementierungsauftrag für die ursprünglich vorgeschlagene Konfigurationspersistenz. Der Importabschluss der Pipeline ist in TS-05 dokumentiert; Modellrevisionen und Buildstände behandelt TS-15.
 
 Herkunft: bisheriger Eintrag TS-04.
 
@@ -18,6 +18,14 @@ Herkunft: bisheriger Eintrag TS-04.
 - **Regel:** Chunk-IDs verwenden den Dateinamen ohne die letzte Erweiterung und eine bei 1 beginnende Chunknummer, beispielsweise rom.band1-1 aus rom.band1.txt. Der Dateistamm muss innerhalb eines Embedding-Sets eindeutig sein; Verzeichnis und Erweiterung gehoeren nicht zum Schluessel.
 - **Akzeptiertes Restrisiko:** Dateien wie rom.txt und rom.md besitzen denselben Stamm und erzeugen im selben Set dieselben Chunk-IDs. Auch gleiche Dateinamen aus verschiedenen Verzeichnissen kollidieren. Atomare Upserts koennen dadurch fremde Chunks ueberschreiben; bei unterschiedlichen Chunkzahlen koennen vermischte Restbestaende entstehen. Retrieval und Qualitaetsmessungen koennen dadurch falsche Quellen enthalten.
 - **Manuelle Behandlung:** Vor Import Dateistaemme innerhalb des Sets eindeutig halten; kollidierende Quellen umbenennen oder unterschiedlichen Sets zuordnen. Keine automatische Erweiterungs-/Verzeichniskennung oder technische Kollisionsregistrierung vorgesehen. Gleichnamige Dateien in verschiedenen Sets kollidieren wegen des zusammengesetzten Datenbankschluessels nicht.
-- **Abgrenzung:** Die Korrektur von erster auf letzte Erweiterung ist seit 22.11.2026 in import3.py umgesetzt und getestet. Kuerzere Wiederholungsimporte, Fehlerabschluss und Resume bleiben ebenfalls TS-05. Das Risiko akzeptiert keine unbeabsichtigte Loeschung von Bestandsdaten und ersetzt keinen Umstellungsplan.
+- **Abgrenzung:** Die Korrektur von erster auf letzte Erweiterung ist seit 22.11.2026 in import3.py umgesetzt und getestet. Kürzere Wiederholungsimporte und Wiederaufnahme sind für die Pipeline unter TS-05 umgesetzt. Das Risiko akzeptiert keine unbeabsichtigte Loeschung von Bestandsdaten und ersetzt keinen Umstellungsplan.
 
 Konzept: [Kapitel 8.4.7](8-4-importkonzept.md#847-identitaet-wiederholung-und-abschluss).
+
+## R-03 – Vorübergehend inkonsistenter Chunkbestand bei Importabbrüchen
+
+**Akzeptiertes Risiko, Entscheidung vom 25.11.2026.**
+
+- **Auslöser.** `Ingest.pipeline` schreibt Chunks einzeln. Bricht der Import ab, bleiben die bereits geschriebenen Chunks abrufbar. Im betroffenen Dokument und Embedding-Set können dadurch Chunks fehlen oder alte, neue und überzählige Chunks gleichzeitig abrufbar sein.
+- **Auswirkung.** Retrieval und Evaluation können bis zum erfolgreichen Abschluss einen unvollständigen oder gemischten Datenstand verwenden. Ein Fehler in der abschließenden Bereinigung kann alte Chunks mit höheren Nummern zurücklassen.
+- **Behandlung.** Den Import mit derselben Eingabe, Konfiguration und Set-ID ab der ausgegebenen Chunknummer mit `--start` fortsetzen. Nach einem reinen Bereinigungsfehler startet der Aufruf mit der ausgegebenen Nummer direkt nach dem letzten Chunk und holt die Bereinigung nach. Vergleichsmessungen für den betroffenen Bestand erst nach erfolgreichem Abschluss durchführen. Der Zwischenstand bleibt bis zu einem erfolgreichen Folgeaufruf bestehen. [Architekturentscheidung 9.4](9-architekturentscheidungen.md#94-eventual-consistency-beim-dokumentimport-25112026)

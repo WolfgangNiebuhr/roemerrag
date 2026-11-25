@@ -116,9 +116,18 @@ def validate(service):
         if not isinstance(docs, list) or any(not isinstance(d, str) or not d.strip() for d in docs):
             invalid('documents muss eine Liste nichtleerer Strings sein.', 'documents')
     elif service == 'vector':
-        selection(data, ('embedding_set_id', 'embedding'), required=request.endpoint in ('upsert_chunk', 'delete_chunk'))
-        if request.endpoint in ('upsert_chunk', 'delete_chunk'):
+        selection(data, ('embedding_set_id', 'embedding'), required=request.endpoint in ('upsert_chunk', 'delete_chunks'))
+        if request.endpoint == 'upsert_chunk':
             text(data, 'chunk_id')
+        if request.endpoint == 'delete_chunks':
+            text(data, 'document_id')
+            start = data.get('from')
+            if type(start) is not int or start < 1:
+                invalid('from muss eine positive ganze Zahl sein.', 'from')
+            if 'to' in data and (type(data['to']) is not int or data['to'] < start):
+                invalid('to muss eine ganze Zahl größer oder gleich from sein.', 'to')
+            if 'chunk_id' in data:
+                invalid('Für Löschungen document_id und from verwenden.', 'chunk_id')
         if request.endpoint == 'upsert_chunk' and data.get('chunktext') is not None and not isinstance(data['chunktext'], str):
             invalid('chunktext muss ein String oder null sein.', 'chunktext')
         if request.endpoint in ('upsert_chunk', 'search_vectors'):

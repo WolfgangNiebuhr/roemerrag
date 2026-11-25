@@ -4,7 +4,7 @@ Stand: 21.11.2026. Dieses manuell gepflegte Verzeichnis ordnet `embedding_set_id
 
 ## Pflege und Aussagekraft
 
-Vor einem Import die tatsächlich verwendeten Parameter und die Set-ID hier eintragen. Ändern sich Chunking, Anreicherung, Prompts, Embeddingmodell oder Normalisierung, manuell eine neue Set-ID vergeben und einen neuen Eintrag anlegen. Bestehende Zuordnungen nicht nachträglich auf eine andere Konfiguration umdeuten. Wiederholungsimporte mit gleicher Verarbeitung dürfen dieselbe Kennung verwenden; die Importlaufverwaltung bleibt Thema von TS-05.
+Vor einem Import die tatsächlich verwendeten Parameter und die Set-ID hier eintragen. Ändern sich Chunking, Anreicherung, Prompts, Embeddingmodell oder Normalisierung, manuell eine neue Set-ID vergeben und einen neuen Eintrag anlegen. Bestehende Zuordnungen nicht nachträglich auf eine andere Konfiguration umdeuten. Wiederholungsimporte mit gleicher Verarbeitung dürfen dieselbe Kennung verwenden.
 
 Umgebungsvariablen können die Defaults für Modell und Set überschreiben. Maßgeblich für einen Eintrag sind die beim Import tatsächlich verwendeten Werte. Es gibt keine technische Prüfung, automatische Identitätsbildung oder Speicherung dieser Konfiguration in der Datenbank. Bei Evaluationen die verwendete Set-ID festhalten; Retrieval- und Generierungsparameter wie Suchmetrik, Trefferzahl, Reranker und Antwortmodell gehören zum jeweiligen Versuch.
 

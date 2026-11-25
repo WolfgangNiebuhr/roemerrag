@@ -20,7 +20,7 @@ Die arc42-Dokumentation beginnt mit [Einführung und Zielen](docs/1-einfuehrung-
 - Python für Import- und Analysewerkzeuge
 - Ollama, falls lokale Sprach- oder Embedding-Modelle verwendet werden
 
-**IPv6 und `localhost` unter Windows.** Python kann `localhost` zuerst zu `::1` auflösen. Ist der veröffentlichte Podman-Port der Vector-API nur über IPv4 erreichbar, wartet Python auf die Ablehnung der IPv6-Verbindung, bevor es `127.0.0.1` versucht. In der lokalen Messung kostete das rund zwei Sekunden pro Verbindungsversuch. Da die Pipeline jeden Chunk einzeln speichert, summiert sich die Wartezeit. Der Standard `127.0.0.1` verbindet sich direkt über IPv4. Für einen anderen Host oder Port lässt sich `IMPORT_VECTOR_URL` weiterhin setzen. Die Windows-Beispiele fuer Vector-API, RAG-API und Reranker sowie die HTTP-Aufrufe an den Podman-Teststack verwenden daher ebenfalls `127.0.0.1`.
+**IPv6 und `localhost` unter Windows.** Python kann `localhost` zuerst zu `::1` auflösen. Ist der veröffentlichte Podman-Port der Vector-API nur über IPv4 erreichbar, wartet Python auf die Ablehnung der IPv6-Verbindung, bevor es `127.0.0.1` versucht. In der lokalen Messung kostete das rund zwei Sekunden pro Verbindungsversuch. Der Standard `127.0.0.1` verbindet sich direkt über IPv4. Für einen anderen Host oder Port lässt sich `IMPORT_VECTOR_URL` weiterhin setzen. Die Windows-Beispiele fuer Vector-API, RAG-API und Reranker sowie die HTTP-Aufrufe an den Podman-Teststack verwenden daher ebenfalls `127.0.0.1`.
 
 ## Lokalen Stack starten
 

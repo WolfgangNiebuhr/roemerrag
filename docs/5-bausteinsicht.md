@@ -41,7 +41,7 @@ flowchart LR
 | Reranker | Frage-Dokument-Paare bewerten und sortieren | [app.py](../reranker/app.py), [Dockerfile](../reranker/Dockerfile) |
 | Lokale Werkzeuge | Direkte RAG-Abfragen und Analysen | [interact.py](../interact.py), [analyze.py](../analyze.py), `Vector/analyze_data.py` |
 
-Der Reranker bleibt ein eigenstaendiger Dienst; die RAG-API ruft ihn bei top_k > 0 auf. Pipeline und Import3 schreiben auf den Endpunkt `/vectors`.
+Der Reranker bleibt ein eigenstaendiger Dienst; die RAG-API ruft ihn bei top_k > 0 auf. Pipeline und Import3 speichern einzelne Chunks über `POST /vectors`. Die Pipeline bereinigt überzählige Chunks am Ende über `DELETE /chunks`.
 
 ## 5.3 Ebene 2 – zentrale Bausteine
 
@@ -74,10 +74,12 @@ Die Vector-API initialisiert bei gültigen Anfragen bei Bedarf einen PostgreSQL-
 | `GET /chunks/<chunk_id>?embedding_set_id=...` | Einzelnen Chunk lesen; Filter optional |
 | `POST /vectors` | Datensatz anhand von `chunk_id` und `embedding_set_id` ersetzen; HTTP 201 |
 | `GET /find?query=...` | Chunk-IDs anhand eines case-insensitiven Metadatenmusters (`ILIKE`) finden |
-| `DELETE /chunk` | Datensatz anhand von `chunk_id` und `embedding_set_id` löschen |
+| `DELETE /chunks` | Kanonische Chunknummern in einem Dokument und Set im inklusiven Bereich `from` bis `to` löschen |
 | `POST /search` | Suche mit `vector`, optional `embedding_set_id`, `metric`, `num_results`; `euclidean` (`<->`) und `cosine` (`<=>`) werden unterstützt, ungültige Metriken liefern HTTP 400 |
 
-Die Tabelle `vectors` enthält `id SERIAL PRIMARY KEY`, `chunk_id TEXT NOT NULL`, `embedding_set_id TEXT NOT NULL`, `vector VECTOR(1024)` und `chunktext TEXT`. `embedding_set_id` ist die Variantenkennung, kein numerischer Vektor. `UNIQUE(chunk_id, embedding_set_id)` trennt Importvarianten. Schreiben erfolgt durch Löschen und Einfügen in einer Transaktion. Ein HNSW-Index mit `vector_l2_ops` unterstützt euklidische Suche. JSON-Vektorlisten werden in den Integrationstests und im E2E-Test verwendet; die alten String-Beispiele in den Python-Docstrings sind kein vollständiger API-Vertrag.
+Der JSON-Body für `DELETE /chunks` enthält `document_id` (Dateistamm), `embedding_set_id` und die positive Ganzzahl `from`. `to` ist optional und muss als Ganzzahl mindestens so groß wie `from` sein. Gleiche Grenzen löschen einen einzelnen Chunk. Ohne `to` reicht der Bereich bis zum Ende. IDs im Format `<Dateistamm>-<Nummer ab 1>` werden exakt dem Dokument zugeordnet. HTTP 200 gibt mit `{"deleted": 2}` die Anzahl gelöschter Zeilen an. Ungültige Angaben ergeben HTTP 400.
+
+Die Tabelle `vectors` enthält `id SERIAL PRIMARY KEY`, `chunk_id TEXT NOT NULL`, `embedding_set_id TEXT NOT NULL`, `vector VECTOR(1024)` und `chunktext TEXT`. `embedding_set_id` ist die Variantenkennung, kein numerischer Vektor. `UNIQUE(chunk_id, embedding_set_id)` trennt Importvarianten. Einzelwrites verwenden Upserts und sind nach der jeweiligen Transaktion abrufbar. Die abschließende Bereinigung verwendet eine eigene Transaktion. Ein HNSW-Index mit `vector_l2_ops` unterstützt euklidische Suche. JSON-Vektorlisten werden in den Integrationstests und im E2E-Test verwendet; die alten String-Beispiele in den Python-Docstrings sind kein vollständiger API-Vertrag.
 
 ### 5.3.4 Ollama und Reranker
 
@@ -134,4 +136,4 @@ Die RAG-Antwort trennt Server-Laufzeiten in timings (embedding_duration, retriev
 
 Die RAG-API stellt zusaetzlich /evaluate/retrieve, /evaluate/rerank und /evaluate/generate bereit. Diese HTTP-Adapter nutzen die bestehenden Providerfunktionen und geben serialisierbare next_request-Objekte fuer den jeweils folgenden Schritt aus. Identitaet und Trefferfelder bleiben erhalten; Evaluation schreibt keine Vektoren und besitzt keinen Sitzungszustand. Goldvergleich und aggregierte Qualitaetsmessung sind noch nicht implementiert.
 
-Die Pipeline fuehrt den gemeinsamen Import mit rekursivem Chunking, optionalen Keywords und versionierten Zwischenartefakten aus. [Kapitel 8.4](8-4-importkonzept.md) beschreibt Aufrufe und den noch offenen dokumentweiten Importabschluss.
+Die Pipeline fuehrt den gemeinsamen Import mit rekursivem Chunking, optionalen Keywords und versionierten Zwischenartefakten aus. [Kapitel 8.4](8-4-importkonzept.md) beschreibt Aufrufe, Teilimporte und Wiederaufnahme.

@@ -122,7 +122,7 @@ def test_api_recovers_when_database_becomes_available(vector_module, monkeypatch
     assert client.get("/chunks").status_code == 200
     factory.assert_called_once()
 
-@pytest.mark.parametrize("path,method", [("/chunks", "get"), ("/chunks/c", "get"), ("/vectors", "post"), ("/chunk", "delete"), ("/search", "post")])
+@pytest.mark.parametrize("path,method", [("/chunks", "get"), ("/chunks/c", "get"), ("/vectors", "post"), ("/chunks", "delete"), ("/search", "post")])
 def test_conflicting_aliases_rejected_before_sql(database, path, method):
     module, pool, _, _ = database
     client = module.app.test_client()

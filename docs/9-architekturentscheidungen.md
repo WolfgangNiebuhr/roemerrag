@@ -2,7 +2,7 @@
 
 ## 9.1 Modell und Embedding-Set trennen (21.11.2026, TS-01)
 
-`embedding_set_id` bezeichnet die Menge zusammengehöriger Vektoren aus einer gemeinsamen Verarbeitungslogik. Die Kennung bezeichnet keinen einzelnen Ausführungslauf und ist unabhängig vom Modellnamen. Wiederholte Imports dürfen dasselbe Set verwenden. Die Konfiguration wird gemäß Abschnitt 9.3 manuell dokumentiert; Importlaufverwaltung bleibt TS-05.
+`embedding_set_id` bezeichnet die Menge zusammengehöriger Vektoren aus einer gemeinsamen Verarbeitungslogik. Die Kennung bezeichnet keinen einzelnen Ausführungslauf und ist unabhängig vom Modellnamen. Wiederholte Imports dürfen dasselbe Set verwenden. Die Konfiguration wird gemäß Abschnitt 9.3 manuell dokumentiert; die Importpipeline verwaltet ihre Läufe getrennt von der Set-ID.
 
 Import3, CLI und RAG lesen Modell und Set aus `rag/embedding_config.py`. Beide Einstellungen sind unabhängig über Umgebungsvariablen überschreibbar. Der Standard verweist auf das bestehende Set `snowflake-arctic-embed2-v2`; das Modell bleibt `snowflake-arctic-embed2`.
 
@@ -23,6 +23,12 @@ Die Spalte `metadata` enthält den zur Kontextbildung verwendeten Text und heiß
 Die Zuordnung von Verarbeitungsparametern zu `embedding_set_id` wird auf ausdrückliche Projektentscheidung ausschließlich im [Set-ID-Verzeichnis, Abschnitt 8.2](8-2-embedding-sets.md) gepflegt. Eine zusätzliche technische Speicherung, Konfigurationsprüfung oder automatische Vergabe von Set-Identitäten ist nicht vorgesehen. Der bisherige technische Abbauvorschlag aus TS-04 wird damit ersetzt.
 
 Vor neuen Imports werden Set-ID und tatsächliche Parameter manuell dokumentiert; bei geänderter Verarbeitung wird eine neue Kennung gewählt. Historisch unbekannte Angaben bleiben als unbekannt gekennzeichnet. Vorhandene Daten bleiben erhalten. Die Möglichkeit einer versehentlichen Vermischung oder Überschreibung bei falsch gewählter Kennung wird als [Risiko R-01](11-1-risiken.md#r-01--manuelle-zuordnung-von-importvarianten--akzeptiertes-risiko) bewusst akzeptiert. Die Dokumentation verhindert solche Fehler nicht technisch.
+
+## 9.4 Eventual Consistency beim Dokumentimport (25.11.2026)
+
+`Ingest.pipeline` schreibt jeden Chunk einzeln. Bestätigte Chunks sind sofort abrufbar und bleiben bei einem Abbruch gespeichert. Die Pipeline gibt die Startnummer für den nächsten Aufruf aus. Die manuelle Fortsetzung per `--start` verarbeitet die verbleibenden Chunks. Nach dem letzten erfolgreichen Write entfernt `DELETE /chunks` die überzähligen Chunks desselben Dokuments im selben Embedding-Set. Die Konsistenz des vorgesehenen Datenstands wird mit dem erfolgreichen Abschluss einschließlich Bereinigung erreicht. [Importkonzept 8.4](8-4-importkonzept.md#847-identitaet-wiederholung-und-abschluss)
+
+Eine automatische Sicherung der bisherigen Chunks vor jedem Wiederholungsimport ist fachlich nicht erforderlich. Für die Importversuche zählt der vollständig verarbeitete Zielstand. Der vorherige Stand lässt sich bei Bedarf aus der ursprünglichen Eingabe mit der zugehörigen Konfiguration erneut importieren. Automatische Sicherungen würden bei den häufigen Wiederholungen zusätzliche Lese- und Schreibvorgänge verursachen und die Laufzeit aus Projektsicht zu stark erhöhen. Der vorübergehend gemischte Datenstand wird daher bewusst akzeptiert. [Risiko R-03](11-1-risiken.md#r-03--vorübergehend-inkonsistenter-chunkbestand-bei-importabbrüchen)
 
 Historische Aenderungs- und Pruefnachweise: [Changelog](../changelog.md).
 

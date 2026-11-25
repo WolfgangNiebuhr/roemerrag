@@ -63,10 +63,20 @@ Mit `Ingest.pipeline --from enriched` kannst du die gewählte Variante einbetten
 | `IMPORT_EMBED_TIMEOUT` | 300 Sekunden |
 | `IMPORT_STORE_TIMEOUT` | 60 Sekunden |
 
-**IPv6 und `localhost` unter Windows.** Python kann `localhost` zuerst zu `::1` auflösen. Ist der veröffentlichte Podman-Port der Vector-API nur über IPv4 erreichbar, wartet Python auf die Ablehnung der IPv6-Verbindung, bevor es `127.0.0.1` versucht. In der lokalen Messung kostete das rund zwei Sekunden pro Verbindungsversuch. Da die Pipeline jeden Chunk einzeln speichert, summiert sich die Wartezeit. Der Standard `127.0.0.1` verbindet sich direkt über IPv4. Für einen anderen Host oder Port lässt sich `IMPORT_VECTOR_URL` weiterhin setzen.
+**IPv6 und `localhost` unter Windows.** Python kann `localhost` zuerst zu `::1` auflösen. Ist der veröffentlichte Podman-Port der Vector-API nur über IPv4 erreichbar, wartet Python auf die Ablehnung der IPv6-Verbindung, bevor es `127.0.0.1` versucht. In der lokalen Messung kostete das rund zwei Sekunden pro Verbindungsversuch. Der Standard `127.0.0.1` verbindet sich direkt über IPv4. Für einen anderen Host oder Port lässt sich `IMPORT_VECTOR_URL` weiterhin setzen.
 
-## Ergebnisse und Fehler
+## Abbruch, Wiederaufnahme und Teilimport
 
-Der vollständige Lauf erzeugt `chunks.json`, `enriched.json`, `embeddings.json` und `run.json`. Der Laufbericht enthält die aufgelöste Konfiguration, Stufenzeiten, bestätigte Schreibvorgänge und gegebenenfalls die Fehlerphase.
+Die Pipeline berechnet und speichert jeden Chunk einzeln. Bei einem Fehler bricht sie sofort ab. Bereits gespeicherte Chunks sind abrufbar. Bis ein Lauf erfolgreich beendet ist, kann die Datenbank sowohl alte als auch neue Chunks enthalten.
 
-Chunk-IDs bestehen aus dem Dateistamm und einer Nummer ab 1. Aus `rom.band1.txt` entsteht beispielsweise `rom.band1-1`. Dateistämme müssen innerhalb eines Sets eindeutig sein. Die Pipeline bricht beim ersten Fehler ab. Ein Schreibfehler kann bereits gespeicherte Chunks hinterlassen. Bei einem kürzeren Wiederholungsimport bleiben überschüssige alte Chunks erhalten. Details stehen in [Kapitel 8.4](../docs/8-4-importkonzept.md).
+Beim Abbruch gibt die Pipeline die Nummer des ersten noch nicht bestätigten Chunks aus. Starte mit dem angezeigten `--start`, derselben Eingabe und Konfiguration, derselben Vector-API-Adresse und einem neuen Ausgabeverzeichnis. Nach einer verlorenen Speicherantwort kann der betroffene Chunk erneut per Upsert geschrieben werden. Wenn sich die Quelldatei seit dem Abbruch geändert hat, kannst du das im bisherigen Ausgabeverzeichnis gespeicherte `chunks.json` mit `--from chunks --input …` verwenden. Bei einem Import aus `enriched.json` verwende wieder dasselbe Anreicherungsartefakt.
+
+Für einen **neuen Lauf ab Chunk 5**, auch nach einem erfolgreichen Import:
+
+```powershell
+python -m Ingest.pipeline --file Ingest/pg3060.txt --start 5 --config Ingest/experiments/snowflake-arctic-embed-v2.json --output-dir artifacts/rom/run-003
+```
+
+`--start` zählt ab 1. Die Pipeline verwendet die Chunknummern des vollständigen neuen Inputs und lässt alle Chunks vor dem Startpunkt unangetastet. Der bestehende Präfix muss zum gewünschten Datenstand passen. Mit der Nummer unmittelbar nach dem letzten Chunk wird nur bereinigt. Nach dem letzten bestätigten Write löscht die Pipeline alle Chunks oberhalb der Gesamtzahl für denselben Dateistamm im selben Set. Scheitert die Bereinigung, gibt die Pipeline die Nummer nach dem letzten Chunk für einen reinen Bereinigungslauf aus. Importiere dasselbe Dokument im selben Set jeweils mit einem Lauf zur Zeit.
+
+Ein erfolgreicher Lauf ab Chunk 1 schreibt vollständige Anreicherungs- und Embeddingartefakte. Läufe ab einem späteren Chunk speichern das Eingabeartefakt. Exitcode 0 steht für Abschluss einschließlich Bereinigung, 1 für Abbruch und 2 für ungültige Eingaben. Die Pipeline ruft zur Bereinigung `DELETE /chunks` mit `document_id`, `embedding_set_id` und `from` gleich Gesamtzahl plus eins auf. Eine Schemaänderung ist dafür nicht erforderlich.

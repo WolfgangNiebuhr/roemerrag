@@ -189,23 +189,33 @@ def upsert_chunk():
             """, (chunk_id, embedding_set_id, vector, chunktext))
         return jsonify({"message": "Vector stored"}), 201
 
-@app.route("/chunk", methods=["DELETE"])
-def delete_chunk():
-    """
-    Body (JSON): {chunk_id, embedding_set_id}
-    """
-    if not db_pool:
-        raise Problem("dependency-unavailable", "Database is unavailable.")
-    data = request.get_json(force=True)
-    chunk_id = data["chunk_id"]
-    embedding_set_id = resolve_set_id(data, required=True)
+@app.delete("/chunks")
+def delete_chunks():
+    data = request.get_json()
+    set_id = resolve_set_id(data, required=True)
+    prefix = data["document_id"] + "-"
+    start = str(data["from"])
+    end = str(data["to"]) if "to" in data else None
 
+    # Compare canonical decimal numbers by length, then by digit order.
     with transaction() as conn:
         with conn.cursor() as cur:
             cur.execute("""
-                DELETE FROM vectors WHERE chunk_id = %s AND embedding_set_id = %s
-            """, (chunk_id, embedding_set_id))
-        return jsonify({"message": "deleted"}), 200
+                DELETE FROM vectors
+                WHERE id IN (
+                    SELECT id FROM (
+                        SELECT id, substring(chunk_id FROM char_length(%(prefix)s) + 1) AS suffix
+                        FROM vectors WHERE embedding_set_id = %(set_id)s AND starts_with(chunk_id, %(prefix)s)
+                    ) AS document_chunks
+                    WHERE suffix ~ '^[1-9][0-9]*$'
+                      AND (length(suffix), suffix COLLATE "C") >= (length(%(start)s), %(start)s)
+                      AND (%(end)s::text IS NULL OR
+                           (length(suffix), suffix COLLATE "C") <= (length(%(end)s), %(end)s))
+                )
+            """, {"prefix": prefix, "set_id": set_id, "start": start, "end": end})
+            deleted = cur.rowcount
+    return jsonify({"deleted": deleted})
+
 
 @app.route("/search", methods=["POST"])
 def search_vectors():

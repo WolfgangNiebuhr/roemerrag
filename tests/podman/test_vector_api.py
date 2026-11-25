@@ -12,7 +12,8 @@ def vector(first):
 def test_vector_api(vector_url, test_id):
     embedding_a = "podman-test-a-" + test_id
     embedding_b = "podman-test-b-" + test_id
-    ids = ["podman-a-" + test_id, "podman-b-" + test_id]
+    documents = ["podman-a-" + test_id, "podman-b-" + test_id]
+    ids = [f"{document}-1" for document in documents]
     a = {"chunk_id": ids[0], "embedding": embedding_a, "vector": vector(1), "chunktext": "alpha"}
     b = {"chunk_id": ids[1], "embedding_set_id": embedding_b, "vector": vector(0.9), "chunktext": "beta"}
     for chunk in (a, b):
@@ -40,17 +41,40 @@ def test_vector_api(vector_url, test_id):
     assert ids[0] in found["chunk_ids"], found
     assert request(vector_url, "/chunks/missing-" + test_id, expected=404)["type"] == "urn:rag:problem:not-found"
 
-    for chunk_id, embedding in zip(ids, (embedding_a, embedding_b)):
-        assert request(vector_url, "/chunk", "DELETE", {"chunk_id": chunk_id, "embedding": embedding})["message"] == "deleted"
+    for document, embedding in zip(documents, (embedding_a, embedding_b)):
+        assert request(vector_url, "/chunks", "DELETE", {
+            "document_id": document, "embedding": embedding, "from": 1, "to": 1,
+        })["deleted"] == 1
     assert request(vector_url, "/chunks?embedding=" + embedding_a)["chunks"] == 0
     assert request(vector_url, "/chunks?embedding_set_id=" + embedding_b)["chunks"] == 0
+
+
+@pytest.mark.podman
+def test_delete_chunk_range_includes_both_bounds(vector_url, test_id):
+    document = f"range-{test_id}"
+    for number in (8, 9, 10, 11):
+        request(vector_url, "/vectors", "POST", {
+            "chunk_id": f"{document}-{number}", "embedding_set_id": test_id,
+            "vector": vector(1), "chunktext": str(number),
+        }, expected=201)
+
+    payload = {"document_id": document, "embedding_set_id": test_id, "from": 9, "to": 10}
+    assert request(vector_url, "/chunks", "DELETE", payload) == {"deleted": 2}
+    assert request(vector_url, "/chunks", "DELETE", payload) == {"deleted": 0}
+    assert request(vector_url, f"/chunks/{document}-8?embedding_set_id={test_id}")["chunktext"] == "8"
+    assert request(vector_url, f"/chunks/{document}-11?embedding_set_id={test_id}")["chunktext"] == "11"
+    assert request(vector_url, f"/chunks?embedding_set_id={test_id}")["chunks"] == 2
+    request(vector_url, "/chunks", "DELETE", {
+        "document_id": document, "embedding_set_id": test_id, "from": 1,
+    })
 
 
 @pytest.mark.podman
 def test_parallel_upserts_preserve_identity(vector_url, test_id):
     from concurrent.futures import ThreadPoolExecutor
     from threading import Barrier
-    payload = {"chunk_id": "parallel-" + test_id, "embedding_set_id": test_id,
+    document = "parallel-" + test_id
+    payload = {"chunk_id": f"{document}-1", "embedding_set_id": test_id,
                "vector": vector(1), "chunktext": "initial"}
     barrier = Barrier(6)
     def write(index):
@@ -63,7 +87,9 @@ def test_parallel_upserts_preserve_identity(vector_url, test_id):
     request(vector_url, "/vectors", "POST", payload, 201)
     assert request(vector_url, path)["id"] == initial["id"]
     assert request(vector_url, "/chunks?embedding_set_id=" + test_id)["chunks"] == 1
-    request(vector_url, "/chunk", "DELETE", payload)
+    request(vector_url, "/chunks", "DELETE", {
+        "document_id": document, "embedding_set_id": test_id, "from": 1,
+    })
 
 
 @pytest.mark.podman

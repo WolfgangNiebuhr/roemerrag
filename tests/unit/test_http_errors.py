@@ -49,7 +49,7 @@ def test_reranker_validation_precedes_loading(monkeypatch, payload):
 
 @pytest.mark.parametrize('path,method,payload', [
     ('/vectors', 'post', {}), ('/vectors', 'post', {'chunk_id': 4}),
-    ('/chunk', 'delete', {}), ('/search', 'post', {'vector': [1]}),
+    ('/chunks', 'delete', {}), ('/search', 'post', {'vector': [1]}),
     ('/search', 'post', {'vector': [1]*1024, 'num_results': 'abc'}),
     ('/search', 'post', {'vector': [1]*1024, 'metric': {}}),
     ('/search', 'post', {'vector': [float('nan')]*1024}),
@@ -62,6 +62,21 @@ def test_vector_validation_precedes_pool_initialization(vector_module, monkeypat
     monkeypatch.setitem(vars(vector_module), "ensure_db_pool", initialize)
     response = getattr(vector_module.app.test_client(), method)(path, json=payload)
     problem(response, 400, 'urn:rag:problem:invalid-request')
+    initialize.assert_not_called()
+
+
+@pytest.mark.parametrize("fields", [
+    {}, {"from": 0}, {"from": True}, {"from": 1.0}, {"from": 2, "to": 1},
+    {"from": 1, "to": None}, {"from": 1, "to": "2"}, {"from": 1, "to": True},
+    {"from": 1, "document_id": ""}, {"from": 1, "chunk_id": "rom-1"},
+])
+def test_delete_range_validation_precedes_pool_initialization(vector_module, monkeypatch, fields):
+    initialize = Mock()
+    monkeypatch.setattr(vector_module, "ensure_db_pool", initialize)
+    response = vector_module.app.test_client().delete("/chunks", json={
+        "embedding_set_id": "test", "document_id": "rom", **fields,
+    })
+    problem(response, 400, "urn:rag:problem:invalid-request")
     initialize.assert_not_called()
 
 

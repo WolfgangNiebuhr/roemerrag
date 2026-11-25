@@ -15,6 +15,50 @@ Aus README und docs übernommene Änderungshistorie. Gleichdatierte Einträge fo
 
 ## 2026-11-25
 
+### Risiko und Architekturentscheidung im Importkonzept verlinkt
+
+Kapitel 8.4.7 verweist beim Datenstand nach einem Importabbruch direkt auf R-03 und Architekturentscheidung 9.4. Reine Dokumentationsänderung.
+
+### Importabbrüche als akzeptiertes Risiko dokumentiert
+
+R-03 beschreibt den gemischten Chunkbestand bis zur erfolgreichen Fortsetzung und Bereinigung. Architekturentscheidung 9.4 hält Eventual Consistency als implementiertes Verhalten fest und begründet den Verzicht auf automatische Sicherungen vor Wiederholungsimporten. Reine Dokumentationsänderung.
+
+### Handler der Bereichslöschung umbenannt
+
+Der Flask-Handler für `DELETE /chunks` heißt `delete_chunks`. Die Eingabevalidierung verwendet denselben Endpunktnamen.
+
+252 Unit-Tests und acht Podman-Standardintegrationstests bestanden. Nach Verbindungsabbrüchen beim Start des gezielten Vector-API-Tests lief die Standardintegration erfolgreich. Die optionalen Ollama-, RAG- und Reranker-Tests wurden für die interne Umbenennung ausgelassen.
+
+### Löschroute auf `DELETE /chunks` umbenannt
+
+Die Pipeline und die Testaufrufer verwenden den Pluralpfad für die Bereichslöschung. `GET /chunks` zählt weiterhin die Chunks im gewählten Set. Die Schnittstellendokumentation zeigt den neuen Pfad.
+
+252 Unit-Tests und alle 19 Podman-Integrationstests bestanden.
+
+### Chunks über einen Nummernbereich löschen
+
+`DELETE /chunk` löscht Chunks eines Dokuments im Zielset mit einer inklusiven Untergrenze `from` und optionaler inklusiver Obergrenze `to`. Die Pipeline übergibt für die abschließende Bereinigung die Gesamtzahl plus eins als Untergrenze. Der bisherige Aufruf mit `chunk_id` und der Endpunkt `POST /vectors/trim` entfallen. Projektaufrufer und Schnittstellendokumentation sind angepasst.
+
+252 Unit-Tests und alle 19 Podman-Integrationstests einschließlich Ollama, RAG und Reranker bestanden.
+
+### Import nach Abbruch mit `--start` fortsetzen
+
+`Ingest.pipeline` erzeugt keinen Laufbericht mehr. Die Fehlerausgabe nennt die erste unbestätigte Chunknummer und den passenden `--start`-Wert. Nach einem Fehler bei der Bereinigung gibt sie die Nummer nach dem letzten Chunk aus. Einzelwrites und die abschließende Bereinigung bleiben Teil des Imports.
+
+242 Unit-Tests und 12 isolierte Podman-Integrationstests einschließlich Ollama bestanden. Im ersten, auf die Importdatei begrenzten Integrationslauf scheiterte der erste API-Zugriff mit einem Verbindungsfehler. Im anschließenden vollständigen Podman-Lauf mit Ollama bestand derselbe Test. Die sechs optionalen RAG- und Reranker-Tests lagen außerhalb des Änderungsumfangs.
+
+### TS-05 auf Einzelwrites und Wiederaufnahme am Chunk umgestellt
+
+`Ingest.pipeline` schreibt jeden Chunk direkt und hält nach der Bestätigung die nächste Nummer im Laufbericht fest. `--resume` verwendet diese Nummer. `--start` startet einen neuen Lauf mit einem vorhandenen Präfix. Nach dem letzten bestätigten Chunk löscht die Vector-API überzählige IDs desselben Dokuments im Zielset. Der Zwischenstand nach einem Fehler ist im Sinne von Eventual Consistency akzeptiert. Der vorherige atomare Entwurf mit Migration 003 wurde durch diesen Ablauf ersetzt.
+
+Prüfung mit 243 Unit-Tests und 12 isolierten Podman-Integrationstests einschließlich Ollama. Der Integrationstest prüft den sichtbaren Datenstand nach einem Abbruch, die Wiederaufnahme, den unveränderten Präfix und die Bereinigung. Sechs optionale RAG- und Reranker-Tests wurden ausgelassen, da sich die Änderung auf Import und Vector-API beschränkt.
+
+### TS-05 für die Importpipeline abgeschlossen
+
+`Ingest.pipeline` veröffentlicht einen vollständigen Chunk-Satz pro Dokument und Set in einer Datenbanktransaktion. Die Transaktion entfernt überzählige kanonische Chunks und speichert einen Freigabebeleg. Nach einer verlorenen Antwort bestätigt derselbe Batch mit derselben Lauf-ID den ursprünglichen Commit. Der Laufbericht im Format 2 unterstützt `--resume` mit geprüften Zwischenartefakten und `--continue-on-error` bei isolierten Chunkfehlern. Die Anleitungen beschreiben Migration 003 mit Backup und die manuelle Zuordnung alter Erste-Punkt-IDs.
+
+Prüfung mit 243 Unit-Tests und 13 Podman-Integrationstests einschließlich Ollama, kürzerem Neuimport, Transaktionsrollback, wiederholter Freigabe und Backup-Restore. Sechs optionale RAG- und Reranker-Tests wurden ausgelassen, da die Änderung den Import und die Vector-API betrifft. Migration und Bereinigung wurden ausschließlich in Testressourcen geprüft.
+
 ### Zweckkommentare im Importmodul ergaenzt
 
 Acht Python-Dateien in Ingest und 23 Funktionen mit mehr als fuenf Quellzeilen erhielten Zweckkommentare. Die Python-Syntaxbaeume blieben identisch und **238 Unit-Tests** bestanden. Integrationstests wurden fuer die reine Kommentaraenderung nicht erneut ausgefuehrt.

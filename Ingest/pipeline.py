@@ -11,7 +11,6 @@ import sys
 from pathlib import Path
 from tempfile import NamedTemporaryFile
 from time import monotonic
-from uuid import uuid4
 
 import requests
 
@@ -39,8 +38,8 @@ def recursive(text, *, size=1000, overlap=150, separators=DEFAULT_SEPARATORS):
     return split_recursive(text, size, overlap, separators=list(separators))
 
 
-def post(url, payload, timeout, status):
-    response = requests.post(url, json=payload, timeout=timeout, allow_redirects=False)
+def request_json(send, url, payload, timeout, status):
+    response = send(url, json=payload, timeout=timeout, allow_redirects=False)
     if response.status_code != status:
         raise ValueError(f"HTTP {response.status_code}")
     return response.json()
@@ -53,7 +52,7 @@ def keywords(text, *, model, prompt, ollama, timeout, system_prompt=None):
     else:
         system, query = system_prompt, text
     started = monotonic()
-    data = post(ollama + "/api/chat", {
+    data = request_json(requests.post, ollama + "/api/chat", {
         "model": model, "stream": False, "options": {"temperature": 0.0},
         "messages": [{"role": "system", "content": system},
                      {"role": "user", "content": query}],
@@ -214,7 +213,7 @@ def validate_artifact(data, stage, config):
 
 # Ruft das Embedding ab, prueft den Vektor und normalisiert ihn bei Bedarf.
 def embed(text, config, ollama, timeout):
-    data = post(ollama + "/api/embeddings",
+    data = request_json(requests.post, ollama + "/api/embeddings",
                 {"model": config["model"], "prompt": text}, timeout, 200)
     vector = data.get("embedding") if isinstance(data, dict) else None
     require(isinstance(vector, list) and len(vector) == config["dimensions"]
@@ -242,99 +241,90 @@ def write_json(path, data):
         temporary.unlink(missing_ok=True)
 
 
-# Fuehrt die ausstehenden Importstufen aus und protokolliert Ergebnis oder Fehler im Laufbericht.
-def run(args, config, artifact):
-    ollama, keyword_timeout = enrichment_connection()
-    vector_url = os.getenv("IMPORT_VECTOR_URL", "http://127.0.0.1:5500/vectors")
-    connect = keyword_timeout[0]
-    timeouts = {
-        "enrichment": keyword_timeout,
-        "embedding": (connect, float(os.getenv("IMPORT_EMBED_TIMEOUT", "300"))),
-        "storage": (connect, float(os.getenv("IMPORT_STORE_TIMEOUT", "60"))),
-    }
-    require(all(math.isfinite(value) and value > 0 for pair in timeouts.values() for value in pair),
-            "HTTP timeouts must be positive and finite")
-    output = args.output_dir
-    output.mkdir(parents=True, exist_ok=False)
-    started = stage_started = monotonic()
-    phase, chunk_id = "chunks", None
-    report = {
-        "format_version": 1, "run_id": uuid4().hex, "config": config,
-        "input": str((args.file or args.input).resolve()), "input_stage": args.from_stage,
-        "expected": None, "stored": 0, "stage_seconds": {}, "artifacts": [], "error": None,
-    }
+def run(args, config, artifact, start, vector_url):
+    total = len(artifact["chunks"])
+    next_chunk = start
+    phase = "setup"
+    enriched, embeddings = [], []
     try:
-        if artifact is None:
-            artifact = make_chunks(args.file, config)
-        report["expected"] = len(artifact["chunks"])
-        if artifact["stage"] == "chunks":
-            write_json(output / "chunks.json", artifact)
-            report["artifacts"].append("chunks.json")
-            report["stage_seconds"][phase] = monotonic() - stage_started
-            phase, stage_started = "enrichment", monotonic()
-            strategy = config["enrichment"]
-            rows = []
-            for source in artifact["chunks"]:
-                chunk_id = source["chunk_id"]
-                rows.append(enrich_chunk(source, strategy, ollama, timeouts[phase]))
-            artifact = {**artifact, "stage": "enriched", "enrichment": strategy, "chunks": rows}
-            write_json(output / "enriched.json", artifact)
-            report["artifacts"].append("enriched.json")
-            report["stage_seconds"][phase] = monotonic() - stage_started
-        phase, stage_started = "embedding", monotonic()
-        rows = []
-        for row in artifact["chunks"]:
-            chunk_id = row["chunk_id"]
-            vector = embed(row["chunktext"], config["embedding"], ollama, timeouts[phase])
-            rows.append({**row, "vector": vector})
-        write_json(output / "embeddings.json",
-                   {**artifact, "stage": "embeddings", "embedding": config["embedding"], "chunks": rows})
-        report["artifacts"].append("embeddings.json")
-        report["stage_seconds"][phase] = monotonic() - stage_started
-        phase, stage_started = "storage", monotonic()
-        for row in rows:
-            chunk_id = row["chunk_id"]
-            data = post(vector_url, {
+        ollama, keyword_timeout = enrichment_connection()
+        connect = keyword_timeout[0]
+        embedding_timeout = (connect, float(os.getenv("IMPORT_EMBED_TIMEOUT", "300")))
+        storage_timeout = (connect, float(os.getenv("IMPORT_STORE_TIMEOUT", "60")))
+        require(all(math.isfinite(value) and value > 0 for value in (*embedding_timeout, *storage_timeout)),
+                "HTTP timeouts must be positive and finite")
+
+        output = args.output_dir
+        output.mkdir(parents=True, exist_ok=False)
+        write_json(output / f"{artifact['stage']}.json", artifact)
+        for number, source in enumerate(artifact["chunks"][start - 1:], start):
+            chunk_id = source["chunk_id"]
+            phase = "enrichment"
+            row = source if artifact["stage"] == "enriched" else enrich_chunk(
+                source, config["enrichment"], ollama, keyword_timeout,
+            )
+            phase = "embedding"
+            vector = embed(row["chunktext"], config["embedding"], ollama, embedding_timeout)
+            phase = "storage"
+            data = request_json(requests.post, vector_url, {
                 "chunk_id": chunk_id, "embedding_set_id": config["embedding_set_id"],
-                "chunktext": row["chunktext"], "vector": row["vector"],
-            }, timeouts[phase], 201)
+                "chunktext": row["chunktext"], "vector": vector,
+            }, storage_timeout, 201)
             require(isinstance(data, dict) and data.get("message") == "Vector stored",
                     "Invalid Vector API acknowledgement")
-            report["stored"] += 1
-        report["stage_seconds"][phase] = monotonic() - stage_started
-    except (OSError, ValueError, OverflowError) as error:
-        report["stage_seconds"][phase] = monotonic() - stage_started
-        report["error"] = {"stage": phase, "chunk_id": chunk_id, "type": type(error).__name__}
-        print(f"Import failed in {phase} ({type(error).__name__})", file=sys.stderr)
-    report["total_seconds"] = monotonic() - started
-    write_json(output / "run.json", report)
-    return 1 if report["error"] else 0
+            next_chunk = number + 1
+            if start == 1:
+                enriched.append(row)
+                embeddings.append({**row, "vector": vector})
+
+        phase = "artifacts"
+        if start == 1:
+            enriched_artifact = {**artifact, "stage": "enriched", "enrichment": config["enrichment"],
+                                 "chunks": enriched}
+            if artifact["stage"] == "chunks":
+                write_json(output / "enriched.json", enriched_artifact)
+            write_json(output / "embeddings.json",
+                       {**enriched_artifact, "stage": "embeddings", "embedding": config["embedding"],
+                        "chunks": embeddings})
+        phase = "cleanup"
+        delete_url = vector_url.rsplit("/", 1)[0] + "/chunks"
+        data = request_json(requests.delete, delete_url, {
+            "embedding_set_id": config["embedding_set_id"], "document_id": artifact["document_id"],
+            "from": total + 1,
+        }, storage_timeout, 200)
+        require(isinstance(data, dict) and type(data.get("deleted")) is int and data["deleted"] >= 0,
+                "Invalid Vector API cleanup acknowledgement")
+    except (OSError, ValueError, OverflowError, KeyboardInterrupt) as error:
+        print(f"Import failed in {phase} at chunk {next_chunk} ({type(error).__name__}). "
+              f"Continue with --start {next_chunk}.", file=sys.stderr)
+        return 1
+    return 0
 
 
-# Verarbeitet die CLI-Argumente und startet den Import aus einer Quelle oder einem Artefakt.
 def main(argv=None):
     parser = argparse.ArgumentParser(description=__doc__)
     source = parser.add_mutually_exclusive_group(required=True)
     source.add_argument("--file", type=Path)
     source.add_argument("--from", dest="from_stage", choices=("chunks", "enriched"))
+    parser.add_argument("--start", type=int, default=1, metavar="CHUNK")
     parser.add_argument("--input", type=Path)
     parser.add_argument("--config", required=True, type=Path)
     parser.add_argument("--output-dir", required=True, type=Path)
     args = parser.parse_args(argv)
     if bool(args.from_stage) != bool(args.input):
         parser.error("--input is required with --from and only allowed with --from")
+    vector_url = os.getenv("IMPORT_VECTOR_URL", "http://127.0.0.1:5500/vectors").rstrip("/")
     try:
         config = resolve_config(read_json(args.config))
-        artifact = read_json(args.input) if args.input else None
         if args.input:
+            artifact = read_json(args.input)
             validate_artifact(artifact, args.from_stage, config)
-    except (OSError, ValueError) as error:
+        else:
+            artifact = make_chunks(args.file, config)
+        require(1 <= args.start <= len(artifact["chunks"]) + 1, "--start is outside the document")
+    except (OSError, ValueError, OverflowError) as error:
         parser.error(str(error))
-    try:
-        return run(args, config, artifact)
-    except (OSError, ValueError) as error:
-        print(f"Import could not complete ({type(error).__name__}): {error}", file=sys.stderr)
-        return 1
+    return run(args, config, artifact, args.start, vector_url)
 
 
 if __name__ == "__main__":

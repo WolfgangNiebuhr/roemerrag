@@ -34,7 +34,7 @@ Die folgenden Fälle beschreiben das Testziel. Nicht jeder Fall ist bereits auto
 - Erneutes Speichern desselben Schlüssels aktualisiert den Eintrag und erzeugt keine Duplikate.
 - `POST /search` liefert Treffer nach Distanz sortiert, sowohl mit Embedding-Filter als auch ohne Filter über mehrere Embedding-Werte hinweg, und begrenzt die Ergebnismenge über `num_results`.
 - `GET /find?query=...` durchsucht Metadaten case-insensitiv mit `ILIKE` und liefert passende Chunk-IDs.
-- `DELETE /chunk` entfernt den Eintrag; die anschließende Suche beziehungsweise Zählung findet ihn nicht mehr.
+- `DELETE /chunks` löscht einzelne Chunks mit gleichen Grenzen und prüft inklusive Bereiche über eine Dezimalgrenze hinweg. Die Pipeline-Integration prüft das offene Ende sowie die Abgrenzung nach Dokument und Set.
 - Ungültige Vektordimension, fehlende Felder, ungültiges JSON und nicht unterstützte Metriken werden kontrolliert beantwortet.
 - Nach Neustart beziehungsweise Neuerstellung des Datenbankcontainers bleiben Daten im Named Volume erhalten.
 
@@ -154,6 +154,8 @@ Der Kompatibilitaetstest in tests/podman/test_import_pipeline_integration.py fue
 `tests/unit/test_import_pipeline.py` prueft die CLI-Einstiege fuer Chunking und Import mit gemockten Diensten. Faelle umfassen feste Chunkgrenzen und Overlap bei langen ungetrennten Passagen, unveraenderten Text ohne Keywords, denselben angereicherten Text fuer Embedding und Speicherung, Wiederverwendung von Artefakten und Abbruch bei fehlerhaften Providern oder Writes.
 
 `tests/podman/test_import_pipeline_integration.py` prueft denselben Pipeline-Einstieg mit echten Ollama-Keywords, normalisierten Embeddings und Ruecksuche ueber die Vector-API im isolierten Teststack. Der Test verwendet ein eigenes Embedding-Set und entfernt die Testchunks im finally-Block. Aktivierung mit `--include-ollama`; benoetigte Modelle sind `gemma3:4b` und `snowflake-arctic-embed2`.
+
+Unit-Tests prüfen die ausgegebene Startnummer und einen neuen Aufruf damit nach Fehlern bei Embedding, Einzelwrite und Bereinigung. Die Podman-Standardintegration prüft den sichtbaren Teilstand nach einem Abbruch, einen Neustart ab einer frei gewählten Chunknummer und die anschließende Bereinigung. Fremde Sets und Dokumente dienen als Kontrollfälle.
 
 `tests/podman/test_import3_integration.py` ruft `import3.process_file` mit realem Chunking, Keyword-Gateway (`gemma3:4b`), Embedding (`snowflake-arctic-embed2`) und Vector-API im isolierten Podman-Teststack auf. Nur Endpunkte und die eindeutige Importvariante werden konfiguriert. Der Test kontrolliert Chunkanzahl, nicht leeres Keyword-Präfix, unver?nderten Quelltext und Retrieval des gespeicherten Vektors durch erneutes Embedding der angereicherten Metadaten. Modellantworten werden nicht wortgenau verglichen. Testchunks werden im finally-Block entfernt. Aktivierung: `--include-ollama` oder `--all`; Host-Adresse ?ber `OLLAMA_HOST_URL`. Der RAG-Container ist nicht erforderlich. Der CLI-Argumentparser ist nicht Teil dieser Pr?fung.
 

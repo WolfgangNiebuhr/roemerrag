@@ -52,5 +52,6 @@ def test_import3_with_real_keywords_and_embeddings(monkeypatch, vector_url, test
             assert hits[0]["chunk_id"] == chunk_id
             assert hits[0]["distance"] == pytest.approx(0, abs=1e-5)
     finally:
-        for chunk_id in ids:
-            request(vector_url, "/chunk", "DELETE", {"chunk_id": chunk_id, "embedding": embedding})
+        request(vector_url, "/chunks", "DELETE", {
+            "document_id": corpus.stem, "embedding": embedding, "from": 1,
+        })
