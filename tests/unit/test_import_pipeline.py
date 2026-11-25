@@ -6,7 +6,7 @@ from types import SimpleNamespace
 import pytest
 from langchain.text_splitter import RecursiveCharacterTextSplitter
 
-from Ingest import chunk, import3, pipeline
+from Ingest import chunk, enrich, import3, pipeline
 
 
 @pytest.fixture
@@ -204,3 +204,83 @@ def test_import3_experiment_matches_legacy_pipeline(tmp_path, monkeypatch):
                 assert new.pop("vector") == pytest.approx(old.pop("vector"), abs=1e-15, rel=1e-14)
                 old["embedding_set_id"] = config["embedding_set_id"]
             assert new == old
+
+
+def test_enrichment_variants_share_chunks_and_can_be_imported(experiment, tmp_path, monkeypatch):
+    source, config = experiment
+    original = pipeline.read_json(config)
+    chunks = tmp_path / "chunks.json"
+    chunk.main(["--file", str(source), "--config", str(config), "--output", str(chunks)])
+    calls = []
+
+    def chat_only(url, payload, timeout, status):
+        assert url.endswith("/api/chat")
+        calls.append(payload)
+        return {"message": {"content": "Rom, Karthago"}, "total_duration": 200_000_000,
+                "prompt_eval_count": 12, "eval_count": 5}
+
+    monkeypatch.setattr(pipeline, "post", chat_only)
+    artifacts = []
+    for model, prompt in (("model-a", "keywords-v1"), ("model-b", "keywords-v1"),
+                          ("model-b", "keywords-v2")):
+        strategy = {"strategy": "keywords", "parameters": {"model": model, "prompt": prompt}}
+        pipeline.write_json(config, {**original, "enrichment": strategy, "embedding": None})
+        output = tmp_path / f"{model}-{prompt}" / "enriched.json"
+        assert enrich.main(["--input", str(chunks), "--config", str(config),
+                            "--output", str(output)]) == 0
+        artifact = pipeline.read_json(output)
+        artifacts.append(artifact)
+        assert artifact["enrichment"] == strategy
+        for row in artifact["chunks"]:
+            assert row["chunktext"] == "Rom, Karthago\n" + row["source_text"]
+            metrics = row["enrichment_metrics"]
+            assert metrics["request_seconds"] >= 0
+            assert metrics["total_duration"] == 200_000_000
+            assert metrics["prompt_eval_count"] == 12
+            assert metrics["eval_count"] == 5
+            assert metrics["load_duration"] is None
+    chunks_count = len(pipeline.read_json(chunks)["chunks"])
+    assert len(calls) == 3 * chunks_count
+    assert calls[0]["model"] != calls[chunks_count]["model"]
+    assert calls[0]["messages"] == calls[chunks_count]["messages"]
+    assert calls[chunks_count]["messages"] != calls[2 * chunks_count]["messages"]
+    assert [a["source_version"] for a in artifacts] == [pipeline.read_json(chunks)["source_version"]] * 3
+
+    pipeline.write_json(config, {**original, "enrichment": artifacts[-1]["enrichment"]})
+
+    def embed_and_store(url, payload, timeout, status):
+        assert not url.endswith("/api/chat")
+        if status == 200:
+            assert payload["prompt"].startswith("Rom, Karthago\n")
+            return {"embedding": [1.0] + [0.0] * 1023}
+        assert payload["chunktext"].startswith("Rom, Karthago\n")
+        return {"message": "Vector stored"}
+
+    monkeypatch.setattr(pipeline, "post", embed_and_store)
+    assert pipeline.main(["--from", "enriched", "--input", str(output), "--config", str(config),
+                          "--output-dir", str(tmp_path / "import")]) == 0
+
+
+def test_custom_prompt_and_failed_enrichment_leave_no_artifact(experiment, tmp_path, monkeypatch):
+    source, config = experiment
+    settings = pipeline.read_json(config)
+    settings["enrichment"] = {"strategy": "keywords", "parameters": {
+        "prompt": "trial-1", "system_prompt": "Extrahiere nur Ortsnamen.",
+    }}
+    pipeline.write_json(config, settings)
+    chunks = tmp_path / "chunks.json"
+    chunk.main(["--file", str(source), "--config", str(config), "--output", str(chunks)])
+    output = tmp_path / "enriched.json"
+
+    def empty_chat(url, payload, timeout, status):
+        assert url.endswith("/api/chat")
+        assert payload["messages"] == [
+            {"role": "system", "content": "Extrahiere nur Ortsnamen."},
+            {"role": "user", "content": "abcdefghij"},
+        ]
+        return {"message": {"content": ""}}
+
+    monkeypatch.setattr(pipeline, "post", empty_chat)
+    assert enrich.main(["--input", str(chunks), "--config", str(config),
+                        "--output", str(output)]) == 1
+    assert not output.exists()

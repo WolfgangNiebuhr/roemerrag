@@ -141,6 +141,9 @@ Historische Ergebnisse und Grenzen einzelner Analyseläufe stehen im [Changelog]
 
 ### Integration des realen Importpfads
 
+Der Pipeline-Integrationstest erzeugt zuerst ein Chunk-Artefakt und fuehrt die Anreicherung separat mit echtem Ollama aus. Er prueft die Provider-Metriken und das leere Zielset vor dem anschliessenden Import aus dem Anreicherungsartefakt. Unit-Tests vergleichen Modell- und Promptvarianten auf denselben Chunks und pruefen den Fehlerfall ohne fertiges Artefakt.
+
+
 Der Set-ID-Test in tests/podman/test_import_pipeline_integration.py verwendet die drei Pipeline-Beispiele direkt. Er prueft die gespeicherte Set-ID und den Chunktext per Einzelabruf, die Ruecksuche desselben Vektors mit Set-Filter und die leeren frueheren Set-IDs im isolierten Testvolume. Aktivierung mit --include-ollama.
 
 

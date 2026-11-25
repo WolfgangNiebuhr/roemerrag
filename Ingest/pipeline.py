@@ -20,6 +20,18 @@ from .utils.keywords import keyword_messages
 DEFAULT_SEPARATORS = ("\n\n", ".\n", ". ", "")
 
 
+def concise_keyword_messages(text):
+    return (
+        "Extrahiere bis zu fuenf aussagekraeftige Stichwoerter aus dem Quelltext. "
+        "Uebernimm ihre Schreibweise und gib ausschliesslich eine kommaseparierte Liste aus.",
+        text,
+        None,
+    )
+
+
+KEYWORD_PROMPTS = {"keywords-v1": keyword_messages, "keywords-v2": concise_keyword_messages}
+
+
 def recursive(text, *, size=1000, overlap=150, separators=DEFAULT_SEPARATORS):
     return split_recursive(text, size, overlap, separators=list(separators))
 
@@ -31,9 +43,12 @@ def post(url, payload, timeout, status):
     return response.json()
 
 
-def keywords(text, *, model, prompt, ollama, timeout):
-    require(prompt == "keywords-v1", "Unknown keyword prompt")
-    system, query, _ = keyword_messages(text)
+def keywords(text, *, model, prompt, ollama, timeout, system_prompt=None):
+    if system_prompt is None:
+        system, query, _ = KEYWORD_PROMPTS[prompt](text)
+    else:
+        system, query = system_prompt, text
+    started = monotonic()
     data = post(ollama + "/api/chat", {
         "model": model, "stream": False, "options": {"temperature": 0.0},
         "messages": [{"role": "system", "content": system},
@@ -43,11 +58,16 @@ def keywords(text, *, model, prompt, ollama, timeout):
     content = message.get("content") if isinstance(message, dict) else None
     if not isinstance(content, str) or not content.strip():
         raise ValueError("Missing keywords in Ollama response")
-    return content
+    metrics = {"request_seconds": monotonic() - started}
+    for key in ("total_duration", "load_duration", "prompt_eval_duration", "eval_duration",
+                "prompt_eval_count", "eval_count"):
+        value = data.get(key)
+        metrics[key] = value if type(value) is int and value >= 0 else None
+    return content, metrics
 
 
 def no_enrichment(text, *, ollama, timeout):
-    return ""
+    return "", None
 
 
 CHUNKERS = {"recursive": recursive}
@@ -69,7 +89,7 @@ def nonempty(value):
     return isinstance(value, str) and bool(value.strip())
 
 
-def resolve_config(config, *, chunk_only=False):
+def resolve_config(config, *, chunk_only=False, enrichment_only=False):
     fields(config, "format_version name embedding_set_id chunking enrichment embedding")
     require(type(config.get("format_version")) is int and config["format_version"] == 1,
             "Expected format_version 1")
@@ -90,26 +110,34 @@ def resolve_config(config, *, chunk_only=False):
     }}
     if chunk_only:
         return result
-    require(nonempty(config.get("name")) and nonempty(config.get("embedding_set_id")),
-            "Expected a name and embedding_set_id")
     enrichment = fields(config.get("enrichment", {"strategy": "none"}), "strategy parameters")
     strategy = enrichment.get("strategy")
     require(isinstance(strategy, str) and strategy in ENRICHERS, "Unknown enrichment strategy")
     params = enrichment.get("parameters", {})
     if strategy == "keywords":
-        fields(params, "model prompt")
+        fields(params, "model prompt system_prompt")
         params = {"model": "gemma3:4b", "prompt": "keywords-v1", **params}
-        require(nonempty(params["model"]) and params["prompt"] == "keywords-v1",
-                "Expected a keyword model and prompt keywords-v1")
+        require(nonempty(params["model"]) and nonempty(params["prompt"]),
+                "Expected a keyword model and a prompt version")
+        if "system_prompt" in params:
+            require(nonempty(params["system_prompt"]) and params["prompt"] not in KEYWORD_PROMPTS,
+                    "A custom system prompt requires its own prompt version")
+        else:
+            require(params["prompt"] in KEYWORD_PROMPTS, "Unknown keyword prompt version")
     else:
         fields(params, "")
+    result["enrichment"] = {"strategy": strategy, "parameters": params}
+    if enrichment_only:
+        return result
+    require(nonempty(config.get("name")) and nonempty(config.get("embedding_set_id")),
+            "Expected a name and embedding_set_id")
     embedding = fields(config.get("embedding"), "model normalize dimensions")
     embedding = {"normalize": True, "dimensions": 1024, **embedding}
     require(nonempty(embedding.get("model")) and type(embedding["normalize"]) is bool
             and type(embedding["dimensions"]) is int and embedding["dimensions"] == 1024,
             "Expected an embedding model, boolean normalize and 1024 dimensions")
     return {**result, "name": config["name"], "embedding_set_id": config["embedding_set_id"],
-            "enrichment": {"strategy": strategy, "parameters": params}, "embedding": embedding}
+            "embedding": embedding}
 
 
 def make_chunks(path, config):
@@ -129,6 +157,23 @@ def make_chunks(path, config):
 
 def chunktext(row):
     return row["enrichment"] + "\n" + row["source_text"] if row["enrichment"] else row["source_text"]
+
+
+def enrich_chunk(source, strategy, ollama, timeout):
+    enrichment, metrics = ENRICHERS[strategy["strategy"]](
+        source["source_text"], **strategy["parameters"], ollama=ollama, timeout=timeout,
+    )
+    row = {**source, "enrichment": enrichment, "enrichment_metrics": metrics}
+    return {**row, "chunktext": chunktext(row)}
+
+
+def enrichment_connection():
+    ollama = os.getenv("OLLAMA_HOST_URL", "http://localhost:11434").rstrip("/")
+    timeout = (float(os.getenv("IMPORT_CONNECT_TIMEOUT", "5")),
+               float(os.getenv("IMPORT_KEYWORD_TIMEOUT", "120")))
+    require(all(math.isfinite(value) and value > 0 for value in timeout),
+            "HTTP timeouts must be positive and finite")
+    return ollama, timeout
 
 
 def validate_artifact(data, stage, config):
@@ -187,11 +232,11 @@ def write_json(path, data):
 
 
 def run(args, config, artifact):
-    ollama = os.getenv("OLLAMA_HOST_URL", "http://localhost:11434").rstrip("/")
+    ollama, keyword_timeout = enrichment_connection()
     vector_url = os.getenv("IMPORT_VECTOR_URL", "http://127.0.0.1:5500/vectors")
-    connect = float(os.getenv("IMPORT_CONNECT_TIMEOUT", "5"))
+    connect = keyword_timeout[0]
     timeouts = {
-        "enrichment": (connect, float(os.getenv("IMPORT_KEYWORD_TIMEOUT", "120"))),
+        "enrichment": keyword_timeout,
         "embedding": (connect, float(os.getenv("IMPORT_EMBED_TIMEOUT", "300"))),
         "storage": (connect, float(os.getenv("IMPORT_STORE_TIMEOUT", "60"))),
     }
@@ -219,12 +264,7 @@ def run(args, config, artifact):
             rows = []
             for source in artifact["chunks"]:
                 chunk_id = source["chunk_id"]
-                enrichment = ENRICHERS[strategy["strategy"]](
-                    source["source_text"], **strategy["parameters"],
-                    ollama=ollama, timeout=timeouts[phase],
-                )
-                row = {**source, "enrichment": enrichment}
-                rows.append({**row, "chunktext": chunktext(row)})
+                rows.append(enrich_chunk(source, strategy, ollama, timeouts[phase]))
             artifact = {**artifact, "stage": "enriched", "enrichment": strategy, "chunks": rows}
             write_json(output / "enriched.json", artifact)
             report["artifacts"].append("enriched.json")

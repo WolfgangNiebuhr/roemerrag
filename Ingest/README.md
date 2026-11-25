@@ -33,6 +33,25 @@ python -m Ingest.pipeline --from chunks --input artifacts/pg3060/chunks.json --c
 
 `Ingest.chunk` benötigt weder Ollama noch die Vector-API. Mit `--from chunks` beginnt die Pipeline bei der Anreicherung. Mit `--from enriched --input <Pfad zu enriched.json>` beginnt sie beim Embedding. Die Chunking-Einstellungen und bei `--from enriched` auch die Anreicherungseinstellungen müssen zum Artefakt passen.
 
+## Keyword-Experimente
+
+Erzeuge `chunks.json` einmal und verwende es als Eingabe für alle Varianten. Das Beispiel startet mit derselben Konfiguration wie der vollständige Import oben. Für einen schnellen Vergleich kann `--file` auf eine kurze repräsentative UTF-8-Datei zeigen.
+
+```powershell
+python -m Ingest.chunk --file Ingest/pg3060.txt --config Ingest/experiments/snowflake-arctic-embed-v2.json --output artifacts/keywords/chunks.json
+python -m Ingest.enrich --input artifacts/keywords/chunks.json --config Ingest/experiments/snowflake-arctic-embed-v2.json --output artifacts/keywords/baseline/enriched.json
+```
+
+Kopiere für jede Variante die JSON-Konfiguration und verwende einen eigenen Ausgabepfad. Belasse die Chunking-Einstellungen und ändere `enrichment.parameters.model` für einen Modellvergleich oder `enrichment.parameters.prompt` für einen Promptvergleich.
+
+- `keywords-v1` verwendet den ausführlichen Import3-Prompt mit längenabhängiger Keyword-Anzahl.
+- `keywords-v2` verwendet einen kürzeren Prompt für bis zu fünf Stichwörter in der Originalschreibweise.
+- Für einen eigenen Systemprompt setze in `enrichment.parameters` beispielsweise `"prompt": "ortsbegriffe-v1"` und `"system_prompt": "Extrahiere nur Ortsnamen als kommaseparierte Liste."`. Der Originalchunk ist dann die User-Nachricht. Vergib für Änderungen am Prompttext eine neue Version.
+
+`Ingest.enrich` benötigt für die Keyword-Strategie nur Ollama. Die Konfiguration braucht `format_version`, `chunking` und `enrichment`. Für jede Variante enthält `enriched.json` das Modell, die Promptversion, die Originalchunks, die Keywords im Feld `enrichment` und den zusammengesetzten `chunktext`. Pro Chunk enthält `enrichment_metrics` die gemessene Anfragezeit in Sekunden (`request_seconds`), Ollama-Zeiten in Nanosekunden (`total_duration`, `load_duration`, `prompt_eval_duration`, `eval_duration`) und Tokenzahlen (`prompt_eval_count`, `eval_count`). Fehlende Providerwerte sind `null`.
+
+Mit `Ingest.pipeline --from enriched` kannst du die gewählte Variante einbetten und speichern. Verwende dafür eine vollständige Konfiguration mit derselben Chunking- und Anreicherungseinstellung sowie der gewünschten Set-ID.
+
 ## Dienstadressen und Zeitlimits
 
 | Umgebungsvariable | Standard |

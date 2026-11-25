@@ -37,7 +37,7 @@ flowchart LR
 | Embedding | Gemeinsamer chunktext zu geprueftem Vektor | Modellaufruf, Normalisierung, Dimension und endliche Werte |
 | Schreiben/Abschluss | Vollstaendiges Ergebnis zu freigegebenem Import | Identitaet, Fehlerbericht, Vollstaendigkeit, Altlasten und Aktivierung |
 
-Chunking ist einzeln ausfuehrbar. Die Pipeline kann mit vorhandenen Chunk- oder Anreicherungsartefakten beginnen. Ein anderer Embeddingversuch muss vorhandenes Chunking oder eine teure Keywordgenerierung nicht erneut ausfuehren. Lokale Artefakte bilden die Uebergaben; die Aufteilung entspricht dem Gedanken hinter den RAG-Endpunkten `/evaluate/retrieve`, `/evaluate/rerank` und `/evaluate/generate`.
+Chunking und Anreicherung sind mit `Ingest.chunk` und `Ingest.enrich` einzeln ausfuehrbar. Die Pipeline kann mit vorhandenen Chunk- oder Anreicherungsartefakten beginnen. Ein anderer Embeddingversuch muss vorhandenes Chunking oder eine teure Keywordgenerierung nicht erneut ausfuehren. Lokale Artefakte bilden die Uebergaben; die Aufteilung entspricht dem Gedanken hinter den RAG-Endpunkten `/evaluate/retrieve`, `/evaluate/rerank` und `/evaluate/generate`.
 
 ## 8.4.3 Strategieimplementierung und Aufruf
 
@@ -91,7 +91,7 @@ Originaltext und Anreicherung bleiben fuer Nachvollziehbarkeit und Wiederverwend
 
 Mit Keywords lautet chunktext: Keywords + Zeilenumbruch + source_text. Ohne Anreicherung ist chunktext identisch zu source_text. Der tatsaechlich eingebettete Text wird unveraendert in der vorhandenen Spalte chunktext gespeichert und von dort an Reranker und Antwortmodell gegeben. Dafuer werden weder embedding_text/context_text-Felder noch eine neue Textauswahl oder Schemaerweiterung benoetigt. Die spaetere Trennungsmoeglichkeit ist ausschliesslich in Abschnitt 8.4.10 beschrieben und gehoert nicht zum aktuellen Umsetzungsumfang.
 
-Die Pipeline schreibt versionierte Artefakte `chunks.json`, `enriched.json` und `embeddings.json` fuer die ausgefuehrten Stufen. Sie enthalten Quellpfad, SHA-256 der Quelldatei, Stufe, Strategieparameter und geordnete Ergebnisse. `run.json` dokumentiert Lauf-ID, Eingabe, aufgeloeste Konfiguration, erzeugte Artefakte, Stufenzeiten und Speicherausgang. Ein separates Dokumentartefakt und Provider-Metriken bleiben offen.
+Die Pipeline schreibt versionierte Artefakte `chunks.json`, `enriched.json` und `embeddings.json` fuer die ausgefuehrten Stufen. Sie enthalten Quellpfad, SHA-256 der Quelldatei, Stufe, Strategieparameter und geordnete Ergebnisse. `run.json` dokumentiert Lauf-ID, Eingabe, aufgeloeste Konfiguration, erzeugte Artefakte, Stufenzeiten und Speicherausgang. Enriched-Artefakte speichern pro Chunk die Anfragezeit und verfuegbare Ollama-Zeit- und Tokenmetriken. Ein separates Dokumentartefakt bleibt offen.
 
 Ein Chunkingartefakt koennte gekuerzt so aussehen:
 
@@ -136,6 +136,8 @@ python -m Ingest.pipeline --from chunks `
   --config Ingest/experiments/test-recursive-1000.json `
   --output-dir artifacts/test-recursive-1000/run-002
 ```
+
+Der reine Anreicherungsaufruf `python -m Ingest.enrich --input <chunks.json> --config <Versuch.json> --output <enriched.json>` endet nach dem Schreiben des Artefakts. Modell, eingebaute Promptversion oder ein eigener versionierter Systemprompt werden in `enrichment.parameters` gewaehlt. Beispiele stehen in der [Importanleitung](../Ingest/README.md).
 
 Der reine Chunkingaufruf benoetigt nur den chunking-Abschnitt der Konfiguration und keinen Datenbank- oder Modellzugriff. Mit `--from enriched --input <Pfad zu enriched.json>` beginnt der Ablauf beim Embedding. Die Chunkingparameter und bei Anreicherungsartefakten auch die Anreicherungsparameter muessen uebereinstimmen. Fuer ein anderes Embedding werden das Modell und die manuell zugeordnete Set-ID angepasst. Die Wiederverwendung von Embeddingartefakten zum isolierten Schreiben und weitere einzeln ausfuehrbare Stufen bleiben Teil des Zielbilds.
 

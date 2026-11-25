@@ -5,7 +5,7 @@ from pathlib import Path
 
 import pytest
 
-from Ingest import import3, pipeline
+from Ingest import chunk, enrich, import3, pipeline
 from Ingest.utils import gateway
 from common import request
 
@@ -27,8 +27,16 @@ def test_pipeline_with_real_keywords_and_embeddings(tmp_path, monkeypatch, vecto
     }), encoding="utf-8")
     output = tmp_path / "run"
     chunks = pipeline.make_chunks(source, pipeline.resolve_config(pipeline.read_json(config)))["chunks"]
+    chunk_artifact = tmp_path / "chunks.json"
+    enriched = tmp_path / "enriched.json"
+    chunk.main(["--file", str(source), "--config", str(config), "--output", str(chunk_artifact)])
+    assert enrich.main(["--input", str(chunk_artifact), "--config", str(config),
+                        "--output", str(enriched)]) == 0
+    for row in pipeline.read_json(enriched)["chunks"]:
+        assert row["enrichment_metrics"]["total_duration"] > 0
+    assert request(vector_url, f"/chunks?embedding={embedding_set}")["chunks"] == 0
     try:
-        assert pipeline.main(["--file", str(source), "--config", str(config),
+        assert pipeline.main(["--from", "enriched", "--input", str(enriched), "--config", str(config),
                               "--output-dir", str(output)]) == 0
         assert request(vector_url, f"/chunks?embedding={embedding_set}")["chunks"] == len(chunks)
         for row in pipeline.read_json(output / "embeddings.json")["chunks"]:

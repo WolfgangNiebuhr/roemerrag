@@ -13,6 +13,20 @@ agent_instructions:
 
 Aus README und docs übernommene Änderungshistorie. Gleichdatierte Einträge folgen der umgekehrten Reihenfolge der dortigen Nachträge. Nicht datierbare Einträge stehen am Ende. Anleitungen: [README](README.md). Fachkonzepte: [Testkonzept](docs/8-1-testkonzept.md) und [Error-Handling](docs/8-3-error-handling.md).
 
+## 2026-11-25
+
+### Alte Keyword-Experimente entfernt
+
+Keyword-Experimente laufen ueber `Ingest.enrich`. Die zwei alten manuellen Skripte und ihre Verweise wurden entfernt.
+
+Pruefung: **238 Unit-Tests** und git diff --check erfolgreich. Integrationstests wurden fuer die Entfernung der ungenutzten Skripte nicht erneut ausgefuehrt.
+
+### Keyword-Anreicherung separat ausfuehrbar
+
+`Ingest.enrich` verarbeitet vorhandene Chunk-Artefakte mit waehlbaren Ollama-Modellen und eingebauten oder eigenen versionierten Systemprompts. Das Ergebnis enthaelt Keywords, den gemeinsamen Chunktext und Anfrage-, Providerzeit- und Tokenmetriken. Embedding und Speicherung erfolgen erst bei einem gesonderten Import aus `enriched.json`.
+
+Pruefung: **238 Unit-Tests** und **3 Import-Pipeline-Integrationstests** mit Ollama und isoliertem Podman-Stack bestanden. Der erste Integrationsversuch erreichte die gestoppte Podman-Machine nicht. Nach deren Start war der gezielte Lauf erfolgreich. Weitere Integrationstests wurden fuer den auf Ingest begrenzten Umfang nicht erneut ausgefuehrt.
+
 ## 2026-11-24
 
 ### Alle Podman-Integrations- und Ende-zu-Ende-Tests ausgefuehrt
@@ -51,9 +65,9 @@ Pruefung: **236 Unit-Tests** und git diff --check erfolgreich. Podman- und Ollam
 
 ### Import-Helfer nach Ingest/utils verschoben
 
-Chunking, Keyword-Aufbereitung und Gateway liegen in Ingest/utils. Pipeline, Import3, Chunk-Testskript, Tests und Dokumentationslinks verwenden die neuen Modulpfade.
+Chunking, Keyword-Aufbereitung und Gateway liegen in Ingest/utils. Pipeline, Import3, Tests und Dokumentationslinks verwenden die neuen Modulpfade.
 
-Pruefung: **236 Unit-Tests** und **7 betroffene Podman-Integrationstests** fuer Import, Ollama und RAG bestanden. CLI-Hilfen fuer Import3 als Skript und Modul, Chunk-Testskript und Pipeline erfolgreich. Weitere Integrationstests wurden fuer die Modulverschiebung nicht erneut ausgefuehrt.
+Pruefung: **236 Unit-Tests** und **7 betroffene Podman-Integrationstests** fuer Import, Ollama und RAG bestanden. CLI-Hilfen fuer Import3 als Skript und Modul sowie Pipeline erfolgreich. Weitere Integrationstests wurden fuer die Modulverschiebung nicht erneut ausgefuehrt.
 
 ### Pipeline-Anleitung nach Ingest verschoben
 
