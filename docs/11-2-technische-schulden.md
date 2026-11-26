@@ -1,5 +1,5 @@
 <!--
----
+
 purpose: "Aktueller Status technischer Schulden im Römer-RAG-Projekt."
 agent_instructions:
   - "Jeder Eintrag hat eine stabile TS-ID und genau einen Status: offen, teilweise behoben, behoben oder abgelehnt."
@@ -9,7 +9,7 @@ agent_instructions:
   - "Bei jeder weiteren Teilbehebung den bestehenden Abschnitt Noch offen aktualisieren. Abgearbeitete Punkte daraus entfernen und keinen weiteren Abschnitt anlegen."
   - "Sobald ein Eintrag behoben oder abgelehnt ist, den Abschnitt Noch offen entfernen."
   - "Hier nur den aktuellen Status führen. Änderungshistorie, Prüf- und Ausrollnachweise ausschließlich in ../changelog.md pflegen."
----
+
 -->
 
 # 11.2 Technische Schulden
