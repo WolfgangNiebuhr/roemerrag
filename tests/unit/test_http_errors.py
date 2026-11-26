@@ -55,13 +55,44 @@ def test_reranker_validation_precedes_loading(monkeypatch, payload):
     ('/search', 'post', {'vector': [float('nan')]*1024}),
     ('/search', 'post', {'vector': [True]*1024}),
     ('/search', 'post', {'vector': [0]*1024, 'metric': 'cosine'}),
-    ('/chunks?embedding_set_id=', 'get', None), ('/find', 'get', None),
+    ('/chunks?embedding_set_id=', 'get', None), ('/chunks/c?embedding=', 'get', None),
+    ('/find', 'get', None),
 ])
 def test_vector_validation_precedes_pool_initialization(vector_module, monkeypatch, path, method, payload):
     initialize = Mock()
     monkeypatch.setitem(vars(vector_module), "ensure_db_pool", initialize)
     response = getattr(vector_module.app.test_client(), method)(path, json=payload)
-    problem(response, 400, 'urn:rag:problem:invalid-request')
+    assert problem(response, 400, 'urn:rag:problem:invalid-request')['stage'] == 'validation'
+    initialize.assert_not_called()
+
+
+@pytest.mark.parametrize('path', ['/chunks?embedding_set_id=', '/chunks/c?embedding=', '/find'])
+def test_invalid_vector_head_does_not_initialize_pool(vector_module, monkeypatch, path):
+    initialize = Mock()
+    monkeypatch.setattr(vector_module, 'ensure_db_pool', initialize)
+
+    response = vector_module.app.test_client().head(path)
+
+    assert response.status_code == 400
+    assert response.mimetype == 'application/problem+json'
+    assert response.data == b''
+    initialize.assert_not_called()
+
+
+def test_invalid_requests_keep_field_locations_and_correlation(vector_module, monkeypatch):
+    initialize = Mock()
+    monkeypatch.setattr(vector_module, 'ensure_db_pool', initialize)
+    client = vector_module.app.test_client()
+    headers = {'X-Request-ID': 'vector-validation'}
+    cases = [
+        (client.get('/find', headers=headers), 'parameter', 'query'),
+        (client.post('/search', json={'metric': 'invalid'}, headers=headers), 'pointer', '/metric'),
+    ]
+    for response, location, field in cases:
+        body = problem(response, 400, 'urn:rag:problem:invalid-request')
+        assert body['stage'] == 'validation'
+        assert body['request_id'] == 'vector-validation'
+        assert body['errors'] == [{location: field, 'detail': body['detail']}]
     initialize.assert_not_called()
 
 
@@ -106,7 +137,7 @@ def test_internal_error_is_safe_and_correlated(monkeypatch, caplog):
 def test_generic_http_handler_preserves_required_headers():
     from werkzeug.exceptions import Unauthorized
     app = Flask(__name__)
-    install(app, 'rag')
+    install(app, default_stage='processing')
     @app.get('/auth')
     def auth():
         raise Unauthorized()

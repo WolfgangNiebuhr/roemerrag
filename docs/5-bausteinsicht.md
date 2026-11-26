@@ -51,7 +51,7 @@ flowchart LR
 | Reranker | Frage-Dokument-Paare bewerten und sortieren | [app.py](../reranker/app.py), [Dockerfile](../reranker/Dockerfile) |
 | Lokale Werkzeuge | Direkte RAG-Abfragen und Analysen | [interact.py](../interact.py), [analyze.py](../analyze.py), `Vector/analyze_data.py` |
 
-Die APIs validieren Anfragen über [rag_common/http_errors.py](../rag_common/http_errors.py) vor Datenbank- oder Modellzugriffen. Fehler erhalten RFC-9457-Problemantworten mit stabiler Typ-URI und Request-ID. Die [Fehlerverträge](8-3-error-handling.md) beschreiben die Regeln im Detail.
+Die Endpunkte validieren und dekodieren ihre Eingaben vor Datenbank- oder Modellzugriffen. Die Vector-API und der RAG-Retrievalschritt verwenden gemeinsame Prüfungen für den [Vector-Suchvertrag](../rag_common/vector_contract.py). [rag_common/http_errors.py](../rag_common/http_errors.py) stellt dienstunabhängige HTTP-Hilfen bereit und erzeugt RFC-9457-Problemantworten mit stabiler Typ-URI und Request-ID. Die [Fehlerverträge](8-3-error-handling.md) beschreiben die Regeln im Detail.
 
 ## 5.3 Ebene 2 – zentrale Bausteine
 

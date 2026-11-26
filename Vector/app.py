@@ -1,10 +1,12 @@
 import sys
 from pathlib import Path
 sys.path.insert(0, str(Path(__file__).resolve().parents[1]))
-from rag_common.http_errors import install, Problem
+from rag_common.http_errors import (
+    Problem, aliased_text, install, invalid_request, json_object, text_field, validating_request,
+)
+from rag_common.vector_contract import VectorInputError, parse_search_options, parse_vector
 from flask import Flask, request, jsonify
 import os
-import json
 from threading import Lock
 from contextlib import contextmanager
 import psycopg2
@@ -17,7 +19,7 @@ DB_HOST = os.getenv("DB_HOST", "127.0.0.1")
 DB_PORT = int(os.getenv("DB_PORT", "5432"))
 
 app = Flask(__name__)
-install(app, "vector")
+install(app, default_stage="storage")
 
 db_pool = None
 pool_init_lock = Lock()
@@ -47,12 +49,6 @@ def ensure_db_pool():
 
 
 
-@app.before_request
-def initialize_database():
-    if request.routing_exception is None and request.endpoint != "liveness":
-        ensure_db_pool()
-
-
 @app.get("/health/live")
 def liveness():
     """Process-only probe: never initialize or acquire a database connection."""
@@ -61,8 +57,6 @@ def liveness():
 
 @app.get("/health/ready")
 def readiness():
-    if db_pool is None:
-        raise Problem("dependency-unavailable", "Database is unavailable.")
     try:
         with transaction() as conn:
             with conn.cursor() as cur:
@@ -74,7 +68,11 @@ def readiness():
 
 @contextmanager
 def transaction():
+    if db_pool is None:
+        ensure_db_pool()
     current_pool = db_pool
+    if current_pool is None:
+        raise Problem("dependency-unavailable", "Database is unavailable.")
     try:
         conn = current_pool.getconn()
     except Exception as exc:
@@ -104,17 +102,33 @@ def transaction():
             if not failed:
                 raise Problem("dependency-unavailable", "Database is unavailable.")
 
-def resolve_set_id(data, required=False):
-    new = data.get("embedding_set_id")
-    old = data.get("embedding")
-    if "embedding_set_id" in data and "embedding" in data and new != old:
-        from werkzeug.exceptions import BadRequest
-        raise BadRequest("embedding_set_id und embedding widersprechen sich")
-    value = new if "embedding_set_id" in data else old
-    if required and (not isinstance(value, str) or not value.strip()):
-        from werkzeug.exceptions import BadRequest
-        raise BadRequest("embedding_set_id ist erforderlich")
-    return value
+def resolve_set_id(data, *, required=False, query_parameter=False):
+    return aliased_text(
+        data, "embedding_set_id", "embedding", conflict_detail="Widersprüchliche Set-Kennungen.",
+        required=required, query_parameter=query_parameter,
+    )
+
+
+def sql_vector(raw_vector, metric):
+    try:
+        parsed = parse_vector(raw_vector, metric)
+    except VectorInputError as error:
+        invalid_request(str(error), error.field)
+    # Keep the existing pgvector text and psycopg2 list bindings.
+    return raw_vector if isinstance(raw_vector, str) else parsed
+
+
+def parse_delete_range(data):
+    document_id = text_field(data, "document_id")
+    start = data.get("from")
+    if type(start) is not int or start < 1:
+        invalid_request("from muss eine positive ganze Zahl sein.", "from")
+    end = data.get("to")
+    if "to" in data and (type(end) is not int or end < start):
+        invalid_request("to muss eine ganze Zahl größer oder gleich from sein.", "to")
+    if "chunk_id" in data:
+        invalid_request("Für Löschungen document_id und from verwenden.", "chunk_id")
+    return document_id + "-", str(start), str(end) if end is not None else None
 
 
 def compatible_row(row):
@@ -125,9 +139,8 @@ def compatible_row(row):
 @app.route("/chunks", methods=["GET"])
 def count_chunks():
     """Optionaler Filter: ?embedding_set_id=...  -> zählt Zeilen"""
-    if not db_pool:
-        raise Problem("dependency-unavailable", "Database is unavailable.")
-    embedding_set_id = resolve_set_id(request.args)
+    with validating_request():
+        embedding_set_id = resolve_set_id(request.args, query_parameter=True)
     with transaction() as conn:
         with conn.cursor() as cur:
             if embedding_set_id:
@@ -140,9 +153,8 @@ def count_chunks():
 @app.route("/chunks/<chunk_id>", methods=["GET"])
 def get_chunk(chunk_id):
     """GET /chunks/<chunk_id>[?embedding_set_id=...] -> eine Zeile"""
-    if not db_pool:
-        raise Problem("dependency-unavailable", "Database is unavailable.")
-    embedding_set_id = resolve_set_id(request.args)
+    with validating_request():
+        embedding_set_id = resolve_set_id(request.args, query_parameter=True)
     with transaction() as conn:
         with conn.cursor() as cur:
             if embedding_set_id:
@@ -171,13 +183,14 @@ def upsert_chunk():
     Body (JSON): {chunk_id, embedding_set_id, vector, chunktext}
     - vector: String im pgvector-Format, z.B. '[0.1, 0.2, 0.3]'
     """
-    if not db_pool:
-        raise Problem("dependency-unavailable", "Database is unavailable.")
-    data = request.get_json(force=True)
-    chunk_id = data["chunk_id"]
-    embedding_set_id = resolve_set_id(data, required=True)
-    vector = data["vector"]            # erwartetes String-Format
-    chunktext = json.dumps(data.get("chunktext")) if isinstance(data.get("chunktext"), (dict, list)) else data.get("chunktext")
+    with validating_request():
+        data = json_object()
+        embedding_set_id = resolve_set_id(data, required=True)
+        chunk_id = text_field(data, "chunk_id")
+        chunktext = data.get("chunktext")
+        if chunktext is not None and not isinstance(chunktext, str):
+            invalid_request("chunktext muss ein String oder null sein.", "chunktext")
+        vector = sql_vector(data.get("vector"), data.get("metric"))
 
     with transaction() as conn:
         with conn.cursor() as cur:
@@ -191,11 +204,10 @@ def upsert_chunk():
 
 @app.delete("/chunks")
 def delete_chunks():
-    data = request.get_json()
-    set_id = resolve_set_id(data, required=True)
-    prefix = data["document_id"] + "-"
-    start = str(data["from"])
-    end = str(data["to"]) if "to" in data else None
+    with validating_request():
+        data = json_object()
+        set_id = resolve_set_id(data, required=True)
+        prefix, start, end = parse_delete_range(data)
 
     # Compare canonical decimal numbers by length, then by digit order.
     with transaction() as conn:
@@ -223,17 +235,16 @@ def search_vectors():
     Body (JSON): {vector, num_results?, metric?('euclidean'|'cosine'), embedding_set_id?}
     - vector: String im pgvector-Format, z.B. '[0.1, 0.2, 0.3]'
     """
-    if not db_pool:
-        raise Problem("dependency-unavailable", "Database is unavailable.")
-    data = request.get_json(force=True)
-    query_vector = data["vector"]
-    num_results = int(data.get("num_results", 10))
-    metric = data.get("metric", "euclidean")
-    embedding_filter = resolve_set_id(data)
+    with validating_request():
+        data = json_object()
+        embedding_filter = resolve_set_id(data)
+        try:
+            metric, num_results = parse_search_options(data, default_count=10)
+        except VectorInputError as error:
+            invalid_request(str(error), error.field)
+        query_vector = sql_vector(data.get("vector"), metric)
 
     operators = {"euclidean": "<->", "cosine": "<=>"}
-    if metric not in operators:
-        return jsonify({"error": "Nur die Metriken 'euclidean' und 'cosine' werden unterstützt"}), 400
     distance_op = operators[metric]
 
     with transaction() as conn:
@@ -264,11 +275,8 @@ def search_vectors():
 @app.route("/find", methods=["GET"])
 def find_chunks():
     """Find chunk IDs whose chunktext matches the ILIKE pattern in query."""
-    if not db_pool:
-        raise Problem("dependency-unavailable", "Database is unavailable.")
-    search_query = request.args.get("query")
-    if not search_query:
-        return jsonify({"error": "Parameter 'query' fehlt"}), 400
+    with validating_request():
+        search_query = text_field(request.args, "query", query_parameter=True)
     with transaction() as conn:
         with conn.cursor() as cur:
             cur.execute("SELECT chunk_id FROM vectors WHERE chunktext ILIKE %s", (search_query,))

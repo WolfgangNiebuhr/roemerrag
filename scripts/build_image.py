@@ -7,8 +7,10 @@ import tempfile
 
 ROOT = Path(__file__).resolve().parents[1]
 INPUTS = {
-    'vectorapi': ('Vector/Dockerfile.api', 'Vector/app.py', 'Vector/requirements.txt'),
-    'rag-api': ('rag/Dockerfile', 'rag/app.py', 'rag/embedding_config.py', 'rag/ollama_endpoint.py'),
+    'vectorapi': ('Vector/Dockerfile.api', 'Vector/app.py', 'Vector/requirements.txt',
+                  'rag_common/vector_contract.py'),
+    'rag-api': ('rag/Dockerfile', 'rag/app.py', 'rag/embedding_config.py', 'rag/ollama_endpoint.py',
+                'rag_common/vector_contract.py'),
     'reranker': ('reranker/Dockerfile', 'reranker/app.py'),
 }
 COMMON = ('rag_common/__init__.py', 'rag_common/http_errors.py', 'rag_common/rag_results.py')

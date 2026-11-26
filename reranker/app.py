@@ -1,8 +1,8 @@
 import sys
 from pathlib import Path
 sys.path.insert(0, str(Path(__file__).resolve().parents[1]))
-from rag_common.http_errors import install, Problem
-from flask import Flask, request, jsonify
+from rag_common.http_errors import Problem, install, invalid_request, json_object, text_field, validating_request
+from flask import Flask, jsonify
 import os
 import logging
 from threading import Lock
@@ -10,7 +10,7 @@ from threading import Lock
 logging.basicConfig(level=logging.INFO, format='%(asctime)s - %(levelname)s - %(message)s')
 
 app = Flask(__name__)
-install(app, "reranker")
+install(app, default_stage="reranking")
 
 MODEL_NAME = os.getenv("RERANK_MODEL", "cross-encoder/ms-marco-MiniLM-L6-v2")
 MODEL = None
@@ -35,10 +35,13 @@ def load_model(model_name):
 
 @app.route('/rerank', methods=['POST'])
 def rerank():
-    data = request.get_json(silent=True)
-    model_name = data.get("model", MODEL_NAME).strip()
-    query = data['query']
-    documents = data['documents']
+    with validating_request():
+        data = json_object()
+        query = text_field(data, "query")
+        model_name = (text_field(data, "model", required=False) or MODEL_NAME).strip()
+        documents = data.get("documents")
+        if not isinstance(documents, list) or any(not isinstance(doc, str) or not doc.strip() for doc in documents):
+            invalid_request("documents muss eine Liste nichtleerer Strings sein.", "documents")
 
     if not documents:
         return jsonify({"ranked_documents": [], "model": model_name})

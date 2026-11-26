@@ -1,6 +1,5 @@
-﻿"""Shared request validation and RFC 9457 boundary handlers."""
-import json
-import math
+"""Shared Flask handlers for the project's HTTP error contract."""
+from contextlib import contextmanager
 import re
 from uuid import uuid4
 from flask import g, request, jsonify
@@ -15,134 +14,63 @@ TYPES = {
     'internal-error': (500, 'Interner Fehler'),
 }
 
+
 class Problem(Exception):
     def __init__(self, kind, detail, **extensions):
         self.kind, self.detail, self.extensions = kind, detail, extensions
         super().__init__(detail)
 
-def invalid(detail, field=None):
-    location = {'parameter': field} if request.method == 'GET' else {'pointer': '/' + (field or '')}
-    errors = {'errors': [{**location, 'detail': detail}]} if field else {}
+
+def invalid_request(detail, field=None, *, query_parameter=False):
+    errors = {}
+    if field:
+        location = {'parameter': field} if query_parameter else {'pointer': '/' + field}
+        errors = {'errors': [{**location, 'detail': detail}]}
     raise Problem('invalid-request', detail, **errors)
 
-def text(data, key, required=True):
+
+@contextmanager
+def validating_request():
+    """Keep the validation stage if parsing raises."""
+    previous_stage = g.stage
+    g.stage = 'validation'
+    yield
+    g.stage = previous_stage
+
+
+def json_object():
+    data = request.get_json(silent=True)
+    if not isinstance(data, dict):
+        invalid_request('Ein gültiges JSON-Objekt ist erforderlich.')
+    return data
+
+
+def text_field(data, key, *, required=True, query_parameter=False):
     if key not in data and not required:
         return None
     value = data.get(key)
     if not isinstance(value, str) or not value.strip():
-        invalid(key + ' muss ein nichtleerer String sein.', key)
+        invalid_request(key + ' muss ein nichtleerer String sein.', key, query_parameter=query_parameter)
     return value
 
-def selection(data, aliases, default=None, required=False):
-    values = [text(data, key) for key in aliases if key in data]
-    if values and any(value != values[0] for value in values):
-        invalid('Widersprüchliche Set-Kennungen.')
-    if not values and required:
-        invalid('embedding_set_id ist erforderlich.', 'embedding_set_id')
-    return values[0] if values else default
 
-def search_options(data, default_count):
-    metric = data.get('metric', 'euclidean')
-    if not isinstance(metric, str) or metric not in ('euclidean', 'cosine'):
-        invalid('metric muss euclidean oder cosine sein.', 'metric')
-    count = data.get('num_results', default_count)
-    if type(count) is not int or not 1 <= count <= 100:
-        invalid('num_results muss eine ganze Zahl zwischen 1 und 100 sein.', 'num_results')
+def aliased_text(data, key, alias, *, conflict_detail, default=None, required=False, query_parameter=False):
+    value = text_field(data, key, required=False, query_parameter=query_parameter)
+    alias_value = text_field(data, alias, required=False, query_parameter=query_parameter)
+    if value is not None and alias_value is not None and value != alias_value:
+        invalid_request(conflict_detail)
+    selected = value if value is not None else alias_value
+    if selected is None and required:
+        invalid_request(key + ' ist erforderlich.', key, query_parameter=query_parameter)
+    return selected if selected is not None else default
 
-def vector(data):
-    value = data.get('vector')
-    if isinstance(value, str):
-        try:
-            value = json.loads(value)
-        except ValueError:
-            invalid('vector muss eine Zahlenliste sein.', 'vector')
-    if not isinstance(value, list) or len(value) != 1024:
-        invalid('vector muss genau 1024 Zahlen enthalten.', 'vector')
-    try:
-        valid = all(type(x) in (int, float) and math.isfinite(x) for x in value)
-    except OverflowError:
-        valid = False
-    if not valid:
-        invalid('vector muss endliche Zahlen enthalten.', 'vector')
-    if data.get('metric') == 'cosine' and not any(value):
-        invalid('Cosine erfordert einen Vektor mit positiver Norm.', 'vector')
 
-def validate(service):
-    if request.routing_exception is not None:
-        return
-    if service == 'vector' and request.method == 'GET':
-        if request.endpoint in ('count_chunks', 'get_chunk'):
-            selection(request.args, ('embedding_set_id', 'embedding'))
-        elif request.endpoint == 'find_chunks':
-            text(request.args, 'query')
-        return
-    if request.method not in ('POST', 'DELETE'):
-        return
-    data = request.get_json(silent=True)
-    if not isinstance(data, dict):
-        invalid('Ein gültiges JSON-Objekt ist erforderlich.')
-    if service == 'rag':
-        text(data, 'query')
-        if request.endpoint in ('evaluate_rerank', 'evaluate_generate'):
-            rows = data.get('results')
-            if not isinstance(rows, list) or any(not isinstance(row, dict)
-                    or not isinstance(row.get('chunk_id'), str) or not row['chunk_id'].strip()
-                    or not isinstance(row.get('chunktext'), str) for row in rows):
-                invalid('results muss Chunkobjekte mit chunk_id und chunktext enthalten.', 'results')
-        if request.endpoint == 'evaluate_retrieve' and 'vector' in data:
-            vector(data)
-        if request.endpoint in ('evaluate_retrieve', 'evaluate_rerank', 'evaluate_generate'):
-            text(data, 'system_prompt', required=False)
-            template = text(data, 'user_prompt', required=False)
-            if template is not None:
-                import string
-                try:
-                    fields = list(string.Formatter().parse(template))
-                    if any(field is not None and (field not in ('context', 'question') or spec or conversion)
-                           for _, field, spec, conversion in fields):
-                        raise ValueError()
-                except ValueError:
-                    invalid('user_prompt erlaubt nur {context} und {question}.', 'user_prompt')
-        selection(data, ('embedding_set_id', 'filter'))
-        search_options(data, 5)
-        text(data, 'reranker', required=False)
-        text(data, 'answer_model', required=False)
-        if type(data.get('top_k', 0)) is not int or data.get('top_k', 0) < 0:
-            invalid('top_k muss eine ganze Zahl >= 0 sein.', 'top_k')
-    elif service == 'reranker':
-        text(data, 'query')
-        text(data, 'model', required=False)
-        docs = data.get('documents')
-        if not isinstance(docs, list) or any(not isinstance(d, str) or not d.strip() for d in docs):
-            invalid('documents muss eine Liste nichtleerer Strings sein.', 'documents')
-    elif service == 'vector':
-        selection(data, ('embedding_set_id', 'embedding'), required=request.endpoint in ('upsert_chunk', 'delete_chunks'))
-        if request.endpoint == 'upsert_chunk':
-            text(data, 'chunk_id')
-        if request.endpoint == 'delete_chunks':
-            text(data, 'document_id')
-            start = data.get('from')
-            if type(start) is not int or start < 1:
-                invalid('from muss eine positive ganze Zahl sein.', 'from')
-            if 'to' in data and (type(data['to']) is not int or data['to'] < start):
-                invalid('to muss eine ganze Zahl größer oder gleich from sein.', 'to')
-            if 'chunk_id' in data:
-                invalid('Für Löschungen document_id und from verwenden.', 'chunk_id')
-        if request.endpoint == 'upsert_chunk' and data.get('chunktext') is not None and not isinstance(data['chunktext'], str):
-            invalid('chunktext muss ein String oder null sein.', 'chunktext')
-        if request.endpoint in ('upsert_chunk', 'search_vectors'):
-            if request.endpoint == 'search_vectors':
-                search_options(data, 10)
-            vector(data)
-
-def install(app, service):
+def install(app, *, default_stage):
     @app.before_request
-    def boundary():
+    def correlate_request():
         supplied = request.headers.get('X-Request-ID', '')
         g.request_id = supplied if re.fullmatch(r'[A-Za-z0-9._-]{1,128}', supplied) else str(uuid4())
-        g.stage = 'validation'
-        validate(service)
-        g.stage = {'rag': 'processing', 'vector': 'storage', 'reranker': 'reranking'}[service]
+        g.stage = default_stage
 
     @app.after_request
     def correlate(response):
@@ -173,4 +101,3 @@ def install(app, service):
                 if key.lower() not in ('content-type', 'content-length'):
                     response.headers[key] = value
         return response
-

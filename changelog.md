@@ -15,6 +15,14 @@ agent_instructions:
 
 Aus README und docs übernommene Änderungshistorie. Gleichdatierte Einträge folgen der umgekehrten Reihenfolge der dortigen Nachträge. Nicht datierbare Einträge stehen am Ende. Anleitungen: [README](README.md). Fachkonzepte: [Testkonzept](docs/8-1-testkonzept.md) und [Error-Handling](docs/8-3-error-handling.md).
 
+## 2026-11-26
+
+### Eingabevalidierung an die HTTP-Endpunkte verlegt
+
+RAG, Vector und Reranker prüfen ihre Eingaben am jeweiligen Endpunkt. Die gemeinsamen Flask-Handler erzeugen weiterhin Problem Details und korrelieren Requests. RAG und Vector nutzen gemeinsame, Flask-freie Prüfungen für den Vector-Suchvertrag. Die Vector-API initialisiert den Pool erst beim Transaktionsbeginn. Ungültige Abfragen werden auch mit `HEAD` vor der Poolinitialisierung mit HTTP 400 abgewiesen.
+
+258 Unit-Tests und 11 isolierte Podman-Integrationstests mit Vector, RAG und Reranker bestanden. Acht optionale Tests mit echtem Host-Ollama wurden ausgelassen, da der Refactor die HTTP-Validierung vor dem Providerzugriff betrifft.
+
 ## 2026-11-25
 
 ### Fachkapitel mit ausgeblendeten Pflegevorgaben versehen

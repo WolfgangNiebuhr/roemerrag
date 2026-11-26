@@ -1,5 +1,6 @@
 """Integration tests for the RAG API."""
 
+import json
 from unittest.mock import Mock, patch
 
 import pytest
@@ -452,13 +453,18 @@ def test_empty_evaluation_does_not_call_provider(monkeypatch, endpoint):
     post.assert_not_called()
 
 
-def test_retrieve_accepts_cached_vector(monkeypatch):
+@pytest.mark.parametrize('vector_as_string', [False, True])
+def test_retrieve_accepts_cached_vector(monkeypatch, vector_as_string):
     embed = Mock()
     search = Mock(return_value=[])
     monkeypatch.setattr(rag_app, 'generate_embedding', embed)
     monkeypatch.setattr(rag_app, 'search_vectors', search)
-    response = rag_app.app.test_client().post('/evaluate/retrieve', json={'query':'q','vector':[1.0]+[0.0]*1023})
+    vector = [1.0] + [0.0] * 1023
+    response = rag_app.app.test_client().post('/evaluate/retrieve', json={
+        'query': 'q', 'vector': json.dumps(vector) if vector_as_string else vector,
+    })
     assert response.status_code == 200
+    assert response.json['vector'] == vector
     assert response.json['embedding_model'] is None
     assert response.json['timings']['embedding_duration'] is None
     embed.assert_not_called()

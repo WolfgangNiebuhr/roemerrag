@@ -1,13 +1,16 @@
 import sys
 from pathlib import Path
 sys.path.insert(0, str(Path(__file__).resolve().parents[1]))
-from rag_common.http_errors import install, Problem
+from rag_common.http_errors import (
+    Problem, aliased_text, install, invalid_request, json_object, text_field, validating_request,
+)
 from rag_common.rag_results import validate_results, generation_metrics
-from flask import Flask, request, jsonify, g, has_request_context
+from rag_common.vector_contract import VectorInputError, parse_search_options, parse_vector
+from flask import Flask, jsonify, g, has_request_context
 import os
 import time
 import random
-import json
+from string import Formatter
 import requests
 import numpy as np
 if __package__:
@@ -16,7 +19,7 @@ else:
     from ollama_endpoint import resolve_ollama_base_url
 
 app = Flask(__name__)
-install(app, "rag")
+install(app, default_stage="processing")
 
 # Konfiguration
 
@@ -180,10 +183,61 @@ def rerank_results(query, results, model, top_k, with_scores=False):
         raise Problem("upstream-invalid-response", "Reranking returned an invalid document mapping.") from exc
 
 
+def read_rag_request():
+    data = json_object()
+    text_field(data, "query")
+    return data
+
+
+def parse_rag_options(data, *, default_top_k):
+    embedding_set = aliased_text(
+        data, "embedding_set_id", "filter", conflict_detail="Widersprüchliche Set-Kennungen.",
+        default=EMBEDDING_SET_ID,
+    )
+    try:
+        metric, count = parse_search_options(data, default_count=NUM_RESULTS)
+    except VectorInputError as error:
+        invalid_request(str(error), error.field)
+    text_field(data, "reranker", required=False)
+    text_field(data, "answer_model", required=False)
+    top_k = data.get("top_k", default_top_k)
+    if type(top_k) is not int or top_k < 0:
+        invalid_request("top_k muss eine ganze Zahl >= 0 sein.", "top_k")
+    return dict(data, embedding_set_id=embedding_set, metric=metric, num_results=count, top_k=top_k)
+
+
+def validate_evaluation_results(data):
+    rows = data.get("results")
+    if not isinstance(rows, list) or any(
+        not isinstance(row, dict)
+        or not isinstance(row.get("chunk_id"), str)
+        or not row["chunk_id"].strip()
+        or not isinstance(row.get("chunktext"), str)
+        for row in rows
+    ):
+        invalid_request("results muss Chunkobjekte mit chunk_id und chunktext enthalten.", "results")
+
+
+def validate_evaluation_prompts(data):
+    text_field(data, "system_prompt", required=False)
+    template = text_field(data, "user_prompt", required=False)
+    if template is None:
+        return
+    try:
+        allowed = all(
+            field is None or (field in ("context", "question") and not spec and not conversion)
+            for _, field, spec, conversion in Formatter().parse(template)
+        )
+    except ValueError:
+        allowed = False
+    if not allowed:
+        invalid_request("user_prompt erlaubt nur {context} und {question}.", "user_prompt")
+
+
 def evaluation_start():
     started = time.monotonic()
     g.deadline = started + TOTAL_TIMEOUT
-    return request.get_json(), started
+    return started
 
 
 def generation_input(data, results):
@@ -197,26 +251,35 @@ def generation_input(data, results):
 
 @app.post("/evaluate/retrieve")
 def evaluate_retrieve():
-    data, started = evaluation_start()
+    with validating_request():
+        data = read_rag_request()
+        supplied_vector = None
+        if "vector" in data:
+            try:
+                supplied_vector = parse_vector(data["vector"], data.get("metric"))
+            except VectorInputError as error:
+                invalid_request(str(error), error.field)
+        validate_evaluation_prompts(data)
+        data = parse_rag_options(data, default_top_k=5)
+    started = evaluation_start()
     g.stage = "embedding"
     embedding_started = time.monotonic()
     embedding_metrics = None
-    if "vector" in data:
-        raw = json.loads(data["vector"]) if isinstance(data["vector"], str) else data["vector"]
-        embedding = np.array(raw, dtype=float)
+    if supplied_vector is not None:
+        embedding = np.array(supplied_vector, dtype=float)
     else:
         embedding, embedding_metrics = generate_embedding(data["query"], with_metrics=True)
-    embedding_duration = time.monotonic() - embedding_started if "vector" not in data else None
+    embedding_duration = time.monotonic() - embedding_started if supplied_vector is None else None
     g.stage = "retrieval"
     retrieval_started = time.monotonic()
-    embedding_set = data.get("embedding_set_id", data.get("filter", EMBEDDING_SET_ID))
-    metric = data.get("metric", "euclidean")
-    results = search_vectors(embedding, embedding_set, metric, data.get("num_results", 5))
+    embedding_set = data["embedding_set_id"]
+    metric = data["metric"]
+    results = search_vectors(embedding, embedding_set, metric, data["num_results"])
     retrieval_duration = time.monotonic() - retrieval_started
     next_request = generation_input(data, results)
-    next_request.update(top_k=data.get("top_k", 5), reranker=data.get("reranker", RERANKER_MODEL))
+    next_request.update(top_k=data["top_k"], reranker=data.get("reranker", RERANKER_MODEL))
     return jsonify(query=data["query"], results=results, vector=embedding.tolist(),
-                   embedding_model=EMBEDDING_MODEL_NAME if "vector" not in data else None,
+                   embedding_model=EMBEDDING_MODEL_NAME if supplied_vector is None else None,
                    embedding_set_id=embedding_set, metric=metric,
                    metrics={"retrieved_count": len(results), "embedding": embedding_metrics},
                    timings={"embedding_duration": embedding_duration,
@@ -227,12 +290,17 @@ def evaluate_retrieve():
 
 @app.post("/evaluate/rerank")
 def evaluate_rerank():
-    data, started = evaluation_start()
+    with validating_request():
+        data = read_rag_request()
+        validate_evaluation_results(data)
+        validate_evaluation_prompts(data)
+        data = parse_rag_options(data, default_top_k=5)
+    started = evaluation_start()
     g.stage = "reranking"
     # Match /process: whitespace-only passages are never sent to the reranker.
     results = [row for row in data["results"] if row["chunktext"].strip()]
     model = data.get("reranker", RERANKER_MODEL)
-    top_k = data.get("top_k", 5)
+    top_k = data["top_k"]
     selected = rerank_results(data["query"], results, model, top_k, with_scores=True) if results and top_k else results
     return jsonify(query=data["query"], results=selected, reranker=model, top_k=top_k,
                    status="ok" if selected else "no_context",
@@ -243,7 +311,12 @@ def evaluate_rerank():
 
 @app.post("/evaluate/generate")
 def evaluate_generate():
-    data, started = evaluation_start()
+    with validating_request():
+        data = read_rag_request()
+        validate_evaluation_results(data)
+        validate_evaluation_prompts(data)
+        data = parse_rag_options(data, default_top_k=5)
+    started = evaluation_start()
     g.stage = "generation"
     selected = [row for row in data["results"] if row["chunktext"].strip()]
     context = "\n".join(row["chunktext"] for row in selected)
@@ -263,26 +336,26 @@ def evaluate_generate():
 
 @app.route('/process', methods=['POST'])
 def process_request():
+    with validating_request():
+        data = parse_rag_options(read_rag_request(), default_top_k=0)
     pipeline_started = time.monotonic()
     g.deadline = pipeline_started + TOTAL_TIMEOUT
     timings = {}
-    data = request.get_json()
     query = data["query"]
-    embedding_set = data.get("embedding_set_id", data.get("filter", EMBEDDING_SET_ID))
+    embedding_set = data["embedding_set_id"]
     g.stage = "embedding"
     started = time.monotonic()
     embedding = generate_embedding(query)
     timings["embedding_duration"] = time.monotonic() - started
     g.stage = "retrieval"
     started = time.monotonic()
-    retrieved = validate_results(search_vectors(embedding, embedding_set,
-                                data.get("metric", "euclidean"), data.get("num_results", 5)))
+    retrieved = validate_results(search_vectors(embedding, embedding_set, data["metric"], data["num_results"]))
     retrieved = [{"chunk_id": row["chunk_id"], "chunktext": row["chunktext"]}
                  for row in retrieved if row["chunktext"].strip()]
     timings["retrieval_duration"] = time.monotonic() - started
     selected = retrieved
     reranking = None
-    top_k = data.get("top_k", 0)
+    top_k = data["top_k"]
     if selected and top_k > 0:
         g.stage = "reranking"
         model = data.get("reranker", RERANKER_MODEL)
