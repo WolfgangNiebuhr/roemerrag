@@ -270,7 +270,7 @@ Der API-Container benoetigt bei Reranking `RERANKER_URL` (Standard `http://host.
 
 Transportkonfiguration: `RAG_CONNECT_TIMEOUT=5`, `RAG_EMBEDDING_TIMEOUT=300`, `RAG_RETRIEVAL_TIMEOUT=60`, `RAG_RERANKING_TIMEOUT=600`, `RAG_GENERATION_TIMEOUT=600`, `RAG_TOTAL_TIMEOUT=1800` (Sekunden). Restbudget begrenzt jeden Folgeaufruf; nach Ablauf wird keine erfolgreiche Pipelineantwort geliefert. Requests-Zeitlimits sind Socket-Zeitlimits; ein blockierender Aufruf kann nicht aktiv abgebrochen werden. Embedding, Retrieval und Reranking werden bei Timeout/Verbindungsfehler hoechstens einmal wiederholt, Generierung und Writes nie. HTTP-Fehler werden nicht wiederholt. X-Request-ID wird weitergegeben. Die CLI hat `RAG_CLI_TIMEOUT=1800` als eigenes Antwortzeitlimit. Fehlende Metriken werden als nicht verfuegbar angezeigt.
 
-Analyse verwendet dieselben Providerfunktionen und denselben Prompt wie die API. Fuer Host-Ausfuehrung `OLLAMA_BASE_URL=http://localhost:11434` und `VECTOR_API_URL=http://127.0.0.1:5500/search` setzen. Import3 verwendet `IMPORT_CONNECT_TIMEOUT=5`, `IMPORT_EMBED_TIMEOUT=300` und `IMPORT_STORE_TIMEOUT=60` ohne automatische Schreibwiederholung.
+Import3 verwendet `IMPORT_CONNECT_TIMEOUT=5`, `IMPORT_EMBED_TIMEOUT=300` und `IMPORT_STORE_TIMEOUT=60` ohne automatische Schreibwiederholung.
 
 CLI-Validierung: --metric erlaubt ausschließlich cosine und euclidean (euklidische/L2-Distanz). L2 ist kein akzeptierter Parameterwert. Ungültige Optionen werden einzeln mit Parametername und erlaubten Werten beziehungsweise Grenzen gemeldet; Exitcode 2, ohne Dienstaufruf.
 
@@ -292,11 +292,17 @@ Die bisherige Ollama-Gesamtdauer heisst `metrics.generation_duration` und ersche
 
 ## Einzelne RAG-Schritte evaluieren
 
+An den Evaluationsendpunkten kann `analyze.py` Distanzdiagnostik abrufen und aus den Treffern eine Antwort erzeugen. Es ruft `/evaluate/retrieve` auf und übergibt `next_request` an `/evaluate/generate`. Die Basisadresse `RAG_API_BASE_URL` ist standardmäßig `http://127.0.0.1:5600`. `--compare-gold` aktiviert den Vergleich mit dem im Skript hinterlegten vollständigen Gold-Chunk. `--metric`, `--num_results`, `--embedding-set-id` und `--answer-model` steuern die Analyse.
+
+```powershell
+python analyze.py --query "Was ist Rom?" --metric cosine --compare-gold
+```
+
 Die RAG-API bietet drei POST-Endpunkte fuer spaetere Qualitaetsmessungen. Sie verwenden dieselben Providerfunktionen, Validierung, Zeitlimits, Retries und Modelle wie `/process`, fuehren aber nur den jeweiligen Schritt aus. Gold-Antworten und Qualitaetsscores werden noch nicht berechnet. Die historische ConfigMap dient nur als fachliche Referenz; deren SQL-Zugriffe und Feldnamen werden nicht uebernommen.
 
 | Endpunkt | Eingabe | Ausgabe und Weiterverwendung |
 |---|---|---|
-| `/evaluate/retrieve` | query, optional embedding_set_id/filter, metric (Standard euclidean), num_results (5), vector | results mit Chunk-IDs, Texten, Distanzen und vorhandenen Trefferfeldern; normalisierter Query-Vektor bei neuem Embedding, Modell/Set/Metrik, Laufzeiten und Trefferzahl. next_request kann direkt an rerank gesendet werden. |
+| `/evaluate/retrieve` | query, optional embedding_set_id/filter, metric (Standard euclidean), num_results (5), vector, include_distances, reference_text | Treffer mit Rankingdistanz, Fragevektor, Modell/Set/Metrik, Laufzeiten, Trefferzahl und optionale Diagnostik. next_request kann an rerank oder generate gesendet werden. |
 | `/evaluate/rerank` | query, results (Liste von Chunkobjekten), optional reranker und top_k (5) | results in neuer Reihenfolge, erhaltene Trefferfelder sowie rerank_score und original_index; Modell, ausgewaehlte Anzahl und Laufzeit. next_request kann direkt an generate gesendet werden. |
 | `/evaluate/generate` | query, results, optional answer_model, system_prompt, user_prompt | Antwort, Kontext, Chunk-IDs, ausgewaehlte Texte, Modell, Ollama-Metriken und serverseitige Laufzeit; request erlaubt Wiederholung der Generierung. |
 
@@ -321,6 +327,8 @@ $answer.metrics
 ```
 
 Optionaler Retrieve-vector ist ein bereits vorbereiteter Vektor mit 1024 endlichen Zahlen (Liste oder JSON-Listenstring); er wird unveraendert verwendet, nicht erneut normalisiert. Embedding entf?llt dann, embedding_model und embedding_duration sind null. Bei neuem Embedding sind vorhandene Ollama-Laufzeit-/Tokenmetriken unter metrics.embedding enthalten; fehlende Messwerte sind null und werden nicht als null Sekunden erfunden. Trefferzahl steht unter metrics.retrieved_count. Serverzeiten stehen in timings (embedding_duration/retrieval_duration/evaluation_duration beziehungsweise reranking_duration oder generation_request_duration), jeweils ungerundete Sekunden. Generierungsmetriken entsprechen `/process`.
+
+`include_distances: true` liefert `diagnostics.hits` in der Reihenfolge der Suchtreffer. Jeder Eintrag enthält `chunk_id`, die Rankingdistanz `distance`, `cosine_similarity` und `euclidean_distance`. Die Cosinus-Ähnlichkeit für einen Nullvektor ist `null`. Ein nichtleerer `reference_text` liefert beide Vergleichswerte in `diagnostics.reference`. Der Dienst erzeugt dabei Frage- und Referenzembedding mit demselben Modell. Die Kombination von `reference_text` mit einem vom Client gelieferten `vector` ergibt HTTP 400.
 
 Reranking behaelt Distanzen und sonstige Trefferfelder bei. original_index bezieht sich auf die an den Reranker uebergebene Liste nach Entfernen leerer Texte. top_k=0 deaktiviert Reranking und behaelt alle nichtleeren Treffer ohne neue Scores. Leere results sind erlaubt: Rerank/Generate liefern no_context, ohne Provideraufruf; Generierungsmetriken sind null. Nichtleere Textfelder, Modellparameter und Indizes werden validiert; ungueltige Eingaben ergeben 400 Problem Details vor Dienstzugriff, defekte Providerantworten 502, Dienstausfaelle 503.
 

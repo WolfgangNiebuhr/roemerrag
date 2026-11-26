@@ -190,7 +190,7 @@ In [analyze.py](../analyze.py) umfasst `GOLDCHUNK` nur die Keyword-Zeile; die fo
 
 #### Noch offen
 
-`GOLDCHUNK` korrigieren und die vollständige Eingabe durch einen Regressionstest absichern. Die verbleibenden Alt-Einstiegspunkte einschließlich des lokalen Rerankers nach Unterstützung einordnen.
+Die verbleibenden Alt-Einstiegspunkte einschließlich des lokalen Rerankers nach Unterstützung einordnen.
 
 **Lösungsvorschlag**
 

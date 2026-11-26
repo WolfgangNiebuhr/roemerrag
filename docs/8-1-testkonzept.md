@@ -75,7 +75,7 @@ Die Standardintegration in `tests/podman/test_import_pipeline_integration.py` pr
 
 `tests/podman/test_rag_e2e.py` verwendet `tests/podman/fixtures/early_rome.txt` und echte Ollama-Embeddings. Der Test prüft den erwarteten Quellabschnitt, Karthago als Antwortinhalt und die Laufzeit- und Generierungsmetriken. Eigene Sets isolieren die Testdaten. Ausgewählte E2E-Pfade nutzen den Reranker, während der Grundfall ohne ihn läuft.
 
-Evaluations-Vertragstests prüfen direkt verkettbare `next_request`-Antworten, erhaltene Trefferidentität, Distanzen und Scores, unabhängige Dienstaufrufe, übergebene Vektoren und frühe Eingabe- und Promptvalidierung. Der E2E-Test verkettet Retrieve, Rerank und Generate mit echten Modellen.
+Evaluations-Vertragstests prüfen direkt verkettbare `next_request`-Antworten, erhaltene Trefferidentität, Distanzen und Scores, unabhängige Dienstaufrufe, übergebene Vektoren und frühe Eingabe- und Promptvalidierung. Tests für `analyze.py` prüfen seine beiden HTTP-Aufrufe, die Ausgabe, Fehler und die Übergabe des vollständigen Gold-Chunks. Ein Integrationstest vergleicht Distanzwerte für bekannte, in pgvector gespeicherte Vektoren. Der E2E-Test verkettet Retrieve, Rerank und Generate mit echten Modellen und prüft den optionalen Referenzvergleich.
 
 ### Reranker
 

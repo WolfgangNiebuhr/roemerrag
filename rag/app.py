@@ -10,6 +10,8 @@ from flask import Flask, jsonify, g, has_request_context
 import os
 import time
 import random
+import json
+import math
 from string import Formatter
 import requests
 import numpy as np
@@ -263,12 +265,52 @@ def generation_input(data, results):
     return payload
 
 
+def compare_embeddings(query_vector, other_vector):
+    if len(query_vector) != len(other_vector):
+        raise InvalidProviderResponse("Cannot compare embeddings with different dimensions.")
+    query_norm = math.hypot(*query_vector)
+    other_norm = math.hypot(*other_vector)
+    cosine = None
+    if 0 < query_norm < math.inf and 0 < other_norm < math.inf:
+        cosine = math.fsum((a / query_norm) * (b / other_norm) for a, b in zip(query_vector, other_vector))
+        cosine = max(-1.0, min(1.0, cosine))
+    euclidean = math.dist(query_vector, other_vector)
+    return {"cosine_similarity": cosine, "euclidean_distance": euclidean if math.isfinite(euclidean) else None}
+
+
+def retrieval_distances(embedding, results):
+    distances = []
+    for row in results:
+        vector = row.get("vector")
+        try:
+            if isinstance(vector, str):
+                vector = json.loads(vector)
+            if not isinstance(vector, list) or not all(
+                type(value) in (int, float) and math.isfinite(value) for value in vector
+            ):
+                raise ValueError()
+        except (ValueError, OverflowError) as error:
+            raise InvalidProviderResponse("Retrieval returned an invalid stored vector.") from error
+        distances.append({
+            "chunk_id": row["chunk_id"],
+            "distance": row.get("distance"),
+            **compare_embeddings(embedding, vector),
+        })
+    return distances
+
+
 @app.post("/evaluate/retrieve")
 def evaluate_retrieve():
     with validating_request():
         data = read_rag_request()
+        include_distances = data.get("include_distances", False)
+        if type(include_distances) is not bool:
+            invalid_request("include_distances muss ein boolescher Wert sein.", "include_distances")
+        reference_text = text_field(data, "reference_text", required=False)
         supplied_vector = None
         if "vector" in data:
+            if reference_text is not None:
+                invalid_request("reference_text erfordert ein vom Dienst erzeugtes Frageembedding.", "reference_text")
             try:
                 supplied_vector = parse_vector(data["vector"], data.get("metric"))
             except VectorInputError as error:
@@ -290,6 +332,13 @@ def evaluate_retrieve():
     metric = data["metric"]
     results = search_vectors(embedding, embedding_set, metric, data["num_results"])
     retrieval_duration = time.monotonic() - retrieval_started
+    diagnostics = {}
+    if include_distances:
+        diagnostics["hits"] = retrieval_distances(embedding, results)
+    if reference_text is not None:
+        g.stage = "embedding"
+        reference_vector = generate_embedding(reference_text)
+        diagnostics["reference"] = compare_embeddings(embedding, reference_vector)
     next_request = generation_input(data, results)
     next_request.update(top_k=data["top_k"], reranker=data.get("reranker", RERANKER_MODEL))
     return jsonify(query=data["query"], results=results, vector=embedding.tolist(),
@@ -299,7 +348,8 @@ def evaluate_retrieve():
                    timings={"embedding_duration": embedding_duration,
                             "retrieval_duration": retrieval_duration,
                             "evaluation_duration": time.monotonic() - started},
-                   next_request=next_request)
+                   next_request=next_request,
+                   **({"diagnostics": diagnostics} if diagnostics else {}))
 
 
 @app.post("/evaluate/rerank")

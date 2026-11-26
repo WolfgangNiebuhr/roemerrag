@@ -77,7 +77,7 @@ Die Antwort enthält `response`, `chunks`, `metrics` sowie getrennte `retrieved_
 
 Die Evaluationsendpunkte `POST /evaluate/retrieve`, `POST /evaluate/rerank` und `POST /evaluate/generate` verwenden dieselben Providerfunktionen. `next_request` verbindet die Schritte über serialisierbare Eingaben. Trefferidentität und Trefferfelder bleiben erhalten. Die Endpunkte speichern weder Vektoren noch Sitzungszustand.
 
-`interact.py` validiert CLI-Argumente, ruft `/process` auf und übernimmt Ausgabe und lokalen Export. `analyze.py` verwendet die Providerfunktionen und den Prompt aus `rag/app.py`. Die Transportadapter begrenzen Zeitlimits und Wiederholungen für sicher wiederholbare Aufrufe. Generierung und Writes werden nicht automatisch wiederholt. Die [Laufzeitsicht](6-laufzeitsicht.md) beschreibt Aufrufreihenfolge, Netzwerk und Retry-Verhalten.
+`interact.py` validiert CLI-Argumente, ruft `/process` auf und übernimmt Ausgabe und lokalen Export. `analyze.py` ruft `/evaluate/retrieve` mit Distanzdiagnostik auf und übergibt `next_request` an `/evaluate/generate`. RAG berechnet Cosinus-Ähnlichkeit und euklidischen Abstand für die Treffer und optional für den vom Analysewerkzeug übergebenen Gold-Chunk. Die Transportadapter begrenzen Zeitlimits und Wiederholungen für sicher wiederholbare Aufrufe. Generierung und Writes werden nicht automatisch wiederholt. Die [Laufzeitsicht](6-laufzeitsicht.md) beschreibt Aufrufreihenfolge, Netzwerk und Retry-Verhalten.
 
 ### 5.3.3 Vector-API und Datenhaltung
 

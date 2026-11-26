@@ -34,7 +34,7 @@ Historische Aenderungs- und Pruefnachweise: [Changelog](../changelog.md).
 
 ## RAG-Orchestrierung als einziger CLI-Verarbeitungspfad (TS-09)
 
-Die CLI delegiert die gesamte Verarbeitung an `/process`; sie behaelt Argumentpruefung, Darstellung und Dateiexport. Reranking und Modellwahl werden explizite API-Parameter, urspruengliche und ausgewaehlte Treffer separate Antwortfelder. Bestehende API-Clients erhalten ohne neue Parameter weiterhin kein Reranking. Beide Einstiegspunkte verwenden gemma4:e4b als Antwortmodellstandard. analyze.py verwendet die Providerfunktionen aus rag/app.py fuer seine Vektoranalysen; eine weitere Klassenhierarchie ist nicht erforderlich. Fortschrittsstreaming und Export nach spaeteren Providerfehlern sind nicht Teil des Vertrags.
+`interact.py` delegiert die Verarbeitung an `/process` und übernimmt Argumentprüfung, Darstellung und Dateiexport. Reranking und Modellwahl sind explizite API-Parameter. Ursprüngliche und ausgewählte Treffer stehen in eigenen Antwortfeldern. API-Clients erhalten ohne neue Parameter kein Reranking. `analyze.py` delegiert Retrieval, Distanzdiagnostik und Antwortgenerierung an die Evaluationsendpunkte derselben RAG-API. Der Standard für das Antwortmodell ist `gemma4:e4b`. Die Schnittstelle unterstützt weder Fortschrittsstreaming noch einen Export nach späteren Providerfehlern.
 
 ## Stateless Evaluationsendpunkte
 

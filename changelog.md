@@ -17,6 +17,28 @@ Aus README und docs übernommene Änderungshistorie. Gleichdatierte Einträge fo
 
 ## 2026-11-26
 
+### Gold-Vergleich nach vollständigem Stack-Update wiederholt
+
+`analyze.py --compare-gold` lief mit derselben Frage gegen die aktualisierten Dienste erfolgreich durch. Trefferreihenfolge und alle ausgegebenen Distanzwerte stimmten mit dem vorherigen Live-Test überein. Die generierte Antwort enthielt dieselben Kernaussagen zu Vesta und Italus mit abweichendem Wortlaut.
+
+### Vector-API und Reranker im laufenden Stack aktualisiert
+
+`vector-api` läuft mit Image `d69ad515b142` im bestehenden `vectorpod`. `reranker` läuft mit Image `28a1464324b5` auf Port 5000 mit den bisherigen WSL-Bind-Mounts und der Geräteoption. Die vorher aktiven Container bleiben gestoppt unter `vector-api-before-ts06` und `reranker-before-rollout-20261126` verfügbar. Der bereits gestoppte frühere `vector-api` wurde als `vector-api-inactive-before-rollout-20261126` erhalten.
+
+Vector-Liveness und -Readiness, Reranker-Health und ein direkter Reranking-Aufruf waren erfolgreich. Eine Anfrage an `/process` lieferte fünf Retrievaltreffer, zwei durch den Reranker ausgewählte Chunks und eine generierte Antwort. PostgreSQL läuft weiter mit demselben Container und `pgvector-data`. Alle vier Volumes sowie 11.243 Chunks mit identischen Anzahlen je Embedding-Set waren nach dem Austausch vorhanden.
+
+### RAG-Image ausgerollt und Gold-Vergleich im laufenden Stack geprüft
+
+Die API-Images `rag-api:local` (`e298e575d464`), `vectorapi:local` (`d69ad515b142`) und `reranker:local` (`28a1464324b5`) wurden neu gebaut. Der eigenständige RAG-Container auf Port 5600 wurde ersetzt. Der bisherige RAG-Container bleibt gestoppt unter `rag-api-before-analysis-20261126` verfügbar. Die laufenden Vector- und Reranker-Container verwenden ihre bisherigen Images.
+
+`analyze.py --compare-gold` lief gegen den bestehenden Stack erfolgreich durch. Der Aufruf lieferte fünf Treffer, eine generierte Antwort und für den Gold-Chunk eine Cosinus-Ähnlichkeit von 0,620555 sowie einen euklidischen Abstand von 0,871143. PostgreSQL blieb am Volume `pgvector-data`. Die 11.243 Chunks und ihre Verteilung auf vier Embedding-Sets stimmten vor und nach dem Austausch überein.
+
+### Analyse auf die RAG-Evaluationsendpunkte umgestellt
+
+`analyze.py` ruft Retrieval und Generierung über HTTP auf. Die RAG-API liefert auf Anforderung Cosinus-Ähnlichkeit und euklidischen Abstand je Treffer zusätzlich zur Rankingdistanz. `--compare-gold` sendet den vollständigen Gold-Chunk als Referenztext. Die CLI-Aufrufe verwenden denselben HTTP-Transport.
+
+273 Unit-Tests, 12 isolierte Podman-Integrationstests und der gezielte Evaluations-E2E-Test mit echtem Ollama-Referenzembedding bestanden. Die übrigen optionalen Ollama-Tests wurden für diese Änderung ausgelassen.
+
 ### Dienstfehler an der HTTP-Grenze übersetzt
 
 Ergebnisvalidierung, Provideraufrufe, Datenbanktransaktionen und Modellladen melden Fehler durch ursachenspezifische Python-Ausnahmen. Die Flask-Apps ordnen ihnen die bestehenden HTTP-Statuscodes und Problemtypen zu. Dieselbe Ergebnisprüfung wird für Evaluationsanfragen, Retrievalantworten und die CLI verwendet.

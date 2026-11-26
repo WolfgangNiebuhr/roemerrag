@@ -349,13 +349,6 @@ def test_invalid_client_results_remain_a_validation_problem(monkeypatch, endpoin
     post.assert_not_called()
 
 
-def test_analysis_uses_shared_provider_functions():
-    import analyze
-    assert analyze.generate_embedding is rag_app.generate_embedding
-    assert analyze._search_vectors is rag_app.search_vectors
-    assert analyze._generate_answer is rag_app.generate_answer
-
-
 @pytest.mark.parametrize('value', [None, '', ' ', 42])
 def test_invalid_answer_model_rejected_before_embedding(monkeypatch, value):
     embed = Mock()
@@ -434,6 +427,7 @@ def test_evaluation_chain_is_reusable_and_isolated(monkeypatch):
     retrieved = client.post('/evaluate/retrieve', json={'query':'q','top_k':1,
         'answer_model':'model','system_prompt':'system','user_prompt':'{question}: {context}'}).json
     assert retrieved['results'] == rows
+    assert 'diagnostics' not in retrieved
     assert retrieved['metrics']['embedding']['prompt_tokens'] == 3
     post.assert_not_called()
     generate.assert_not_called()
@@ -484,6 +478,62 @@ def test_retrieve_accepts_cached_vector(monkeypatch, vector_as_string):
     assert response.json['embedding_model'] is None
     assert response.json['timings']['embedding_duration'] is None
     embed.assert_not_called()
+
+
+def test_retrieval_diagnostics_preserve_hits_and_compare_reference(monkeypatch):
+    embed = Mock(side_effect=[
+        (rag_app.np.array([1., 0.]), {}),
+        rag_app.np.array([-1., 0.]),
+    ])
+    rows = [
+        {'chunk_id': 'a', 'chunktext': 'first', 'vector': '[0.6, 0.8]', 'distance': 0.4},
+        {'chunk_id': 'b', 'chunktext': 'second', 'vector': [0., 0.], 'distance': 1.0},
+    ]
+    monkeypatch.setattr(rag_app, 'generate_embedding', embed)
+    monkeypatch.setattr(rag_app, 'search_vectors', Mock(return_value=rows))
+    response = rag_app.app.test_client().post('/evaluate/retrieve', json={
+        'query': 'question', 'metric': 'cosine', 'include_distances': True, 'reference_text': 'gold',
+    })
+    assert response.status_code == 200
+    body = response.json
+    assert body['results'] == body['next_request']['results'] == rows
+    assert 'reference_text' not in body['next_request']
+    assert body['diagnostics']['hits'][0] == {
+        'chunk_id': 'a', 'distance': 0.4, 'cosine_similarity': pytest.approx(0.6),
+        'euclidean_distance': pytest.approx((0.4**2 + 0.8**2)**0.5),
+    }
+    assert body['diagnostics']['hits'][1] == {
+        'chunk_id': 'b', 'distance': 1.0, 'cosine_similarity': None, 'euclidean_distance': 1.0,
+    }
+    assert body['diagnostics']['reference'] == {'cosine_similarity': -1.0, 'euclidean_distance': 2.0}
+    assert [entry.args for entry in embed.call_args_list] == [('question',), ('gold',)]
+
+
+@pytest.mark.parametrize('fields, pointer', [
+    ({'include_distances': 1}, '/include_distances'),
+    ({'reference_text': ' '}, '/reference_text'),
+    ({'reference_text': 'gold', 'vector': [1.] * 1024}, '/reference_text'),
+])
+def test_invalid_diagnostics_options_are_rejected_before_provider_access(monkeypatch, fields, pointer):
+    post = Mock()
+    monkeypatch.setattr("requests.post", post)
+    result = rag_app.app.test_client().post('/evaluate/retrieve', json={'query': 'q', **fields})
+    assert result.status_code == 400
+    assert result.json['stage'] == 'validation'
+    assert result.json['errors'][0]['pointer'] == pointer
+    post.assert_not_called()
+
+
+@pytest.mark.parametrize('stored_vector', [None, 'invalid json', '[true, 0]', [1.0]])
+def test_retrieval_diagnostics_reject_invalid_stored_vectors(monkeypatch, stored_vector):
+    monkeypatch.setattr(rag_app, 'generate_embedding', Mock(return_value=(rag_app.np.array([1., 0.]), {})))
+    monkeypatch.setattr(rag_app, 'search_vectors', Mock(return_value=[
+        {'chunk_id': 'c', 'chunktext': 'text', 'vector': stored_vector, 'distance': 0},
+    ]))
+    result = rag_app.app.test_client().post('/evaluate/retrieve', json={'query': 'q', 'include_distances': True})
+    assert result.status_code == 502
+    assert result.json['type'] == 'urn:rag:problem:upstream-invalid-response'
+    assert result.json['stage'] == 'retrieval'
 
 
 @pytest.mark.parametrize('template', ['{unknown}', '{context.__class__}', '{context!r}', '{'])

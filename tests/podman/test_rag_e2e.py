@@ -116,10 +116,14 @@ def test_evaluation_endpoints_chain(vector_url, rag_url, test_id, e2e_ollama_url
         request(vector_url, '/vectors', 'POST', chunk, 201)
         retrieved = request(rag_url, '/evaluate/retrieve', 'POST', {
             'query':'Wer beherrschte das westliche Mittelmeer?', 'embedding_set_id':variant,
-            'top_k':1, 'answer_model':'phi3:mini'}, timeout=600)
+            'top_k':1, 'answer_model':'phi3:mini', 'include_distances':True,
+            'reference_text':chunk['chunktext']}, timeout=600)
         assert retrieved['results'][0]['chunk_id'] == chunk['chunk_id']
         assert len(retrieved['vector']) == 1024
         assert 'distance' in retrieved['results'][0]
+        assert retrieved['diagnostics']['hits'][0]['chunk_id'] == chunk['chunk_id']
+        assert -1 <= retrieved['diagnostics']['reference']['cosine_similarity'] <= 1
+        assert retrieved['diagnostics']['reference']['euclidean_distance'] >= 0
         assert retrieved['timings']['retrieval_duration'] >= 0
         ranked = request(rag_url, '/evaluate/rerank', 'POST', retrieved['next_request'], timeout=600)
         assert ranked['results'][0]['chunk_id'] == chunk['chunk_id']
