@@ -65,6 +65,20 @@ def aliased_text(data, key, alias, *, conflict_detail, default=None, required=Fa
     return selected if selected is not None else default
 
 
+def _render_problem(type_uri, status, title, detail, extensions):
+    response = jsonify(type=type_uri, title=title, status=status, detail=detail,
+                       instance='urn:uuid:' + str(uuid4()), request_id=g.request_id,
+                       stage=g.stage, retryable=False, **extensions)
+    response.status_code = status
+    response.content_type = 'application/problem+json'
+    return response
+
+
+def problem_response(kind, detail, **extensions):
+    status, title = TYPES[kind]
+    return _render_problem('urn:rag:problem:' + kind, status, title, detail, extensions)
+
+
 def install(app, *, default_stage):
     @app.before_request
     def correlate_request():
@@ -79,25 +93,13 @@ def install(app, *, default_stage):
 
     @app.errorhandler(Exception)
     def handle(error):
-        headers = None
         if isinstance(error, Problem):
-            status, title = TYPES[error.kind]
-            kind, detail, extensions = 'urn:rag:problem:' + error.kind, error.detail, error.extensions
-        elif isinstance(error, HTTPException):
-            status, title = error.code, error.name
-            kind, detail, extensions = 'about:blank', error.name, {}
-            headers = error.get_response().headers
-        else:
-            app.logger.exception('Unhandled error request_id=%s stage=%s', g.request_id, g.stage)
-            status, title = TYPES['internal-error']
-            kind, detail, extensions = 'urn:rag:problem:internal-error', 'Ein interner Fehler ist aufgetreten.', {}
-        response = jsonify(type=kind, title=title, status=status, detail=detail,
-                           instance='urn:uuid:' + str(uuid4()), request_id=g.request_id,
-                           stage=g.stage, retryable=False, **extensions)
-        response.status_code = status
-        response.content_type = 'application/problem+json'
-        if headers:
-            for key, value in headers.items():
+            return problem_response(error.kind, error.detail, **error.extensions)
+        if isinstance(error, HTTPException):
+            response = _render_problem('about:blank', error.code, error.name, error.name, {})
+            for key, value in error.get_response().headers.items():
                 if key.lower() not in ('content-type', 'content-length'):
                     response.headers[key] = value
-        return response
+            return response
+        app.logger.exception('Unhandled error request_id=%s stage=%s', g.request_id, g.stage)
+        return problem_response('internal-error', 'Ein interner Fehler ist aufgetreten.')

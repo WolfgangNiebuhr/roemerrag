@@ -17,6 +17,12 @@ Aus README und docs übernommene Änderungshistorie. Gleichdatierte Einträge fo
 
 ## 2026-11-26
 
+### Dienstfehler an der HTTP-Grenze übersetzt
+
+Ergebnisvalidierung, Provideraufrufe, Datenbanktransaktionen und Modellladen melden Fehler durch ursachenspezifische Python-Ausnahmen. Die Flask-Apps ordnen ihnen die bestehenden HTTP-Statuscodes und Problemtypen zu. Dieselbe Ergebnisprüfung wird für Evaluationsanfragen, Retrievalantworten und die CLI verwendet.
+
+262 Unit-Tests und 11 isolierte Podman-Integrationstests mit Vector, RAG und Reranker bestanden. Acht optionale Tests mit echtem Host-Ollama wurden ausgelassen. Die Providerfehler wurden mit Testdoubles geprüft.
+
 ### Eingabevalidierung an die HTTP-Endpunkte verlegt
 
 RAG, Vector und Reranker prüfen ihre Eingaben am jeweiligen Endpunkt. Die gemeinsamen Flask-Handler erzeugen weiterhin Problem Details und korrelieren Requests. RAG und Vector nutzen gemeinsame, Flask-freie Prüfungen für den Vector-Suchvertrag. Die Vector-API initialisiert den Pool erst beim Transaktionsbeginn. Ungültige Abfragen werden auch mit `HEAD` vor der Poolinitialisierung mit HTTP 400 abgewiesen.

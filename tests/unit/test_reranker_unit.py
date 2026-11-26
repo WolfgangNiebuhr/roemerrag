@@ -92,6 +92,7 @@ def test_failed_switch_keeps_previous_model_and_retries(model_factory):
     for _ in range(2):
         response = client.post("/rerank", json={**payload, "model": "missing"})
         assert response.status_code == 503
+        assert response.json["type"] == "urn:rag:problem:model-unavailable"
         assert response.json["model"] == "missing"
     assert reranker_app.MODEL is previous
     assert reranker_app.ACTIVE_MODEL_NAME == "good"
@@ -138,3 +139,13 @@ def test_health_preserves_explicit_selection(model_factory):
     client.post("/rerank", json={"model": "other", "query": "q", "documents": ["doc"]})
     assert client.get("/health").json["model_name"] == "other"
     assert model_factory.call_count == 2
+
+
+def test_health_translates_model_load_failure(model_factory):
+    model_factory.side_effect = RuntimeError("private model download failure")
+    response = reranker_app.app.test_client().get("/health")
+    assert response.status_code == 503
+    assert response.json["type"] == "urn:rag:problem:model-unavailable"
+    assert response.json["stage"] == "reranking"
+    assert "model" not in response.json
+    assert "private" not in response.text

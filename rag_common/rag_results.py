@@ -1,14 +1,18 @@
 import math
-from .http_errors import Problem
+
+
+class InvalidResults(ValueError):
+    """The supplied results do not have the expected chunk structure."""
+
 
 def validate_results(results):
     if not isinstance(results, list):
-        raise Problem("upstream-invalid-response", "Erwartet wurde eine Liste.")
+        raise InvalidResults("Erwartet wurde eine Liste.")
     for row in results:
         if (not isinstance(row, dict)
                 or not isinstance(row.get("chunk_id"), str) or not row["chunk_id"].strip()
                 or not isinstance(row.get("chunktext"), str)):
-            raise Problem("upstream-invalid-response", "Retrieval contains invalid chunk fields.")
+            raise InvalidResults("Retrieval contains invalid chunk fields.")
     return results
 
 

@@ -2,9 +2,9 @@ import sys
 from pathlib import Path
 sys.path.insert(0, str(Path(__file__).resolve().parents[1]))
 from rag_common.http_errors import (
-    Problem, aliased_text, install, invalid_request, json_object, text_field, validating_request,
+    aliased_text, install, invalid_request, json_object, problem_response, text_field, validating_request,
 )
-from rag_common.rag_results import validate_results, generation_metrics
+from rag_common.rag_results import InvalidResults, generation_metrics, validate_results
 from rag_common.vector_contract import VectorInputError, parse_search_options, parse_vector
 from flask import Flask, jsonify, g, has_request_context
 import os
@@ -52,6 +52,25 @@ READ_TIMEOUTS = {name: float(os.getenv("RAG_" + name.upper() + "_TIMEOUT", str(d
                                        ("reranking", 600), ("generation", 600))}
 
 
+class ProviderUnavailable(RuntimeError):
+    """A provider call could not complete successfully."""
+
+
+class InvalidProviderResponse(ValueError):
+    """A provider returned data that does not meet its response contract."""
+
+
+@app.errorhandler(ProviderUnavailable)
+def provider_unavailable(error):
+    return problem_response("dependency-unavailable", str(error))
+
+
+@app.errorhandler(InvalidResults)
+@app.errorhandler(InvalidProviderResponse)
+def invalid_upstream_response(error):
+    return problem_response("upstream-invalid-response", str(error))
+
+
 def upstream_post(url, payload, stage):
     attempts = 1 if stage == "generation" else 2
     for attempt in range(attempts):
@@ -59,20 +78,20 @@ def upstream_post(url, payload, stage):
         if has_request_context():
             remaining = g.get("deadline", time.monotonic() + TOTAL_TIMEOUT) - time.monotonic()
         if remaining <= 0:
-            raise Problem("dependency-unavailable", "RAG time budget exhausted.")
+            raise ProviderUnavailable("RAG time budget exhausted.")
         try:
             response = requests.post(url, json=payload,
                 timeout=(min(CONNECT_TIMEOUT, remaining), min(READ_TIMEOUTS[stage], remaining)),
                 headers={"X-Request-ID": g.request_id} if has_request_context() else {})
             if has_request_context() and time.monotonic() > g.deadline:
-                raise Problem("dependency-unavailable", "RAG time budget exhausted.")
+                raise ProviderUnavailable("RAG time budget exhausted.")
             return response
         except (requests.Timeout, requests.ConnectionError) as exc:
             if attempt + 1 == attempts:
-                raise Problem("dependency-unavailable", stage + " is unavailable.") from exc
+                raise ProviderUnavailable(stage + " is unavailable.") from exc
             delay = 0.1 * (2 ** attempt) + random.uniform(0, 0.1)
             if has_request_context() and time.monotonic() + delay >= g.deadline:
-                raise Problem("dependency-unavailable", "RAG time budget exhausted.") from exc
+                raise ProviderUnavailable("RAG time budget exhausted.") from exc
             app.logger.warning("upstream_retry stage=%s attempt=%s", stage, attempt + 1)
             time.sleep(delay)
 
@@ -103,8 +122,8 @@ def generate_embedding(query, with_metrics=False):
                                     "prompt_tokens": available["prompt_tokens"]}
             return normalized
         except (ValueError, TypeError, AttributeError, OverflowError) as exc:
-            raise Problem("upstream-invalid-response", "Embedding returned an invalid vector.") from exc
-    raise Problem("dependency-unavailable", "Embedding is unavailable.")
+            raise InvalidProviderResponse("Embedding returned an invalid vector.") from exc
+    raise ProviderUnavailable("Embedding is unavailable.")
 
 
 def search_vectors(embedding, embedding_set_id, metric, num_results):
@@ -120,10 +139,10 @@ def search_vectors(embedding, embedding_set_id, metric, num_results):
         try:
             results = response.json()
         except ValueError as error:
-            raise Problem("upstream-invalid-response", "Retrieval returned invalid JSON.") from error
+            raise InvalidProviderResponse("Retrieval returned invalid JSON.") from error
         return validate_results(results)
     else:
-        raise Problem("dependency-unavailable", "Retrieval is unavailable.")
+        raise ProviderUnavailable("Retrieval is unavailable.")
 
 
 def generate_answer(context, question, model=None, system_prompt=None, user_prompt=None):
@@ -140,14 +159,14 @@ def generate_answer(context, question, model=None, system_prompt=None, user_prom
     }
     response = upstream_post(resolve_ollama_base_url() + "/api/generate", payload, "generation")
     if response.status_code != 200:
-        raise Problem("dependency-unavailable", "Generation is unavailable.")
+        raise ProviderUnavailable("Generation is unavailable.")
 
     try:
         data = response.json()
     except ValueError as exc:
-        raise Problem("upstream-invalid-response", "Generation returned invalid JSON.") from exc
+        raise InvalidProviderResponse("Generation returned invalid JSON.") from exc
     if not isinstance(data, dict) or not isinstance(data.get("response"), str):
-        raise Problem("upstream-invalid-response", "Generation returned an invalid answer.")
+        raise InvalidProviderResponse("Generation returned an invalid answer.")
     answer = data["response"]
     metrics = generation_metrics(data)
     return answer, metrics
@@ -157,7 +176,7 @@ def rerank_results(query, results, model, top_k, with_scores=False):
         "model": model, "query": query,
         "documents": [row["chunktext"] for row in results]}, "reranking")
     if response.status_code != 200:
-        raise Problem("dependency-unavailable", "Reranking is unavailable.")
+        raise ProviderUnavailable("Reranking is unavailable.")
     try:
         body = response.json()
         ranked = body["ranked_documents"]
@@ -180,7 +199,7 @@ def rerank_results(query, results, model, top_k, with_scores=False):
             selected.append(result)
         return selected
     except (ValueError, TypeError, KeyError) as exc:
-        raise Problem("upstream-invalid-response", "Reranking returned an invalid document mapping.") from exc
+        raise InvalidProviderResponse("Reranking returned an invalid document mapping.") from exc
 
 
 def read_rag_request():
@@ -207,14 +226,9 @@ def parse_rag_options(data, *, default_top_k):
 
 
 def validate_evaluation_results(data):
-    rows = data.get("results")
-    if not isinstance(rows, list) or any(
-        not isinstance(row, dict)
-        or not isinstance(row.get("chunk_id"), str)
-        or not row["chunk_id"].strip()
-        or not isinstance(row.get("chunktext"), str)
-        for row in rows
-    ):
+    try:
+        validate_results(data.get("results"))
+    except InvalidResults:
         invalid_request("results muss Chunkobjekte mit chunk_id und chunktext enthalten.", "results")
 
 

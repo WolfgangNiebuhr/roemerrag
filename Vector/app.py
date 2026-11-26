@@ -2,7 +2,7 @@ import sys
 from pathlib import Path
 sys.path.insert(0, str(Path(__file__).resolve().parents[1]))
 from rag_common.http_errors import (
-    Problem, aliased_text, install, invalid_request, json_object, text_field, validating_request,
+    Problem, aliased_text, install, invalid_request, json_object, problem_response, text_field, validating_request,
 )
 from rag_common.vector_contract import VectorInputError, parse_search_options, parse_vector
 from flask import Flask, request, jsonify
@@ -23,6 +23,15 @@ install(app, default_stage="storage")
 
 db_pool = None
 pool_init_lock = Lock()
+
+
+class DatabaseUnavailable(RuntimeError):
+    """The database cannot currently serve the requested operation."""
+
+
+@app.errorhandler(DatabaseUnavailable)
+def database_unavailable(error):
+    return problem_response("dependency-unavailable", "Database is unavailable.")
 
 
 def ensure_db_pool():
@@ -57,13 +66,19 @@ def liveness():
 
 @app.get("/health/ready")
 def readiness():
+    check_database_ready()
+    return jsonify({"status": "ready"})
+
+
+def check_database_ready():
     try:
         with transaction() as conn:
             with conn.cursor() as cur:
                 cur.execute("SELECT chunk_id, embedding_set_id, vector, chunktext FROM vectors LIMIT 0")
+    except DatabaseUnavailable:
+        raise
     except Exception as exc:
-        raise Problem("dependency-unavailable", "Database is unavailable.") from exc
-    return jsonify({"status": "ready"})
+        raise DatabaseUnavailable("Database readiness check failed.") from exc
 
 
 @contextmanager
@@ -72,11 +87,11 @@ def transaction():
         ensure_db_pool()
     current_pool = db_pool
     if current_pool is None:
-        raise Problem("dependency-unavailable", "Database is unavailable.")
+        raise DatabaseUnavailable("Database pool is unavailable.")
     try:
         conn = current_pool.getconn()
     except Exception as exc:
-        raise Problem("dependency-unavailable", "Database is unavailable.") from exc
+        raise DatabaseUnavailable("Could not acquire a database connection.") from exc
     discard = False
     failed = False
     try:
@@ -94,13 +109,13 @@ def transaction():
     finally:
         try:
             current_pool.putconn(conn, close=True) if discard or conn.closed else current_pool.putconn(conn)
-        except Exception:
+        except Exception as exc:
             try:
                 conn.close()
             except Exception:
                 pass
             if not failed:
-                raise Problem("dependency-unavailable", "Database is unavailable.")
+                raise DatabaseUnavailable("Could not return the database connection.") from exc
 
 def resolve_set_id(data, *, required=False, query_parameter=False):
     return aliased_text(

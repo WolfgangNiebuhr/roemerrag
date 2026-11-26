@@ -86,7 +86,7 @@ def test_generate_embedding_rejects_missing_or_zero_vector(monkeypatch, embeddin
     response.json.return_value = {"embedding": embedding}
     monkeypatch.setattr("requests.post", Mock(return_value=response))
 
-    with pytest.raises(rag_app.Problem):
+    with pytest.raises(rag_app.InvalidProviderResponse):
         rag_app.generate_embedding("test query")
 
 
@@ -94,7 +94,7 @@ def test_generate_embedding_rejects_http_error(monkeypatch):
     response = Mock(status_code=503, text="model unavailable")
     monkeypatch.setattr("requests.post", Mock(return_value=response))
 
-    with pytest.raises(Exception, match="Embedding is unavailable"):
+    with pytest.raises(rag_app.ProviderUnavailable, match="Embedding is unavailable"):
         rag_app.generate_embedding("test query")
 
 
@@ -104,7 +104,7 @@ def test_search_vectors_sends_filters_and_rejects_non_list(monkeypatch):
     post = Mock(return_value=response)
     monkeypatch.setattr("requests.post", post)
 
-    with pytest.raises(Exception, match="Erwartet wurde eine Liste"):
+    with pytest.raises(rag_app.InvalidResults, match="Erwartet wurde eine Liste"):
         rag_app.search_vectors(rag_app.np.array([0.6, 0.8]), "embed-v1", "cosine", 3)
 
     post.assert_called_once_with(
@@ -136,7 +136,7 @@ def test_generate_answer_converts_metrics_and_reports_http_error(monkeypatch):
     assert post.call_args.kwargs["json"]["prompt"] == "Kontext:\ncontext\n\nFrage: question"
 
     post.return_value = Mock(status_code=500, text="generation failed")
-    with pytest.raises(Exception, match="Generation is unavailable"):
+    with pytest.raises(rag_app.ProviderUnavailable, match="Generation is unavailable"):
         rag_app.generate_answer("context", "question")
 
 @pytest.mark.parametrize("fields", [{"filter": "legacy"}, {"embedding_set_id": "new"}])
@@ -208,11 +208,13 @@ def test_invalid_retrieval_json_maps_to_problem(monkeypatch):
     response = Mock(status_code=200)
     response.json.side_effect = ValueError('private upstream body')
     monkeypatch.setattr("requests.post", Mock(return_value=response))
-    from rag_common.http_errors import Problem
-    with pytest.raises(Problem) as caught:
-        rag_app.search_vectors(rag_app.np.array([1]), 'set', 'cosine', 1)
-    assert caught.value.kind == 'upstream-invalid-response'
-    assert 'private' not in caught.value.detail
+    monkeypatch.setattr(rag_app, 'generate_embedding', Mock(return_value=rag_app.np.array([1])))
+    result = rag_app.app.test_client().post('/process', json={'query': 'q'})
+    assert result.status_code == 502
+    assert result.mimetype == 'application/problem+json'
+    assert result.json['type'] == 'urn:rag:problem:upstream-invalid-response'
+    assert result.json['stage'] == 'retrieval'
+    assert result.json['detail'] == 'Retrieval returned invalid JSON.'
 
 
 def test_unavailable_retrieval_does_not_become_no_context(monkeypatch):
@@ -222,6 +224,8 @@ def test_unavailable_retrieval_does_not_become_no_context(monkeypatch):
     monkeypatch.setattr(rag_app, 'generate_answer', generate)
     response = rag_app.app.test_client().post('/process', json={'query': 'q'})
     assert response.status_code == 503
+    assert response.json['type'] == 'urn:rag:problem:dependency-unavailable'
+    assert response.json['stage'] == 'retrieval'
     generate.assert_not_called()
 
 
@@ -237,7 +241,7 @@ def test_reranking_rejects_invalid_mapping(monkeypatch, mapping):
     response = Mock(status_code=200)
     response.json.return_value = {"ranked_documents": mapping}
     monkeypatch.setattr("requests.post", Mock(return_value=response))
-    with pytest.raises(rag_app.Problem):
+    with pytest.raises(rag_app.InvalidProviderResponse):
         rag_app.rerank_results("q", [{"chunk_id":"c", "chunktext":"text"}], "m", 1)
 
 
@@ -277,7 +281,7 @@ def test_transport_retries_are_bounded(monkeypatch, stage, attempts):
     import requests
     post = Mock(side_effect=requests.Timeout())
     monkeypatch.setattr("requests.post", post)
-    with pytest.raises(rag_app.Problem):
+    with pytest.raises(rag_app.ProviderUnavailable):
         rag_app.upstream_post('url', {}, stage)
     assert post.call_count == attempts
 
@@ -287,7 +291,7 @@ def test_expired_budget_prevents_upstream_request(monkeypatch):
     monkeypatch.setattr("requests.post", post)
     with rag_app.app.test_request_context('/process'):
         rag_app.g.deadline = 0
-        with pytest.raises(rag_app.Problem):
+        with pytest.raises(rag_app.ProviderUnavailable):
             rag_app.upstream_post('url', {}, 'retrieval')
     post.assert_not_called()
 
@@ -318,19 +322,31 @@ def test_embedding_invalid_provider_vectors(monkeypatch, embedding):
     response = Mock(status_code=200)
     response.json.return_value = {'embedding':embedding}
     monkeypatch.setattr("requests.post", Mock(return_value=response))
-    with pytest.raises(rag_app.Problem) as caught:
+    with pytest.raises(rag_app.InvalidProviderResponse, match='Embedding returned an invalid vector'):
         rag_app.generate_embedding('q')
-    assert caught.value.kind == 'upstream-invalid-response'
 
 
 @pytest.mark.parametrize('body', [{}, {'response':None}, {'response':3}, []])
-def test_generation_invalid_answer_is_502(monkeypatch, body):
+def test_generation_rejects_invalid_provider_answer(monkeypatch, body):
     response = Mock(status_code=200)
     response.json.return_value = body
     monkeypatch.setattr("requests.post", Mock(return_value=response))
-    with pytest.raises(rag_app.Problem) as caught:
+    with pytest.raises(rag_app.InvalidProviderResponse, match='Generation returned an invalid answer'):
         rag_app.generate_answer('text', 'q')
-    assert caught.value.kind == 'upstream-invalid-response'
+
+
+@pytest.mark.parametrize('endpoint', ['rerank', 'generate'])
+def test_invalid_client_results_remain_a_validation_problem(monkeypatch, endpoint):
+    post = Mock()
+    monkeypatch.setattr("requests.post", post)
+    response = rag_app.app.test_client().post('/evaluate/' + endpoint, json={
+        'query': 'q', 'results': [{'chunk_id': 'c', 'chunktext': None}],
+    })
+    assert response.status_code == 400
+    assert response.json['type'] == 'urn:rag:problem:invalid-request'
+    assert response.json['stage'] == 'validation'
+    assert response.json['errors'][0]['pointer'] == '/results'
+    post.assert_not_called()
 
 
 def test_analysis_uses_shared_provider_functions():

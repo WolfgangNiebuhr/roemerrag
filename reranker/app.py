@@ -18,6 +18,10 @@ ACTIVE_MODEL_NAME = None
 MODEL_LOCK = Lock()
 
 
+class ModelUnavailable(RuntimeError):
+    """The requested reranking model could not be loaded."""
+
+
 def load_model(model_name):
     """Caller holds MODEL_LOCK across selection and inference."""
     global MODEL, ACTIVE_MODEL_NAME
@@ -28,7 +32,7 @@ def load_model(model_name):
             candidate = CrossEncoder(model_name, trust_remote_code=False)
         except Exception as error:
             logging.exception("Modell konnte nicht geladen werden: %s", model_name)
-            raise RuntimeError("Rerank model is not available") from error
+            raise ModelUnavailable("Rerank model is not available") from error
         MODEL, ACTIVE_MODEL_NAME = candidate, model_name
     return MODEL
 
@@ -46,29 +50,26 @@ def rerank():
     if not documents:
         return jsonify({"ranked_documents": [], "model": model_name})
 
-    try:
-        sentences = [[query, doc] for doc in documents]
-        with MODEL_LOCK:
-            try:
-                model = load_model(model_name)
-            except RuntimeError:
-                raise Problem("model-unavailable", "Rerank-Modell ist nicht verf?gbar.", model=model_name)
-            scores = model.predict(sentences)
+    sentences = [[query, doc] for doc in documents]
+    with MODEL_LOCK:
+        try:
+            model = load_model(model_name)
+        except ModelUnavailable as error:
+            raise Problem("model-unavailable", "Rerank-Modell ist nicht verf?gbar.", model=model_name) from error
+        scores = model.predict(sentences)
 
-        results = []
-        for i, (doc, score) in enumerate(zip(documents, scores)):
-            results.append({
-                "original_index": i,
-                "score": float(score),
-                "text": doc
-            })
+    results = []
+    for i, (doc, score) in enumerate(zip(documents, scores)):
+        results.append({
+            "original_index": i,
+            "score": float(score),
+            "text": doc
+        })
 
-        ranked_results = sorted(results, key=lambda x: x['score'], reverse=True)
-        logging.info("Rerank request processed: documents=%s", len(documents))
-        return jsonify({"ranked_documents": ranked_results, "model": model_name})
+    ranked_results = sorted(results, key=lambda x: x['score'], reverse=True)
+    logging.info("Rerank request processed: documents=%s", len(documents))
+    return jsonify({"ranked_documents": ranked_results, "model": model_name})
 
-    except Exception as e:
-        raise
 
 @app.route('/health', methods=['GET'])
 def health_check():
@@ -76,8 +77,8 @@ def health_check():
         try:
             if MODEL is None:
                 load_model(MODEL_NAME)
-        except RuntimeError:
-            raise Problem("model-unavailable", "Rerank-Modell ist nicht verf?gbar.")
+        except ModelUnavailable as error:
+            raise Problem("model-unavailable", "Rerank-Modell ist nicht verf?gbar.") from error
         return jsonify({"status": "ok", "model_loaded": True, "model_name": ACTIVE_MODEL_NAME}), 200
 
 if __name__ == '__main__':

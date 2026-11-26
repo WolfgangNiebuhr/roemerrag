@@ -193,6 +193,17 @@ def test_readiness_uses_transaction(database):
     conn.commit.assert_called_once()
 
 
+def test_readiness_translates_schema_failure(database):
+    module, _, conn, cursor = database
+    cursor.execute.side_effect = RuntimeError("private database error")
+    response = module.app.test_client().get("/health/ready")
+    assert response.status_code == 503
+    assert response.json["type"] == "urn:rag:problem:dependency-unavailable"
+    assert response.json["stage"] == "storage"
+    assert response.json["detail"] == "Database is unavailable."
+    conn.rollback.assert_called_once()
+
+
 def test_initializing_request_does_not_wait_for_lock(vector_module):
     vector_module.pool_init_lock.acquire()
     try:
