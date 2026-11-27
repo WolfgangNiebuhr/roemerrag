@@ -160,7 +160,9 @@ def test_process_rejects_conflicting_aliases_before_embedding(monkeypatch):
 
 def test_cli_reranking_keeps_chunktext_and_chunk_identity(monkeypatch):
     response = Mock(status_code=200)
-    response.json.return_value = {"model": "model", "ranked_documents": [{"text": "second", "original_index": 1}]}
+    response.json.return_value = {"model": "model", "ranked_documents": [
+        {"text": "second", "original_index": 1, "score": 0.9},
+    ]}
     post = Mock(return_value=response)
     monkeypatch.setattr("requests.post", post)
     rows = [{"chunk_id": "a", "chunktext": "first"}, {"chunk_id": "b", "chunktext": "second"}]
@@ -235,14 +237,52 @@ def test_metrics_zero_tokens_and_invalid_counts():
     assert metrics['prompt_tokens'] is None
 
 
-@pytest.mark.parametrize("mapping", [[{"original_index": True}], [{"original_index": 2}],
-    [{"original_index": 0}, {"original_index": 0}], None])
+@pytest.mark.parametrize("mapping", [[{"original_index": True, "score": 0.9}],
+    [{"original_index": 2, "score": 0.9}],
+    [{"original_index": 0, "score": 0.9}, {"original_index": 0, "score": 0.8}], None])
 def test_reranking_rejects_invalid_mapping(monkeypatch, mapping):
     response = Mock(status_code=200)
     response.json.return_value = {"ranked_documents": mapping}
     monkeypatch.setattr("requests.post", Mock(return_value=response))
     with pytest.raises(rag_app.InvalidProviderResponse):
         rag_app.rerank_results("q", [{"chunk_id":"c", "chunktext":"text"}], "m", 1)
+
+
+@pytest.mark.parametrize("endpoint", ["/process", "/evaluate/rerank"])
+@pytest.mark.parametrize("invalid_score", [
+    {"score": float("nan")}, {"score": float("inf")}, {"score": -float("inf")},
+    {"score": True}, {"score": "0.5"}, {"score": None}, {},
+])
+def test_rag_rejects_invalid_score_beyond_top_k(monkeypatch, endpoint, invalid_score):
+    rows = [{"chunk_id": "a", "chunktext": "first"}, {"chunk_id": "b", "chunktext": "second"}]
+    monkeypatch.setattr(rag_app, "generate_embedding", Mock(return_value=[1]))
+    monkeypatch.setattr(rag_app, "search_vectors", Mock(return_value=rows))
+    generate = Mock()
+    monkeypatch.setattr(rag_app, "generate_answer", generate)
+    response = Mock(status_code=200)
+    response.json.return_value = {"ranked_documents": [
+        {"original_index": 0, "score": 0.9}, {"original_index": 1, **invalid_score},
+    ]}
+    monkeypatch.setattr("requests.post", Mock(return_value=response))
+    payload = {"query": "q", "top_k": 1}
+    if endpoint == "/evaluate/rerank":
+        payload["results"] = rows
+
+    result = rag_app.app.test_client().post(endpoint, json=payload)
+
+    assert result.status_code == 502
+    assert result.json["type"] == "urn:rag:problem:upstream-invalid-response"
+    assert result.json["stage"] == "reranking"
+    generate.assert_not_called()
+
+
+def test_rag_preserves_reranker_bad_gateway_status(monkeypatch):
+    monkeypatch.setattr("requests.post", Mock(return_value=Mock(status_code=502)))
+    result = rag_app.app.test_client().post("/evaluate/rerank", json={
+        "query": "q", "results": [{"chunk_id": "a", "chunktext": "first"}],
+    })
+    assert result.status_code == 502
+    assert result.json["stage"] == "reranking"
 
 
 @pytest.mark.parametrize("top_k", [-1, True, "1", 1.5])

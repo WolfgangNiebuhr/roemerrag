@@ -267,7 +267,7 @@ Serverbetrieb, Zugangskontrolle und externe Geheimnisse vor einer Exposition ums
 
 ### TS-19 – Stiller Trefferverlust beim Reranking
 
-**Status** · offen
+**Status** · behoben
 
 **Schweregrad** · P1
 
@@ -275,9 +275,7 @@ Serverbetrieb, Zugangskontrolle und externe Geheimnisse vor einer Exposition ums
 
 Der Reranker koppelt Dokumente und Modell-Scores per `zip`. Bei zu wenigen Scores fallen Dokumente still aus der Antwort. Die RAG-API prüft die vorhandenen Indizes, aber keine vollständige Zuordnung. Leere oder unvollständige Modellergebnisse können daher als reguläres Ergebnis erscheinen. Die Prüfung nicht endlicher Scores unterscheidet sich zwischen den RAG-Pfaden.
 
-**Lösungsvorschlag**
-
-Genau einen endlichen Score pro Eingabedokument verlangen. Unvollständige Zuordnung, überzählige Scores, ungültige Indizes und nicht endliche Scores in beiden RAG-Pfaden mit HTTP 502 im Schritt `reranking` abweisen. Leere Eingaben separat testen.
+Der [Reranker](../reranker/app.py) prüft Modellscores vor der Sortierung. Der gemeinsame [RAG-Adapter](../rag/app.py) prüft alle zurückgegebenen Scores und Indizes vor der `top_k`-Auswahl. Ungültige Scores führen zu HTTP 502 im Schritt `reranking`. Leere Eingaben werden separat behandelt und getestet. Fehlende und überzählige Scores sind für den Betrieb mit dem Standardmodell als [Risiko R-04](11-1-risiken.md#r-04--fehlende-oder-überzählige-scores-beim-reranking) akzeptiert.
 
 ### TS-20 – Widersprüchlicher Vertrag für fehlenden Chunktext
 

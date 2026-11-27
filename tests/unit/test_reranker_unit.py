@@ -48,6 +48,35 @@ def test_reranker_component_scores_and_sorts_documents(monkeypatch):
     ])
 
 
+@pytest.mark.parametrize("score", [float("nan"), float("inf"), -float("inf"), None, "invalid"])
+def test_reranker_rejects_invalid_model_score(monkeypatch, score):
+    model = Mock()
+    model.predict.return_value = [0.9, score]
+    monkeypatch.setattr(reranker_app, "MODEL", model)
+
+    response = reranker_app.app.test_client().post("/rerank", json={
+        "query": "q", "documents": ["first", "second"],
+    })
+
+    assert response.status_code == 502
+    assert response.json["type"] == "urn:rag:problem:upstream-invalid-response"
+    assert response.json["stage"] == "reranking"
+
+
+@pytest.mark.parametrize("scores, expected", [([], []), ([0.9], [0.9]), ([0.9, 0.8, 0.7], [0.9, 0.8])])
+def test_reranker_accepts_score_count_mismatch(monkeypatch, scores, expected):
+    model = Mock()
+    model.predict.return_value = scores
+    monkeypatch.setattr(reranker_app, "MODEL", model)
+
+    response = reranker_app.app.test_client().post("/rerank", json={
+        "query": "q", "documents": ["first", "second"],
+    })
+
+    assert response.status_code == 200
+    assert [row["score"] for row in response.json["ranked_documents"]] == expected
+
+
 def test_reranker_component_returns_error_when_model_prediction_fails(monkeypatch):
     model = Mock()
     model.predict.side_effect = RuntimeError("inference failed")

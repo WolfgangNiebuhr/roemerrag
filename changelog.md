@@ -17,6 +17,36 @@ Aus README und docs übernommene Änderungshistorie. Gleichdatierte Einträge fo
 
 ## 2026-11-27
 
+### Score-Validierung beim Reranking umgesetzt
+
+Der Reranker prüft Modellscores vor der Sortierung. Beide RAG-Pfade prüfen die Scores aller zurückgegebenen Treffer vor `top_k` und melden ungültige Scores mit HTTP 502 im Schritt `reranking`. TS-19 ist behoben. Die akzeptierte Abweichung der Score-Anzahl nach R-04 gilt weiter.
+
+296 Unit-Tests bestanden. Die Regressionstests decken unter anderem `NaN` hinter der `top_k`-Grenze in beiden RAG-Pfaden, abweichende Score-Anzahlen und leere Eingaben ab. Die Podman-Integration entfiel wegen verweigerten Zugriffs auf den Verbindungsschlüssel. `git diff --check` geprüft.
+
+### R-04 um überzählige Scores erweitert
+
+R-04 umfasst für das Standardmodell auch überzählige Scores. TS-19 führt die bereits vorhandene Prüfung ungültiger und doppelter Indizes im gemeinsamen RAG-Adapter auf. Offen bleiben die Prüfung nicht endlicher Scores und der separate Test leerer Eingaben.
+
+Linkziele und `git diff --check` geprüft. Anwendungstests entfallen bei dieser Dokumentationsänderung.
+
+### Offene Validierungsarbeiten zu TS-19 präzisiert
+
+Die Prüfung auf fehlende Scores entfällt wegen des akzeptierten Risikos R-04. TS-19 bleibt für überzählige Scores, ungültige oder doppelte Indizes und nicht endliche Scores offen. Der separate Test leerer Eingaben bleibt vorgesehen.
+
+`git diff --check` geprüft. Anwendungstests entfallen bei dieser Dokumentationsänderung.
+
+### Fehlende Reranker-Scores als Risiko akzeptiert
+
+Kapitel 11.1 erfasst den möglichen stillen Trefferverlust beim Betrieb mit dem Standardmodell als R-04. R-04 und TS-19 sind wechselseitig verlinkt.
+
+Linkziele und `git diff --check` geprüft. Anwendungstests entfallen bei dieser Dokumentationsänderung.
+
+### TS-19 mit dem Standardmodell geprüft
+
+Der lokale Flask-Testclient prüfte `cross-encoder/ms-marco-MiniLM-L6-v2` mit Sentence Transformers 4.1.0 und Transformers 4.53.0 auf CUDA. Bei 1, 5, 31, 32, 33, 65 und 129 Dokumenten sowie bei parallelen Anfragen waren alle Indizes vorhanden und alle Scores endlich. Die Eingaben umfassten Duplikate, mehrere Schriftsysteme und Texte oberhalb des Tokenlimits. Auch eine lange Anfrage mit langem Dokument lieferte einen Score. Leere Eingaben lieferten die erwartete leere Liste.
+
+Gezieltes Kürzen der echten Modellausgabe auf drei bzw. null Scores für fünf Dokumente bestätigte den stillen Trefferverlust mit HTTP 200. Ein simulierter Speichermangel im zweiten Batch ergab HTTP 500 ohne Teilergebnis. Der Podman-Lauf entfiel wegen verweigerten Zugriffs auf den Verbindungsschlüssel.
+
 ### Restarbeiten im Schuldenregister präzisiert
 
 TS-05 bleibt für den regulären Import über die Pipeline behoben. Import3 bleibt bis zum persönlichen Test der Pipeline durch den Projektverantwortlichen als Fallback verfügbar. Das Importkonzept hält diese Rolle fest. Bei TS-11, TS-12 und TS-15 sind die Anpassung des Analyseclients, `NUM_RESULTS` und die Ergänzung von SciPy aus den Restarbeiten gestrichen.

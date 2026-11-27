@@ -5,6 +5,7 @@ from rag_common.http_errors import Problem, install, invalid_request, json_objec
 from flask import Flask, jsonify
 import os
 import logging
+import math
 from threading import Lock
 
 logging.basicConfig(level=logging.INFO, format='%(asctime)s - %(levelname)s - %(message)s')
@@ -58,13 +59,17 @@ def rerank():
             raise Problem("model-unavailable", "Rerank-Modell ist nicht verf?gbar.", model=model_name) from error
         scores = model.predict(sentences)
 
-    results = []
-    for i, (doc, score) in enumerate(zip(documents, scores)):
-        results.append({
-            "original_index": i,
-            "score": float(score),
-            "text": doc
-        })
+    try:
+        scores = [float(score) for score in scores]
+    except (TypeError, ValueError, OverflowError) as error:
+        raise Problem("upstream-invalid-response", "Reranking returned an invalid score.") from error
+    if not all(math.isfinite(score) for score in scores):
+        raise Problem("upstream-invalid-response", "Reranking returned an invalid score.")
+
+    results = [
+        {"original_index": index, "score": score, "text": doc}
+        for index, (doc, score) in enumerate(zip(documents, scores))
+    ]
 
     ranked_results = sorted(results, key=lambda x: x['score'], reverse=True)
     logging.info("Rerank request processed: documents=%s", len(documents))

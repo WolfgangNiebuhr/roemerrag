@@ -177,6 +177,8 @@ def rerank_results(query, results, model, top_k, with_scores=False):
     response = upstream_post(RERANKER_URL, {
         "model": model, "query": query,
         "documents": [row["chunktext"] for row in results]}, "reranking")
+    if response.status_code == 502:
+        raise InvalidProviderResponse("Reranker rejected an invalid upstream response.")
     if response.status_code != 200:
         raise ProviderUnavailable("Reranking is unavailable.")
     try:
@@ -190,17 +192,19 @@ def rerank_results(query, results, model, top_k, with_scores=False):
             if type(index) is not int or not 0 <= index < len(results) or index in seen:
                 raise ValueError()
             seen.add(index)
+            score = row["score"]
+            if type(score) not in (int, float) or not math.isfinite(score):
+                raise InvalidProviderResponse("Reranking returned an invalid score.")
         selected = []
         for row in ranked[:top_k]:
             result = dict(results[row["original_index"]])
             if with_scores:
-                score = row.get("score")
-                if type(score) not in (int, float) or not np.isfinite(score):
-                    raise ValueError()
-                result.update(rerank_score=score, original_index=row["original_index"])
+                result.update(rerank_score=row["score"], original_index=row["original_index"])
             selected.append(result)
         return selected
-    except (ValueError, TypeError, KeyError) as exc:
+    except InvalidProviderResponse:
+        raise
+    except (ValueError, TypeError, KeyError, OverflowError) as exc:
         raise InvalidProviderResponse("Reranking returned an invalid document mapping.") from exc
 
 
