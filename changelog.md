@@ -17,6 +17,19 @@ Aus README und docs übernommene Änderungshistorie. Gleichdatierte Einträge fo
 
 ## 2026-11-27
 
+### Restarbeiten im Schuldenregister präzisiert
+
+TS-05 bleibt für den regulären Import über die Pipeline behoben. Import3 bleibt bis zum persönlichen Test der Pipeline durch den Projektverantwortlichen als Fallback verfügbar. Das Importkonzept hält diese Rolle fest. Bei TS-11, TS-12 und TS-15 sind die Anpassung des Analyseclients, `NUM_RESULTS` und die Ergänzung von SciPy aus den Restarbeiten gestrichen.
+
+Geänderte Abschnitte und `git diff --check` geprüft. Anwendungstests entfallen bei dieser Dokumentationsänderung.
+
+### Stand der technischen Schulden geprüft
+
+TS-01 bis TS-26 mit Quellcode, Konfiguration und Testbestand abgeglichen. TS-05 ist für die Importpipeline umgesetzt. Der eigenständige Import3-Einstieg bereinigt kürzere Neuimporte weiterhin nicht und meldet Chunkfehler nicht im Rückgabestatus. Bei TS-11 entfällt die Anpassung des Analyseclients, bei TS-12 ist NUM_RESULTS in Verwendung und bei TS-15 besteht für die aktuelle Testsuite kein erkennbarer SciPy-Bedarf. Die übrigen Restarbeiten dieser Einträge bestehen fort.
+
+273 containerfreie Unit-Tests bestanden. Ein isolierter Import3-Aufruf mit Testdoubles bestätigte das Weiterlaufen nach einem Chunkfehler ohne Fehlerstatus. Ein Chunking-Aufruf ohne Zeichen-Fallback erzeugte bei einer Zielgröße von 1000 einen Chunk mit 1500 Zeichen. Podman- und Ollama-Integrationstests wurden für diesen Abgleich nicht erneut ausgeführt. Das Schuldenregister wurde bei dieser Bestandsaufnahme nicht geändert.
+
+
 ### Pflegevorgaben für die arc42-Kapitel 1 bis 11 vereinheitlicht
 
 Die Architekturdateien haben ausgeblendete Zweckbeschreibungen und kapitelbezogene Pflegevorgaben. Maßstab sind die [arc42-Dokumentation](https://docs.arc42.org/home/) und das Praxisbeispiel [DokChess](https://www.dokchess.de/). Das neue [Kapitel 10](docs/10-qualitaetsanforderungen.md) bündelt die bisherigen Prüfszenarien aus Kapitel 1. Kapitel 1 behält die Qualitätszielübersicht und verlinkt die Szenarien.

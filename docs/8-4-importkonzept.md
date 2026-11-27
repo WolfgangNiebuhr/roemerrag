@@ -10,7 +10,7 @@ agent_instructions:
 
 # 8.4 Variantenfaehiges Importkonzept
 
-Stand: 24.11.2026. Der gemeinsame Import ist als `python -m Ingest.pipeline` verfuegbar. Er unterstuetzt rekursives Chunking, keine Anreicherung oder Keywords und denselben Chunktext fuer Embedding und Speicherung. `Ingest/import3.py` bleibt als eigenstaendiger Einstieg erhalten. Die Abschnitte kennzeichnen offene Teile des Zielbilds.
+Stand: 24.11.2026. Der gemeinsame Import ist als `python -m Ingest.pipeline` verfuegbar. Er unterstuetzt rekursives Chunking, keine Anreicherung oder Keywords und denselben Chunktext fuer Embedding und Speicherung. `Ingest/import3.py` bleibt bis zum persönlichen Test der Pipeline durch den Projektverantwortlichen als Fallback verfügbar. Die Abschnitte kennzeichnen offene Teile des Zielbilds.
 
 Das Konzept konkretisiert [TS-05, TS-12, TS-14 und TS-17](11-2-technische-schulden.md) und baut auf [Error-Handling, Kapitel 8.3](8-3-error-handling.md), dem [Testkonzept](8-1-testkonzept.md) und der [manuellen Set-Zuordnung](8-2-embedding-sets.md) auf.
 

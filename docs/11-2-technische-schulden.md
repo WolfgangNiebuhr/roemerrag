@@ -71,6 +71,8 @@ Eine frei vergebene `embedding_set_id` belegt weder die Chunking- und Anreicheru
 
 **Status** · behoben
 
+Der Status gilt für den regulären Import mit [`Ingest.pipeline`](../Ingest/pipeline.py). [Import3](../Ingest/import3.py) bleibt bis zum persönlichen Test der Pipeline durch den Projektverantwortlichen als Fallback verfügbar. Der Fallback lässt bei kürzeren Wiederholungsimporten überzählige Chunks stehen und signalisiert protokollierte Chunkfehler nicht im Exitcode.
+
 **Schweregrad** · P1
 
 **Problembeschreibung**
@@ -147,7 +149,7 @@ Mehrdeutige Einzelabfragen zurückweisen oder als Sammlung beantworten. Die Sema
 
 #### Noch offen
 
-Vektorausgabe und Opt-in für Diagnosevektoren vereinheitlichen. Docstrings und Analyseclient anpassen. Erwartete Providervektordimension vor dem Retrieval prüfen und die Norm- und Endlichkeitsprüfung in Import3 ergänzen.
+Vektorausgabe und Opt-in für Diagnosevektoren vereinheitlichen. Die Vector-Docstrings an den Eingabevertrag anpassen. Erwartete Providervektordimension vor dem Retrieval prüfen. Für den Import3-Fallback fehlt weiterhin die Norm- und Endlichkeitsprüfung.
 
 ### TS-12 – Unvollständige Adapter und ungenutzte Konfiguration
 
@@ -161,7 +163,7 @@ Vektorausgabe und Opt-in für Diagnosevektoren vereinheitlichen. Docstrings und 
 
 #### Noch offen
 
-Import- und Keyword-Adapter mit einem gemeinsamen Ergebnistyp versehen. Ungenutzte Parameter und Konstanten bereinigen. Fehler des Ollama-Resolvers einheitlich übersetzen, dessen Probes ans Restbudget binden und sichere Fehlerausgaben prüfen.
+Import- und Keyword-Adapter mit einem gemeinsamen Ergebnistyp versehen. Den ungenutzten Gatewayparameter `chunk` sowie `QUERY` und die ungenutzten Ollama-Endpunktkonstanten in der RAG-API bereinigen. Fehler des Ollama-Resolvers einheitlich übersetzen, dessen Probes ans Restbudget binden und sichere Fehlerausgaben prüfen.
 
 **Lösungsvorschlag**
 
@@ -211,7 +213,7 @@ Die Dockerfiles für [Vector](../Vector/Dockerfile), [RAG](../rag/Dockerfile) un
 
 #### Noch offen
 
-Abhängigkeiten, Basisimages, pgvector-Commit und Modellrevisionen fixieren. Die dokumentierte Testinstallation um SciPy ergänzen und in einer frischen Umgebung prüfen. Bei weiteren Migrationen Versionserkennung und Reihenfolge absichern.
+Abhängigkeiten, Basisimages, pgvector-Commit und Modellrevisionen fixieren. Die dokumentierte Testinstallation in einer frischen Umgebung prüfen. Bei weiteren Migrationen Versionserkennung und Reihenfolge absichern.
 
 ### TS-16 – Indexstrategie passt nicht zu allen Suchmetriken
 
