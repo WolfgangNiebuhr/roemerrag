@@ -7,8 +7,8 @@ import logging
 import numpy as np
 from datetime import datetime
 if __package__:
-    from .utils.keywords import get_keywords_ollama
-    from .utils.chunking import split_text_into_chunks
+    from Ingest.utils.keywords import get_keywords_ollama
+    from Ingest.utils.chunking import split_text_into_chunks
 else:
     from utils.keywords import get_keywords_ollama
     from utils.chunking import split_text_into_chunks

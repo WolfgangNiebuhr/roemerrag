@@ -15,7 +15,7 @@ def export_results(query, results, filename="search_results.json"):
         # Erstelle das Export-Datenformat
         export_data = {
             "query": query,
-            "passages": [result["chunktext"] for result in results]
+            "passages": [(result["chunk_id"],result["chunktext"]) for result in results]
         }
 
         # Schreibe JSON-Datei mit UTF-8 Encoding und ensure_ascii=False für Sonderzeichen

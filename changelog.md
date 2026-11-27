@@ -17,6 +17,12 @@ Aus README und docs übernommene Änderungshistorie. Gleichdatierte Einträge fo
 
 ## 2026-11-27
 
+### Aktualisierte API-Images im laufenden Podman-Stack ausgerollt
+
+`vector-api` läuft mit Image `d10ad8f4b7c8`, `rag-api` mit `3dc5d7706e34` und `reranker` mit `d6f6e70618b1`. Beim Reranker enthält das neue Image die aktualisierten gemeinsamen HTTP-Helfer. Die Container verwenden ihre bisherigen Startparameter. Für den Rückwechsel stehen die gestoppten Container `vector-api-before-20261127-130649`, `rag-api-before-20261127-130651` und `reranker-before-20261127-130650` zur Verfügung.
+
+Vector-Readiness, Reranker-Health und RAG-Retrieval mit Distanzdiagnostik waren erfolgreich. Die Suche lieferte Vektoren als Zahlenlisten. Die Vector-API wies einen Listenstring und die RAG-API den entfernten Parameter `filter` mit HTTP 400 ab. PostgreSQL lief ohne Neustart weiter. Die lesende Zählung ergab 11.243 Datensätze.
+
 ### Vektoreingaben auf JSON-Zahlenlisten beschränkt
 
 `POST /vectors`, `POST /search` und `POST /evaluate/retrieve` verlangen im Eingabefeld `vector` eine JSON-Zahlenliste. Listenstrings ergeben HTTP 400 vor Datenbank- oder Providerzugriff. Die RAG-Distanzdiagnostik erwartet auch die gespeicherten Treffervektoren als JSON-Zahlenlisten.
@@ -430,7 +436,7 @@ Pruefung: **235 Unit-Tests** erfolgreich. Die vollstaendigen Chunkfolgen aller s
 
 ### Gemeinsamer Import nach Kapitel 8.4
 
-`Ingest.pipeline` importiert mit rekursivem Chunking und optionalen Keywords. Der neue Zeichen-Fallback begrenzt ueberlange ungetrennte Passagen. Derselbe Chunktext geht an Ollama und die Vector-API. Versionierte Artefakte erlauben den Einstieg nach Chunking oder Anreicherung. `Ingest.chunk` erzeugt Chunks ohne Dienstzugriff. `Ingest/import3.py` bleibt erhalten. TS-05 bleibt fuer dokumentweite Freigabe, Altlastenbereinigung und Wiederaufnahme anhand des Laufberichts offen.
+`Ingest.pipeline` importiert mit rekursivem Chunking und optionalen Keywords. Der neue Zeichen-Fallback begrenzt ueberlange ungetrennte Passagen. Derselbe Chunktext geht an Ollama und die Vector-API. Versionierte Artefakte erlauben den Einstieg nach Chunking oder Anreicherung. `Ingest.chunk` erzeugt Chunks ohne Dienstzugriff. `archive/import3.py` bleibt erhalten. TS-05 bleibt fuer dokumentweite Freigabe, Altlastenbereinigung und Wiederaufnahme anhand des Laufberichts offen.
 
 Pruefung: **231 Unit-Tests** erfolgreich. Beide Import-Integrationstests mit echten Ollama-Modellen, isoliertem Podman-Teststack und Ruecksuche erfolgreich (**2 passed**). Beide CLI-Hilfen und `git diff --check` erfolgreich. Die uebrigen Integrationstests wurden nicht erneut ausgefuehrt, da die Aenderung die Importpfade betrifft.
 

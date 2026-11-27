@@ -46,7 +46,7 @@ flowchart LR
 
 | Baustein | Verantwortung | Maßgebliche Implementierung |
 |---|---|---|
-| Dokumentimport | Chunking, optionale Keywords, normalisierte Embeddings und Speicherung | [pipeline.py](../Ingest/pipeline.py), [import3.py](../Ingest/import3.py), [chunking.py](../Ingest/utils/chunking.py), [keywords.py](../Ingest/utils/keywords.py), [gateway.py](../Ingest/utils/gateway.py) |
+| Dokumentimport | Chunking, optionale Keywords, normalisierte Embeddings und Speicherung | [pipeline.py](../Ingest/pipeline.py), [chunking.py](../Ingest/utils/chunking.py), [keywords.py](../Ingest/utils/keywords.py), [gateway.py](../Ingest/utils/gateway.py) |
 | RAG-API | Embedding, Retrieval, optionales Reranking, Kontext und Generierung orchestrieren | [app.py](../rag/app.py), [ollama_endpoint.py](../rag/ollama_endpoint.py), [Dockerfile](../rag/Dockerfile) |
 | Vector-API | CRUD und Ähnlichkeitssuche über PostgreSQL | [app.py](../Vector/app.py), [Dockerfile.api](../Vector/Dockerfile.api) |
 | Vektorspeicher | Chunks, Varianten und Vektoren persistent speichern | [init.sql](../Vector/init.sql), [Dockerfile](../Vector/Dockerfile) |
@@ -61,8 +61,6 @@ Die Endpunkte validieren und dekodieren ihre Eingaben vor Datenbank- oder Modell
 ### 5.3.1 Dokumentimport
 
 `Ingest.pipeline` liest die Versuchskonfiguration und verwendet rekursives Chunking, optionale Keyword-Anreicherung und normalisierbare Embeddings. Versionierte Zwischenartefakte erlauben die Wiederverwendung bereits erzeugter Chunks oder Anreicherungen. Chunks haben IDs aus Dateistamm und Nummer ab 1. Die Pipeline schreibt jeden Chunk über `POST /vectors` und bereinigt nach erfolgreichem Abschluss überzählige Chunks mit `DELETE /chunks`. Bei Abbruch bleiben bestätigte Chunks abrufbar und die Pipeline gibt den Wert für `--start` aus. Dienstadressen werden über `OLLAMA_HOST_URL` und `IMPORT_VECTOR_URL` konfiguriert. Aufrufe und Artefakte beschreibt das [Importkonzept](8-4-importkonzept.md).
-
-Der separate Einstieg `import3.py` bleibt bis zum persönlichen Test der Pipeline durch den Projektverantwortlichen als Fallback verfügbar. Er nutzt LangChains `RecursiveCharacterTextSplitter` mit 1000 Zeichen und 150 Zeichen Overlap sowie das Keyword-Gateway mit `gemma3:4b`. Er speichert normalisierte Embeddings und den angereicherten Text einzeln über `POST /vectors`, unterstützt `--start` und protokolliert Fehler pro Chunk. Er verwendet im Skript konfigurierte Dienstadressen und HTTP-Zeitlimits. Import3, CLI und RAG beziehen gemeinsame Modell- und Set-Defaults aus [embedding_config.py](../rag/embedding_config.py).
 
 ### 5.3.2 RAG-API
 
@@ -103,7 +101,7 @@ Die Tabelle `vectors` enthält `id SERIAL PRIMARY KEY`, `chunk_id TEXT NOT NULL`
 
 ### 5.3.4 Ollama und Reranker
 
-Ollama benötigt `snowflake-arctic-embed2` für Embeddings und `gemma4:e4b` für RAG-Antworten. `import3.py` benötigt zusätzlich `gemma3:4b`. Die Modelle werden auf dem Windows-Host bereitgestellt; sie liegen nicht im RAG-Image oder im PostgreSQL-Volume.
+Ollama benötigt `snowflake-arctic-embed2` für Embeddings und `gemma4:e4b` für RAG-Antworten. Die Modelle werden auf dem Windows-Host bereitgestellt; sie liegen nicht im RAG-Image oder im PostgreSQL-Volume.
 
 Das Reranker-Image installiert Flask, sentence-transformers und torch und laedt beim Build `cross-encoder/ms-marco-MiniLM-L6-v2` vor. `POST /rerank` akzeptiert optional `model`; ohne Angabe gilt `RERANK_MODEL`. Ein aktiver CrossEncoder wird bei gleicher Auswahl wiederverwendet und bei Modellwechsel ersetzt. Laden und Inferenz sind gemeinsam synchronisiert. Neue Gewichte werden bei Bedarf geladen; Modelle mit erforderlichem Remote-Code werden nicht unterstuetzt (`trust_remote_code=False`). Ladefehler liefern HTTP 503 ohne Fallback. Antworten enthalten das verwendete `model` und `ranked_documents` mit `original_index`, `score` und `text`, absteigend sortiert. Leere Dokumentlisten laden kein Modell. `/health` nennt das aktive Modell und laedt beim ersten Aufruf das Defaultmodell.
 

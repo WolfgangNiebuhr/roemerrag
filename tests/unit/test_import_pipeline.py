@@ -6,7 +6,7 @@ from types import SimpleNamespace
 import pytest
 from langchain.text_splitter import RecursiveCharacterTextSplitter
 
-from Ingest import chunk, enrich, import3, pipeline
+from Ingest import chunk, enrich, pipeline
 
 
 @pytest.fixture
@@ -215,50 +215,6 @@ def test_invalid_start(experiment, tmp_path, start):
         pipeline.main(["--file", str(source), "--start", start, "--config", str(config),
                        "--output-dir", str(tmp_path / "invalid")])
     assert error.value.code == 2
-
-
-def test_import3_experiment_matches_legacy_pipeline(tmp_path, monkeypatch):
-    config_path = Path(pipeline.__file__).parent / "experiments" / "snowflake-arctic-embed-v2.json"
-    config = pipeline.resolve_config(pipeline.read_json(config_path))
-    source = tmp_path / "rom.band1.txt"
-    source.write_text("x" * 1200 + "\n\nKarthago. Rom.", encoding="utf-8")
-    legacy_chunks = import3.split_text_into_chunks(source, import3.CHUNK_SIZE, import3.OVERLAP)
-    assert len(legacy_chunks) == 2
-    assert len(legacy_chunks[0]) == 1200
-    calls = []
-
-    def post(url, *, json, timeout, **kwargs):
-        endpoint = url.rsplit("/", 1)[-1]
-        calls.append((endpoint, json))
-        status, body = {
-            "chat": (200, {"message": {"content": "Rom, Karthago"}}),
-            "embeddings": (200, {"embedding": [1.0, 2.0, 3.0] + [0.0] * 1021}),
-            "vectors": (201, {"message": "Vector stored"}),
-            "chunks": (200, {"deleted": 0}),
-        }[endpoint]
-        return SimpleNamespace(status_code=status, text="", json=lambda: body)
-
-    monkeypatch.setattr("requests.post", post)
-    monkeypatch.setattr("requests.delete", post)
-    monkeypatch.setattr(import3, "MODEL_NAME", "snowflake-arctic-embed2")
-    import3.process_file(source, start=1)
-    legacy_calls = calls.copy()
-    calls.clear()
-    output = tmp_path / "run"
-    assert pipeline.main(["--file", str(source), "--config", str(config_path),
-                          "--output-dir", str(output)]) == 0
-
-    assert [row["source_text"] for row in pipeline.read_json(output / "chunks.json")["chunks"]] == legacy_chunks
-    for endpoint in ("chat", "embeddings", "vectors"):
-        legacy = [body for name, body in legacy_calls if name == endpoint]
-        current = [body for name, body in calls if name == endpoint]
-        assert len(legacy) == len(current) == len(legacy_chunks)
-        for old, new in zip(legacy, current):
-            if endpoint == "vectors":
-                assert new["embedding_set_id"] == config["embedding_set_id"]
-                assert new.pop("vector") == pytest.approx(old.pop("vector"), abs=1e-15, rel=1e-14)
-                old["embedding_set_id"] = config["embedding_set_id"]
-            assert new == old
 
 
 def test_enrichment_variants_share_chunks_and_can_be_imported(experiment, tmp_path, monkeypatch):

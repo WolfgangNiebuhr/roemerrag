@@ -1,4 +1,4 @@
-# Kapselt die Ollama-Chat-Anfragen des Import3-Keywordpfads.
+# Kapselt die Ollama-Chat-Anfragen des Keywordpfads.
 
 import requests
 import logging

@@ -14,7 +14,7 @@ agent_instructions:
 
 `embedding_set_id` bezeichnet die Menge zusammengehöriger Vektoren aus einer gemeinsamen Verarbeitungslogik. Die Kennung bezeichnet keinen einzelnen Ausführungslauf und ist unabhängig vom Modellnamen. Wiederholte Imports dürfen dasselbe Set verwenden. Die Konfiguration wird gemäß Abschnitt 9.3 manuell dokumentiert; die Importpipeline verwaltet ihre Läufe getrennt von der Set-ID.
 
-Import3, CLI und RAG lesen Modell und Set aus `rag/embedding_config.py`. Beide Einstellungen sind unabhängig über Umgebungsvariablen überschreibbar. Der Standard verweist auf das bestehende Set `snowflake-arctic-embed2-v2`; das Modell bleibt `snowflake-arctic-embed2`.
+CLI und RAG lesen Modell und Set aus `rag/embedding_config.py`. Beide Einstellungen sind unabhängig über Umgebungsvariablen überschreibbar. Der Standard verweist auf das bestehende Set `snowflake-arctic-embed2-v2`; das Modell bleibt `snowflake-arctic-embed2`.
 
 Die Datenbankspalte wird transaktional umbenannt; Kennungen und Vektoren bleiben unverändert. Vor jeder Bestandsmigration erzeugt das Werkzeug ein vollständiges Backup und prüft dessen Inhaltsverzeichnis. Es gibt keine automatische Migration beim API-Start. Damit sind Backup und Umstellungszeitpunkt explizite Betriebsschritte.
 

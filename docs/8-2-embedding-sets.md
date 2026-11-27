@@ -24,18 +24,17 @@ Ein aktueller Codezustand belegt nicht die historische Herkunft bereits gespeich
 
 | `embedding_set_id` | Zugeordnete Verarbeitung | Nachweisstand |
 |---|---|---|
-| `snowflake-arctic-embed2-v2` | Unten dokumentierter aktueller Standard von Import3 | Aus dem Code vom 21.11.2026 abgeleitet. Nicht als vollständiger Herkunftsnachweis aller Bestandsvektoren bestätigt. |
+| `snowflake-arctic-embed2-v2` | Unten dokumentierter aktueller Standard  | Aus dem Code vom 21.11.2026 abgeleitet. Nicht als vollständiger Herkunftsnachweis aller Bestandsvektoren bestätigt. |
 | `embedding1` | Unbekannt | Bei der Bestandsaufnahme zur Set-ID-Migration vorgefunden; ursprüngliche Parameter nicht belegt. |
 | `embedding2` | Unbekannt | Bei der Bestandsaufnahme zur Set-ID-Migration vorgefunden; ursprüngliche Parameter nicht belegt. |
 | `test-recursive-1000` | [Pipeline-Konfiguration](../Ingest/experiments/test-recursive-1000.json), 1000/150 Zeichen mit Zeichen-Fallback, ohne Keywords | Konfiguriertes Zielset |
 | `snowflake-arctic-embed-v1` | [Pipeline-Konfiguration](../Ingest/experiments/snowflake-arctic-embed-v1.json), 1000/100 Zeichen, LangChain-Standardtrennzeichen, ohne Keywords | Konfiguriertes Zielset |
-| `snowflake-arctic-embed-v2` | [Pipeline-Konfiguration](../Ingest/experiments/snowflake-arctic-embed-v2.json), Chunkgrenzen und Keyword-Prompt nach Import3 | Konfiguriertes Zielset; Kompatibilitaet in separaten Test-Sets geprueft |
+| `snowflake-arctic-embed-v2` | [Pipeline-Konfiguration](../Ingest/experiments/snowflake-arctic-embed-v2.json), Chunkgrenzen und Keyword-Prompt wie zuvor | Konfiguriertes Zielset; Kompatibilitaet in separaten Test-Sets geprueft |
 
-### `snowflake-arctic-embed2-v2`: dokumentierter Import3-Standard
+### `snowflake-arctic-embed2-v2`: aktueller Standard
 
 | Parameter | Wert / Verfahren |
 |---|---|
-| Importpfad | [Ingest/import3.py](../Ingest/import3.py), `process_file` |
 | Quelle | UTF-8-Textdateien; vollständige Dateiliste und Inhaltsstände des historischen Bestands unbekannt |
 | Chunking | LangChain `RecursiveCharacterTextSplitter`, Zeichenbasis, `chunk_size=1000`, `chunk_overlap=150` |
 | Trennzeichen | In dieser Reihenfolge: `"\n\n"`, `".\n"`, `". "`; siehe [chunking.py](../Ingest/utils/chunking.py) |
@@ -62,7 +61,7 @@ Für jede neue Set-ID einen eigenen Abschnitt mit folgenden Angaben ergänzen:
 - Tatsächlich eingebetteter Textaufbau, Embeddingmodell, bekannte Revision, Dimension und Normalisierung.
 - Bekannte Code-/Bibliotheksstände sowie verbleibende unbekannte Angaben.
 
-## Keyword-Prompts des dokumentierten Import3-Standards
+## Keyword-Prompts des aktuellen Standards
 
 Die folgende Momentaufnahme gehört zum oben beschriebenen Codezustand. Sie bestätigt keine historische Promptfassung des gesamten Bestands. Schreibweisen einschließlich bestehender Tippfehler werden unverändert dokumentiert.
 

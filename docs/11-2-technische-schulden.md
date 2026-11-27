@@ -71,7 +71,6 @@ Eine frei vergebene `embedding_set_id` belegt weder die Chunking- und Anreicheru
 
 **Status** · behoben
 
-Der Status gilt für den regulären Import mit [`Ingest.pipeline`](../Ingest/pipeline.py). [Import3](../Ingest/import3.py) bleibt bis zum persönlichen Test der Pipeline durch den Projektverantwortlichen als Fallback verfügbar. Der Fallback lässt bei kürzeren Wiederholungsimporten überzählige Chunks stehen und signalisiert protokollierte Chunkfehler nicht im Exitcode.
 
 **Schweregrad** · P1
 
@@ -187,7 +186,7 @@ In [analyze.py](../analyze.py) umfasst `GOLDCHUNK` nur die Keyword-Zeile; die fo
 
 **Unterstützte Einstiegspunkte**
 
-[`analyze.py`](../analyze.py) ist die unterstützte Analyse-CLI und übergibt den vollständigen Gold-Chunk an die RAG-API. [`import3.py`](../Ingest/import3.py) bleibt bis zum persönlichen Test von `Ingest.pipeline` durch den Projektverantwortlichen als Fallback verfügbar. Unit-Tests decken beide Einstiegspunkte ab. `Ingest/import.py` wurde entfernt. Die [lokale Reranker-Demo](../archive/reranker-local.py) und die [explorative Vektoranalyse](../archive/analyze_data.py) liegen als historische Referenzen im Archiv.
+[`analyze.py`](../analyze.py) ist die unterstützte Analyse-CLI und übergibt den vollständigen Gold-Chunk an die RAG-API. 
 
 ### TS-15 – Nicht reproduzierbare Builds und Testumgebungen
 
@@ -287,7 +286,7 @@ Die Vector-API verlangt beim Schreiben einen nichtleeren String. Die Datenbank e
 
 **Problembeschreibung**
 
-Absatz- und Satztrennung ohne Zeichen-Fallback kann bei langen, ungetrennten Passagen die konfigurierte Chunkgröße überschreiten. Die tatsächlichen Eingabelängen können dadurch von den Versuchsparametern abweichen. Betroffen sind [Import3](../Ingest/import3.py) und die [Pipeline-Beispielkonfiguration ohne Fallback](../Ingest/experiments/snowflake-arctic-embed-v2.json).
+Absatz- und Satztrennung ohne Zeichen-Fallback kann bei langen, ungetrennten Passagen die konfigurierte Chunkgröße überschreiten. Die tatsächlichen Eingabelängen können dadurch von den Versuchsparametern abweichen. Betroffen ist die [Pipeline-Beispielkonfiguration ohne Fallback](../Ingest/experiments/snowflake-arctic-embed-v2.json).
 
 #### Noch offen
 

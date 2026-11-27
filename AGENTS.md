@@ -6,6 +6,8 @@
 # Out-of-Scope
 - Alle Verzeichnisse namens `k8s` sind historische Referenzen.
   Bei Suche, Analyse und Änderungen ausschließen.
+- Das Verzeichnis namens `archive` enthält nicht mehr benutzte Module.
+    Bei Suche, Analyse und Änderungen ausschließen
 - Kubernetes-spezifische Aussagen in der Dokumentation sind für
   den aktuellen Podman-Betrieb nicht maßgeblich.
 

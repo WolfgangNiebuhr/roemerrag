@@ -20,7 +20,7 @@ Jeder Lauf benötigt ein neues Ausgabeverzeichnis. Beim Retrieval die `embedding
 |---|---|---|
 | [test-recursive-1000](experiments/test-recursive-1000.json) | 1.000 Zeichen, 150 Überlappung, Absatz- und Satztrennzeichen mit Zeichen-Fallback | Keine |
 | [snowflake-arctic-embed-v1](experiments/snowflake-arctic-embed-v1.json) | LangChain-Standardtrennzeichen, 1.000 Zeichen, 100 Überlappung | Keine |
-| [snowflake-arctic-embed-v2](experiments/snowflake-arctic-embed-v2.json) | Chunkgrenzen wie `import3.py`, 1.000 Zeichen, 150 Überlappung, ohne Zeichen-Fallback | `gemma3:4b` mit `keywords-v1` |
+| [snowflake-arctic-embed-v2](experiments/snowflake-arctic-embed-v2.json) | Chunkgrenzen wie zuvor, 1.000 Zeichen, 150 Überlappung, ohne Zeichen-Fallback | `gemma3:4b` mit `keywords-v1` |
 
 Alle drei Beispiele verwenden `snowflake-arctic-embed2` mit 1.024 Dimensionen und L2-Normalisierung. Für eigene Versuche eine Konfiguration kopieren und bei geänderter Verarbeitung eine eigene Set-ID vergeben. Die Zuordnung wird im [Set-Verzeichnis](../docs/8-2-embedding-sets.md) gepflegt.
 
@@ -46,7 +46,7 @@ python -m Ingest.enrich --input artifacts/keywords/chunks.json --config Ingest/e
 
 Kopiere für jede Variante die JSON-Konfiguration und verwende einen eigenen Ausgabepfad. Belasse die Chunking-Einstellungen und ändere `enrichment.parameters.model` für einen Modellvergleich oder `enrichment.parameters.prompt` für einen Promptvergleich.
 
-- `keywords-v1` verwendet den ausführlichen Import3-Prompt mit längenabhängiger Keyword-Anzahl.
+- `keywords-v1` verwendet den ausführlichen Prompt mit längenabhängiger Keyword-Anzahl.
 - `keywords-v2` verwendet einen kürzeren Prompt für bis zu fünf Stichwörter in der Originalschreibweise.
 - Für einen eigenen Systemprompt setze in `enrichment.parameters` beispielsweise `"prompt": "ortsbegriffe-v1"` und `"system_prompt": "Extrahiere nur Ortsnamen als kommaseparierte Liste."`. Der Originalchunk ist dann die User-Nachricht. Vergib für Änderungen am Prompttext eine neue Version.
 

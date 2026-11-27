@@ -10,7 +10,7 @@ agent_instructions:
 
 # 8.4 Variantenfaehiges Importkonzept
 
-Stand: 24.11.2026. Der gemeinsame Import ist als `python -m Ingest.pipeline` verfuegbar. Er unterstuetzt rekursives Chunking, keine Anreicherung oder Keywords und denselben Chunktext fuer Embedding und Speicherung. `Ingest/import3.py` bleibt bis zum persönlichen Test der Pipeline durch den Projektverantwortlichen als Fallback verfügbar. Die Abschnitte kennzeichnen offene Teile des Zielbilds.
+Stand: 24.11.2026. Der gemeinsame Import ist als `python -m Ingest.pipeline` verfuegbar. Er unterstuetzt rekursives Chunking, keine Anreicherung oder Keywords und denselben Chunktext fuer Embedding und Speicherung. Die Abschnitte kennzeichnen offene Teile des Zielbilds.
 
 Das Konzept konkretisiert [TS-05, TS-12, TS-14 und TS-17](11-2-technische-schulden.md) und baut auf [Error-Handling, Kapitel 8.3](8-3-error-handling.md), dem [Testkonzept](8-1-testkonzept.md) und der [manuellen Set-Zuordnung](8-2-embedding-sets.md) auf.
 
@@ -82,7 +82,7 @@ Algorithmus und Versuch sind getrennt. JSON wird zunaechst bevorzugt, weil es ke
 }
 ```
 
-Das Beispiel beschreibt die Keyword-Variante mit einem gemeinsamen Text: Keywords, Zeilenumbruch und Originalchunk werden zusammen eingebettet und als chunktext gespeichert. Derselbe Text wird spaeter fuer Reranking und Antwortgenerierung verwendet. Ohne Anreicherung wird der Originalchunk verwendet. Ein texts-Abschnitt oder eine getrennte Auswahl fuer Suche und Kontext ist nicht vorgesehen. Das entspricht dem Prinzip von import3.py; die Pipeline erhaelt Trennzeichenreihenfolge und Prompt und aktiviert standardmaessig den Zeichen-Fallback. Die beispielhafte Set-ID ist keine Herkunftsaussage ueber bestehende Sets.
+Das Beispiel beschreibt die Keyword-Variante mit einem gemeinsamen Text: Keywords, Zeilenumbruch und Originalchunk werden zusammen eingebettet und als chunktext gespeichert. Derselbe Text wird spaeter fuer Reranking und Antwortgenerierung verwendet. Ohne Anreicherung wird der Originalchunk verwendet. Ein texts-Abschnitt oder eine getrennte Auswahl fuer Suche und Kontext ist nicht vorgesehen. Die beispielhafte Set-ID ist keine Herkunftsaussage ueber bestehende Sets.
 
 Die Zwischenartefakte halten die Strategieparameter der jeweiligen Stufe fest. Bei gleicher Versuchskonfiguration sollen geaenderte Defaults nicht unbemerkt das Ergebnis aendern. Die Konfiguration enthaelt keine Zugangsdaten. Modellrevisionen, Code-/Buildstand und Promptinhalt oder dessen eindeutige Version gehoeren, soweit bekannt, in den Nachweis; ein Modellname allein belegt keine unveraenderlichen Gewichte.
 
@@ -159,7 +159,7 @@ Chunker liefern Reihenfolge und Text. Der gemeinsame Ablauf vergibt daraus die I
 
 Gleiche Staemme wie rom.txt und rom.md fuehren innerhalb desselben Sets zu denselben Chunk-IDs. Dasselbe gilt fuer gleichnamige Dateien aus verschiedenen Verzeichnissen. Diese Faelle werden durch manuelle Namenswahl oder getrennte Sets vermieden; eine zusaetzliche technische Kollisionsabsicherung ist derzeit nicht vorgesehen. Das bewusst akzeptierte Restrisiko ist in [R-02](11-1-risiken.md#r-02-dateistamm-als-dokumentidentitaet) festgehalten.
 
-Die Dateistammregel ist seit 22.11.2026 in import3.py mit Path.stem umgesetzt und fuer mehrteilige Namen sowie Namen ohne Erweiterung getestet. Die Pipeline verwendet dieselbe Dateistammregel. Fuer mehrteilige Namen aendern sich gegenueber der alten Erste-Punkt-Logik die Schluessel; alte Eintraege werden nicht automatisch migriert oder entfernt. Vor einem Wiederholungsimport bestehender Quellen muss deren Altbestand explizit geprueft und eine Bereinigung geplant werden; vorhandene Daten wurden durch diese Codekorrektur nicht veraendert.
+Die Dateistammregel ist mit Path.stem in der Pipeline umgesetzt und fuer mehrteilige Namen sowie Namen ohne Erweiterung getestet. Fuer mehrteilige Namen aendern sich gegenueber der alten Erste-Punkt-Logik die Schluessel; alte Eintraege werden nicht automatisch migriert oder entfernt. Vor einem Wiederholungsimport bestehender Quellen muss deren Altbestand explizit geprueft und eine Bereinigung geplant werden; vorhandene Daten wurden durch diese Codekorrektur nicht veraendert.
 
 `Ingest.pipeline` reichert Chunks einzeln an, berechnet ihr Embedding und schreibt sie per `POST /vectors`. Bestätigte Chunks sind sofort abrufbar. Nach einem Abbruch kann der Datenstand neue, alte und überzählige Chunks enthalten. Dieser Zwischenstand ist im Sinne von Eventual Consistency akzeptiert. [Risiko R-03](11-1-risiken.md#r-03--vorübergehend-inkonsistenter-chunkbestand-bei-importabbrüchen), [Architekturentscheidung 9.4](9-architekturentscheidungen.md#94-eventual-consistency-beim-dokumentimport-25112026)
 
@@ -179,11 +179,11 @@ Anreicherungsartefakte enthalten die gemessenen Anfragedauern sowie verfügbare 
 
 Die Einfuehrung erfolgt schrittweise:
 
-1. Bestehendes import3-Verhalten als Baseline festhalten: Chunkgrenzen, Overlap, Keywords, Textbildung, Normalisierung und Set-Zuordnung. Fehler aus TS-05 nicht als gewuenschtes Verhalten konservieren.
-2. Gemeinsamen Ablauf mit Strategien recursive sowie enrichment none/keywords einfuehren. Parameterunterschiede explizit machen; Altimporter nach gepruefter Ablosung archivieren oder eindeutig kennzeichnen.
-3. Versionierte Artefakte und einzeln aufrufbare Stufen ergaenzen; getrennte Versuche ohne erneute vorgelagerte Modellaufrufe pruefen.
-4. Importidentität, Einzelwrites, Altlastenbereinigung und Wiederaufnahme gemäß TS-05 umsetzen.
-5. Neue Chunkingideen erst bei einem konkreten Versuch als weitere Funktionen/Module ergaenzen. Keine spekulative Implementierung aller denkbaren Strategien.
+
+1. Gemeinsamen Ablauf mit Strategien recursive sowie enrichment none/keywords einfuehren. Parameterunterschiede explizit machen; Altimporter nach gepruefter Ablosung archivieren oder eindeutig kennzeichnen.
+2. Versionierte Artefakte und einzeln aufrufbare Stufen ergaenzen; getrennte Versuche ohne erneute vorgelagerte Modellaufrufe pruefen.
+3. Importidentität, Einzelwrites, Altlastenbereinigung und Wiederaufnahme gemäß TS-05 umsetzen. 
+4. Neue Chunkingideen erst bei einem konkreten Versuch als weitere Funktionen/Module ergaenzen. Keine spekulative Implementierung aller denkbaren Strategien.
 
 Abnahme gemaess Kapitel 8.1: deterministische Tests fuer Parameter, Grenzen, Overlap, Reihenfolge, Identitaet und Artefaktruecklesen; Vertragstests fuer Textbildung und das Ueberspringen bereits ausgefuehrter Stufen; isolierte Integration fuer Keyword-/Embeddingprovider und Speicherung. Namenskollisionen, verkuerzte Neuimporte, Teilimporte und Resume benoetigen eigene Tests. Bei Qualitaetsvergleichen werden moeglichst einzelne Faktoren geaendert; ein anderer Chunker mit gleichzeitig anderer Anreicherung ist kein isolierter Chunkingvergleich.
 
@@ -208,7 +208,7 @@ Italiker, Phoeniker, westliches Mittelmeer
 
 | Versuchsvariante | Text fuer Embedding | Text fuer Reranking und Antwort |
 |---|---|---|
-| Aktuelles Konzept und bisheriges import3-Prinzip | Keywords + Original | Keywords + Original |
+| Aktuelles Konzept  | Keywords + Original | Keywords + Original |
 | Nur moeglicher spaeterer Versuch | Keywords + Original | Original |
 
 Die zweite Variante koennte untersuchen: Verbessern Keywords das Retrieval, ohne sie anschliessend als zusaetzlichen Inhalt an das Antwortmodell zu geben? Generierte Anreicherungen koennen unpassende Begriffe enthalten; mit dieser Trennung liesse sich die Suchwirkung von ihrem Einfluss auf die Antwort unterscheiden. Ob das die Qualitaet verbessert, waere zu messen, nicht vorab anzunehmen. Da context_text auch dem Reranker dient, wuerde seine Aenderung ebenfalls das Reranking beeinflussen; fuer einen isolierten Vergleich muss dieser Faktor konstant gehalten oder gesondert untersucht werden.

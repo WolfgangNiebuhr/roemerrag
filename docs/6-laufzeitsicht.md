@@ -65,8 +65,6 @@ Die Werte stehen in ungerundeten Sekunden. `metrics.generation_duration` stammt 
 
 `Ingest.pipeline` liest eine UTF-8-Quelle oder ein vorbereitetes Artefakt. Pro Chunk führt sie die konfigurierte Anreicherung aus, berechnet ein Embedding und schreibt Vektor und `chunktext` über `POST /vectors`. Nach erfolgreicher Verarbeitung entfernt `DELETE /chunks` die überzähligen Nummern desselben Dokuments und Sets. Bei einem Abbruch bleiben bestätigte Chunks abrufbar. Die Ausgabe nennt die Nummer für die Fortsetzung mit `--start`. Das [Importkonzept](8-4-importkonzept.md) beschreibt Zwischenartefakte, Teilstände und Bereinigung.
 
-`Ingest/import3.py` bietet einen separaten Ablauf mit fest konfigurierten Dienstadressen. Er stellt dem Quelltext Keywords von `gemma3:4b` voran und speichert normalisierte Embeddings von `snowflake-arctic-embed2`. Bei einem Chunkfehler protokolliert er den Fehler und verarbeitet die folgenden Chunks weiter.
-
 Der RAG-Ende-zu-Ende-Test prüft die Ollama-Modelle vom Host und aus dem RAG-Container, zerlegt einen versionierten Kleinkorpus, speichert echte normalisierte Embeddings im Testset und ruft `/process` auf. Geprüft werden Quellen, Antwortinhalt und Metriken. Die Testdaten werden danach entfernt. Die Keyword-Anreicherung wird separat geprüft. [Testkonzept](8-1-testkonzept.md)
 
 ## 6.3 Ollama über die Windows-/WSL-Netzwerkgrenze erreichen

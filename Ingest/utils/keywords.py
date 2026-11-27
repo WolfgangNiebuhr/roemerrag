@@ -1,4 +1,4 @@
-# Definiert den Import3-Keyword-Prompt und wertet die zugehoerige Ollama-Antwort aus.
+# Definiert den Keyword-Prompt und wertet die zugehoerige Ollama-Antwort aus.
 
 from .gateway import call_ollama_gateway
 import logging
@@ -52,7 +52,7 @@ def keyword_messages(chunk):
     return system_prompt, query, question
 
 
-# Liest Keyword-Text und Laufzeit aus der Ollama-Antwort fuer Import3.
+# Liest Keyword-Text und Laufzeit aus der Ollama-Antwort
 def get_keywords_ollama(chunk):
     system_prompt, query, question = keyword_messages(chunk)
     response = call_ollama_gateway(chunk, system_prompt, query)
