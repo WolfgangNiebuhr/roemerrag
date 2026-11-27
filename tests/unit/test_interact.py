@@ -106,7 +106,7 @@ def test_invalid_parameter_message_is_specific(monkeypatch, capsys, extra, expec
     (['--query','q','--metric'], ('Parameter --metric', 'ein Wert muss angegeben werden')),
     (['--query','q','--num_results','abc'], ('Parameter --num_results', 'abc', 'keine ganze Zahl')),
     (['--query','q','--top_k','1.5'], ('Parameter --top_k', '1.5', 'keine ganze Zahl')),
-    (['--query','q','--embedding'], ('Parameter --embedding', 'ein Wert muss angegeben werden')),
+    (['--query','q','--embedding','set'], ('Unbekannte Argumente', '--embedding')),
     (['--query','q','--embedding-set-id'], ('Parameter --embedding-set-id', 'ein Wert muss angegeben werden')),
     (['--query','q','--reranker'], ('Parameter --reranker', 'ein Wert muss angegeben werden')),
     (['--query','q','--unbekannt'], ('Unbekannte Argumente', '--unbekannt')),

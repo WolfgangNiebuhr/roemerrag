@@ -26,42 +26,42 @@ $headers = @{
 # Testdaten für den POST-Endpunkt /vectors
 $vectorData1 = @{
     chunk_id = "chunk1"
-    embedding = "embedding1"
+    embedding_set_id = "embedding1"
     vector = (Generate-RandomVector -dimensions $globalDimensions)
     chunktext = "Test-Metadaten 1"
 } | ConvertTo-Json -Depth 10
 
 $vectorData2 = @{
     chunk_id = "chunk2"
-    embedding = "embedding2"
+    embedding_set_id = "embedding2"
     vector = (Generate-RandomVector -dimensions $globalDimensions)
     chunktext = "Test-Metadaten 2"
 } | ConvertTo-Json -Depth 10
 
 $vectorData3 = @{
     chunk_id = "chunk3"
-    embedding = "embedding1"
+    embedding_set_id = "embedding1"
     vector = (Generate-RandomVector -dimensions $globalDimensions)
     chunktext = "Test-Metadaten 3"
 } | ConvertTo-Json -Depth 10
 
 $vectorData4 = @{
     chunk_id = "chunk4"
-    embedding = "embedding1"
+    embedding_set_id = "embedding1"
     vector = (Generate-RandomVector -dimensions $globalDimensions)
     chunktext = "Test-Metadaten 4"
 } | ConvertTo-Json -Depth 10
 
 $vectorData5 = @{
     chunk_id = "chunk5"
-    embedding = "embedding2"
+    embedding_set_id = "embedding2"
     vector = (Generate-RandomVector -dimensions $globalDimensions)
     chunktext = "Test-Metadaten 5"
 } | ConvertTo-Json -Depth 10
 
 $vectorData6 = @{
     chunk_id = "chunk5"
-    embedding = "embedding2"
+    embedding_set_id = "embedding2"
     vector = (Generate-RandomVector -dimensions $globalDimensions)
     chunktext = "Test-Metadaten 6"
 } | ConvertTo-Json -Depth 10
@@ -82,27 +82,15 @@ Write-Host $responsePost4.Content
 Write-Host $responsePost5.Content
 Write-Host $responsePost6.Content
 
-# Test des POST-Endpunkts /search ohne embedding-Filter
-$searchData1 = @{
-    vector = (Generate-RandomVector -dimensions $globalDimensions)
-    num_results = 5
-    metric = "euclidean"
-} | ConvertTo-Json -Depth 10
-
-Write-Host "Teste POST /search ohne embedding-Filter..."
-$responseSearch1 = Invoke-WebRequest -Uri "$baseUrl/search" -Method POST -Headers $headers -Body $searchData1
-Write-Host "Antwort von POST /search ohne embedding-Filter:"
-Write-Host $responseSearch1.Content
-
-# Test des POST-Endpunkts /search mit embedding-Filter
+# Test des POST-Endpunkts /search mit Set-ID
 $searchData2 = @{
     vector = (Generate-RandomVector -dimensions $globalDimensions)
     num_results = 5
     metric = "euclidean"
-    embedding = "embedding1"
+    embedding_set_id = "embedding1"
 } | ConvertTo-Json -Depth 10
 
-Write-Host "Teste POST /search mit embedding-Filter..."
+Write-Host "Teste POST /search mit Set-ID..."
 $responseSearch2 = Invoke-WebRequest -Uri "$baseUrl/search" -Method POST -Headers $headers -Body $searchData2
-Write-Host "Antwort von POST /search mit embedding-Filter:"
+Write-Host "Antwort von POST /search mit Set-ID:"
 Write-Host $responseSearch2.Content

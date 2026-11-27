@@ -12,7 +12,7 @@ import pytest
 def test_problem_contract_across_services(vector_url, rag_url, reranker_url):
     cases = [
         (vector_url, '/vectors', 'POST', {} ,400),
-        (vector_url, '/search', 'POST', {'vector': [1]*1024, 'num_results': 'abc'}, 400),
+        (vector_url, '/search', 'POST', {'vector': [1]*1024, 'num_results': 'abc', 'embedding_set_id': 'test'}, 400),
         (rag_url, '/process', 'POST', {'query': 'q', 'metric': 'invalid'}, 400),
         (reranker_url, '/rerank', 'POST', 123, 400),
         (rag_url, '/process', 'GET', None, 405),

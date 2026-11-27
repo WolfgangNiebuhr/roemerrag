@@ -94,7 +94,7 @@ Diese Variante nutzt `http://host.containers.internal:5500/search` für die bere
 
 Import3, CLI und RAG verwenden gemeinsame Defaults aus `rag/embedding_config.py`: `EMBEDDING_MODEL=snowflake-arctic-embed2` und `EMBEDDING_SET_ID=snowflake-arctic-embed2-v2`. Beide sind unabhängig über gleichnamige Umgebungsvariablen konfigurierbar (Windows vor dem Import; Container mit `-e`). Die Set-Kennung wählt gespeicherte Daten und legt kein Modell fest.
 
-Vector-API: `embedding_set_id` ersetzt den JSON-/Queryparameter `embedding`; der alte Name bleibt kompatibel. Einzelchunk- und Suchantworten enthalten beide Namen. Ohne Filter bleibt die Vector-API ungefiltert. RAG akzeptiert `embedding_set_id` und weiterhin `filter`. Gleiche Doppelangaben sind erlaubt, widersprüchliche liefern HTTP 400. Die CLI bietet `--embedding-set-id` und weiterhin `--embedding`.
+Die Vector-API verwendet `embedding_set_id` in Anfragen und Antworten. Der frühere Parameter `embedding` führt zu HTTP 400. Einzelabruf, Textsuche und Vektorsuche benötigen eine Set-ID. Nur `GET /chunks` zählt bei fehlender Set-ID alle Datensätze. RAG verwendet `embedding_set_id` und setzt ohne Angabe das konfigurierte Standard-Set ein. Der frühere Parameter `filter` führt bei `/process` und den Evaluationsendpunkten zu HTTP 400. Die CLI wählt das Set über `--embedding-set-id`.
 
 ### Bestehende Datenbank migrieren
 
@@ -256,7 +256,7 @@ python -m pytest -c tests/pytest.ini tests/podman/test_import3_integration.py --
 
 RAG-, Vector- und Reranker-API liefern Fehler als RFC-9457-Problemobjekte direkt im Body mit `Content-Type: application/problem+json`. Das bisherige Feld `error` entfaellt. Clients verwenden `type` und den HTTP-Status; `detail` dient der Anzeige. Unbekannte Erweiterungen ignorieren. `instance` identifiziert das Fehlerereignis, `request_id` korreliert Aufrufe und entspricht dem Antwortheader `X-Request-ID`. Eigene Kennungen sind auf 1 bis 128 Zeichen aus Buchstaben, Zahlen, Punkt, Unterstrich und Bindestrich begrenzt. Interne Exceptiontexte werden nicht ausgegeben.
 
-Vor Dienstzugriffen werden JSON-Objekte, nichtleere Textfelder, Set-Aliase, Metriken (`euclidean`, `cosine`) und Trefferzahlen (ganze Zahl 1 bis 100, keine Booleans oder Zahlenstrings) validiert. Reranker-Dokumente sind nichtleere Strings; eine leere Liste bleibt erlaubt. Vector-Eingaben enthalten genau 1024 endliche Zahlen; JSON-Zahlenlisten und bestehende JSON-Listenstrings bleiben erlaubt. Cosine verbietet Nullvektoren. `POST /vectors` verlangt einen String in `chunktext` mit mindestens einem Zeichen außerhalb von Leerzeichen, LF und CR. PostgreSQL erzwingt dieselbe Regel. Ungueltige Eingaben liefern 400 vor Modell-/DB-Arbeit, fehlende Chunks 404, nicht verfuegbare Datenbanken oder Rerankermodelle 503 und unerwartete Fehler neutrale 500-Antworten. HTTP-Fehler wie 405 behalten erforderliche Header.
+Vor Dienstzugriffen werden JSON-Objekte, nichtleere Textfelder, Set-Kennungen, Metriken (`euclidean`, `cosine`) und Trefferzahlen (ganze Zahl 1 bis 100, keine Booleans oder Zahlenstrings) validiert. Reranker-Dokumente sind nichtleere Strings; eine leere Liste bleibt erlaubt. Vector-Eingaben enthalten genau 1024 endliche Zahlen; JSON-Zahlenlisten und bestehende JSON-Listenstrings bleiben erlaubt. Cosine verbietet Nullvektoren. `POST /vectors` verlangt einen String in `chunktext` mit mindestens einem Zeichen außerhalb von Leerzeichen, LF und CR. PostgreSQL erzwingt dieselbe Regel. Ungueltige Eingaben liefern 400 vor Modell-/DB-Arbeit, fehlende Chunks 404, nicht verfuegbare Datenbanken oder Rerankermodelle 503 und unerwartete Fehler neutrale 500-Antworten. HTTP-Fehler wie 405 behalten erforderliche Header.
 
 Die API-Images werden mit `scripts/build_image.py` aus einem temporaeren Build-Kontext gebaut (siehe Befehle oben). Das Skript kopiert ausschliesslich die pro Dienst aufgelisteten Quelldateien und das gemeinsame Paket `rag_common`; es durchsucht weder Tests noch historische Verzeichnisse. Dies umgeht den Windows-Podman-Fehler beim Lesen gesperrter Verzeichnisse trotz Ignore-Regeln. Der temporaere Kontext wird auch bei Buildfehlern entfernt. Neue Laufzeitdateien muessen in der Eingabeliste des Skripts ergaenzt werden. Nach Codeaenderungen Images neu bauen und Container neu erstellen. Weitergehende Adapterklassifikation, Retrybudgets, Importabschluss und Readiness sind noch Zielkonzept: [Kapitel 8.3](docs/8-3-error-handling.md).
 
@@ -270,9 +270,9 @@ Auch bei pytest-Aufrufen aus tests, tests/unit und tests/podman greift die gemei
 
 `interact.py` ruft ausschliesslich die RAG-API auf (`RAG_API_URL`, Standard `http://127.0.0.1:5600/process`). Ollama, Vector-API und Reranker werden durch die API orchestriert. Die CLI behaelt Argumentpruefung, Ausgabe und lokalen Export nach `search_results.json`. Fortschrittsmeldungen und Export nach spaeteren Verarbeitungsfehlern entfallen. Exitcodes: 0 Erfolg einschliesslich no_context, 1 Verarbeitungs-/Exportfehler, 2 Argumentfehler.
 
-Die CLI sendet metric=cosine, num_results=5, top_k=6 und das Rerankermodell explizit. `--top_k 0` deaktiviert Reranking. `--answer-model` waehlt das Antwortmodell; Standard ist fuer CLI und API `ANSWER_MODEL` beziehungsweise `gemma4:e4b`. `--embedding-set-id` und `--embedding` bleiben erhalten. Der Export enthaelt die urspruenglichen nichtleeren Retrievalpassagen; ausgegebene ausgewaehlte Chunks entsprechen der Kontextreihenfolge. Bei no_context erfolgt kein Export.
+Die CLI sendet metric=cosine, num_results=5, top_k=6 und das Rerankermodell explizit. `--top_k 0` deaktiviert Reranking. `--answer-model` waehlt das Antwortmodell; Standard ist fuer CLI und API `ANSWER_MODEL` beziehungsweise `gemma4:e4b`. `--embedding-set-id` waehlt das Embedding-Set. Der Export enthaelt die urspruenglichen nichtleeren Retrievalpassagen; ausgegebene ausgewaehlte Chunks entsprechen der Kontextreihenfolge. Bei no_context erfolgt kein Export.
 
-`POST /process` akzeptiert neben query, embedding_set_id/filter, metric und num_results die optionalen Felder `top_k` (Integer >= 0, Standard 0), `reranker` und `answer_model` (nichtleere Strings). Ohne Angabe bleiben API-Defaults metric=euclidean und Antwortmodell gemma4:e4b erhalten. Die Antwort behaelt response, metrics und chunks und ergaenzt `status` (ok/no_context), `retrieved_results` und `selected_results` (jeweils chunk_id und chunktext) sowie `reranking` (null oder model und duration in Sekunden). chunks nennt ausgewaehlte IDs. Leeres Retrieval oder leeres Reranking verhindert Generierung; metrics ist dann null.
+`POST /process` akzeptiert neben query, embedding_set_id, metric und num_results die optionalen Felder `top_k` (Integer >= 0, Standard 0), `reranker` und `answer_model` (nichtleere Strings). Ohne Angabe bleiben API-Defaults metric=euclidean und Antwortmodell gemma4:e4b erhalten. Die Antwort behaelt response, metrics und chunks und ergaenzt `status` (ok/no_context), `retrieved_results` und `selected_results` (jeweils chunk_id und chunktext) sowie `reranking` (null oder model und duration in Sekunden). chunks nennt ausgewaehlte IDs. Leeres Retrieval oder leeres Reranking verhindert Generierung; metrics ist dann null.
 
 Der API-Container benoetigt bei Reranking `RERANKER_URL` (Standard `http://host.containers.internal:5000/rerank`), optional `RERANK_MODEL`; bei gemeinsamen Pods kann die URL auf `http://127.0.0.1:5000/rerank` zeigen. Fuer das laufende System muss das RAG-Image nach dem Umbau neu gebaut und der Container neu erstellt werden. API-Clients muessen zusaetzliche Antwortfelder tolerieren.
 
@@ -310,7 +310,7 @@ Die RAG-API bietet drei POST-Endpunkte fuer spaetere Qualitaetsmessungen. Sie ve
 
 | Endpunkt | Eingabe | Ausgabe und Weiterverwendung |
 |---|---|---|
-| `/evaluate/retrieve` | query, optional embedding_set_id/filter, metric (Standard euclidean), num_results (5), vector, include_distances, reference_text | Treffer mit Rankingdistanz, Fragevektor, Modell/Set/Metrik, Laufzeiten, Trefferzahl und optionale Diagnostik. next_request kann an rerank oder generate gesendet werden. |
+| `/evaluate/retrieve` | query, optional embedding_set_id, metric (Standard euclidean), num_results (5), vector, include_distances, reference_text | Treffer mit Rankingdistanz, Fragevektor, Modell/Set/Metrik, Laufzeiten, Trefferzahl und optionale Diagnostik. next_request kann an rerank oder generate gesendet werden. |
 | `/evaluate/rerank` | query, results (Liste von Chunkobjekten), optional reranker und top_k (5) | results in neuer Reihenfolge, erhaltene Trefferfelder sowie rerank_score und original_index; Modell, ausgewaehlte Anzahl und Laufzeit. next_request kann direkt an generate gesendet werden. |
 | `/evaluate/generate` | query, results, optional answer_model, system_prompt, user_prompt | Antwort, Kontext, Chunk-IDs, ausgewaehlte Texte, Modell, Ollama-Metriken und serverseitige Laufzeit; request erlaubt Wiederholung der Generierung. |
 
@@ -322,6 +322,7 @@ Beispiel in PowerShell:
 $base = 'http://127.0.0.1:5600'
 $retrieved = Invoke-RestMethod "$base/evaluate/retrieve" -Method Post -ContentType 'application/json' -Body (@{
     query = 'Wer beherrschte das westliche Mittelmeer?'
+    embedding_set_id = 'snowflake-arctic-embed2-v2'
     num_results = 5
     top_k = 2
     answer_model = 'gemma4:e4b'

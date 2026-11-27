@@ -2,7 +2,7 @@ import sys
 from pathlib import Path
 sys.path.insert(0, str(Path(__file__).resolve().parents[1]))
 from rag_common.http_errors import (
-    Problem, aliased_text, install, invalid_request, json_object, problem_response, text_field, validating_request,
+    Problem, install, invalid_request, json_object, problem_response, text_field, validating_request,
 )
 from rag_common.vector_contract import VectorInputError, parse_search_options, parse_vector
 from flask import Flask, request, jsonify
@@ -118,8 +118,11 @@ def transaction():
                 raise DatabaseUnavailable("Could not return the database connection.") from exc
 
 def resolve_set_id(data, *, required=False, query_parameter=False):
-    return aliased_text(
-        data, "embedding_set_id", "embedding", conflict_detail="Widersprüchliche Set-Kennungen.",
+    if "embedding" in data:
+        invalid_request("Verwende embedding_set_id als Set-Kennung.", "embedding",
+                        query_parameter=query_parameter)
+    return text_field(
+        data, "embedding_set_id",
         required=required, query_parameter=query_parameter,
     )
 
@@ -146,11 +149,6 @@ def parse_delete_range(data):
     return document_id + "-", str(start), str(end) if end is not None else None
 
 
-def compatible_row(row):
-    row["embedding"] = row["embedding_set_id"]
-    return row
-
-
 @app.route("/chunks", methods=["GET"])
 def count_chunks():
     """Optionaler Filter: ?embedding_set_id=...  -> zählt Zeilen"""
@@ -167,30 +165,21 @@ def count_chunks():
 
 @app.route("/chunks/<chunk_id>", methods=["GET"])
 def get_chunk(chunk_id):
-    """GET /chunks/<chunk_id>[?embedding_set_id=...] -> eine Zeile"""
+    """GET /chunks/<chunk_id>?embedding_set_id=... -> eine Zeile"""
     with validating_request():
-        embedding_set_id = resolve_set_id(request.args, query_parameter=True)
+        embedding_set_id = resolve_set_id(request.args, required=True, query_parameter=True)
     with transaction() as conn:
         with conn.cursor() as cur:
-            if embedding_set_id:
-                cur.execute("""
-                    SELECT id, chunk_id, embedding_set_id, vector, chunktext
-                    FROM vectors
-                    WHERE chunk_id = %s AND embedding_set_id = %s
-                    LIMIT 1
-                """, (chunk_id, embedding_set_id))
-            else:
-                cur.execute("""
-                    SELECT id, chunk_id, embedding_set_id, vector, chunktext
-                    FROM vectors
-                    WHERE chunk_id = %s
-                    LIMIT 1
-                """, (chunk_id,))
+            cur.execute("""
+                SELECT id, chunk_id, embedding_set_id, vector, chunktext
+                FROM vectors
+                WHERE chunk_id = %s AND embedding_set_id = %s
+            """, (chunk_id, embedding_set_id))
             row = cur.fetchone()
             if not row:
                 raise Problem("not-found", "Der angefragte Chunk wurde nicht gefunden.")
             cols = [d[0] for d in cur.description]
-            return jsonify(compatible_row(dict(zip(cols, row))))
+            return jsonify(dict(zip(cols, row)))
 
 @app.route("/vectors", methods=["POST"])
 def upsert_chunk():
@@ -247,12 +236,12 @@ def delete_chunks():
 @app.route("/search", methods=["POST"])
 def search_vectors():
     """
-    Body (JSON): {vector, num_results?, metric?('euclidean'|'cosine'), embedding_set_id?}
+    Body (JSON): {vector, num_results?, metric?('euclidean'|'cosine'), embedding_set_id}
     - vector: String im pgvector-Format, z.B. '[0.1, 0.2, 0.3]'
     """
     with validating_request():
         data = json_object()
-        embedding_filter = resolve_set_id(data)
+        embedding_filter = resolve_set_id(data, required=True)
         try:
             metric, num_results = parse_search_options(data, default_count=10)
         except VectorInputError as error:
@@ -264,27 +253,17 @@ def search_vectors():
 
     with transaction() as conn:
         with conn.cursor() as cur:
-            if embedding_filter:
-                sql = f"""
-                    SELECT id, chunk_id, embedding_set_id, vector, chunktext,
-                           vector {distance_op} %s::VECTOR AS distance
-                    FROM vectors
-                    WHERE embedding_set_id = %s
-                    ORDER BY vector {distance_op} %s::VECTOR
-                    LIMIT %s
-                """
-                cur.execute(sql, (query_vector, embedding_filter, query_vector, num_results))
-            else:
-                sql = f"""
-                    SELECT id, chunk_id, embedding_set_id, vector, chunktext,
-                           vector {distance_op} %s::VECTOR AS distance
-                    FROM vectors
-                    ORDER BY vector {distance_op} %s::VECTOR
-                    LIMIT %s
-                """
-                cur.execute(sql, (query_vector, query_vector, num_results))
+            sql = f"""
+                SELECT id, chunk_id, embedding_set_id, vector, chunktext,
+                       vector {distance_op} %s::VECTOR AS distance
+                FROM vectors
+                WHERE embedding_set_id = %s
+                ORDER BY vector {distance_op} %s::VECTOR
+                LIMIT %s
+            """
+            cur.execute(sql, (query_vector, embedding_filter, query_vector, num_results))
             cols = [d[0] for d in cur.description]
-            rows = [compatible_row(dict(zip(cols, r))) for r in cur.fetchall()]
+            rows = [dict(zip(cols, row)) for row in cur.fetchall()]
         return jsonify(rows)
 
 @app.route("/find", methods=["GET"])
@@ -292,9 +271,11 @@ def find_chunks():
     """Find chunk IDs whose chunktext matches the ILIKE pattern in query."""
     with validating_request():
         search_query = text_field(request.args, "query", query_parameter=True)
+        embedding_set_id = resolve_set_id(request.args, required=True, query_parameter=True)
     with transaction() as conn:
         with conn.cursor() as cur:
-            cur.execute("SELECT chunk_id FROM vectors WHERE chunktext ILIKE %s", (search_query,))
+            cur.execute("SELECT chunk_id FROM vectors WHERE embedding_set_id = %s AND chunktext ILIKE %s",
+                        (embedding_set_id, search_query))
             chunk_ids = [row[0] for row in cur.fetchall()]
         return jsonify({"chunk_ids": chunk_ids})
 

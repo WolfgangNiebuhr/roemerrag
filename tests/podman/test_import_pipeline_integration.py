@@ -93,13 +93,13 @@ def test_pipeline_with_real_keywords_and_embeddings(tmp_path, monkeypatch, vecto
                         "--output", str(enriched)]) == 0
     for row in pipeline.read_json(enriched)["chunks"]:
         assert row["enrichment_metrics"]["total_duration"] > 0
-    assert request(vector_url, f"/chunks?embedding={embedding_set}")["chunks"] == 0
+    assert request(vector_url, f"/chunks?embedding_set_id={embedding_set}")["chunks"] == 0
     try:
         assert pipeline.main(["--from", "enriched", "--input", str(enriched), "--config", str(config),
                               "--output-dir", str(output)]) == 0
-        assert request(vector_url, f"/chunks?embedding={embedding_set}")["chunks"] == len(chunks)
+        assert request(vector_url, f"/chunks?embedding_set_id={embedding_set}")["chunks"] == len(chunks)
         for row in pipeline.read_json(output / "embeddings.json")["chunks"]:
-            stored = request(vector_url, f"/chunks/{row['chunk_id']}?embedding={embedding_set}")
+            stored = request(vector_url, f"/chunks/{row['chunk_id']}?embedding_set_id={embedding_set}")
             assert stored["chunktext"] == row["enrichment"] + "\n" + row["source_text"]
             hits = request(vector_url, "/search", "POST", {
                 "vector": row["vector"], "embedding_set_id": embedding_set,

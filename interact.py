@@ -67,7 +67,7 @@ def seconds(value):
 def main():
     parser = GermanArgumentParser(allow_abbrev=False, description="Interaktives KI-Tool für Embedding, Suche und Antwortgenerierung.")
     parser.add_argument("--metric", type=metric_value, metavar="{cosine,euclidean}", default="cosine", help="Die zu verwendende Metrik (z.B. 'euclidean', 'cosine').")
-    parser.add_argument("--embedding-set-id", "--embedding", dest="embedding", type=str, default=EMBEDDING_SET_ID, help="Die Kennung der zu verwendenden Embeddings.")
+    parser.add_argument("--embedding-set-id", type=str, default=EMBEDDING_SET_ID, help="Die Kennung der zu verwendenden Embeddings.")
     parser.add_argument("--num_results", type=german_integer, default=5, help="Anzahl der zu suchenden Vektoren.")
     parser.add_argument("--query", type=str, required=True, help="Die Query, die verarbeitet werden soll.")
     parser.add_argument("--top_k", type=german_integer, default=6, help="Anzahl der Top-Rerank-Ergebnisse.")
@@ -80,13 +80,13 @@ def main():
         parser.error(f"--num_results: {args.num_results!r} ist ungültig; erlaubt sind ganze Zahlen von 1 bis 100.")
     if args.top_k < 0:
         parser.error(f"--top_k: {args.top_k!r} ist ungültig; erwartet wird eine ganze Zahl >= 0 (0 deaktiviert Reranking).")
-    for option, value in (("--answer-model", args.answer_model), ("--query", args.query), ("--embedding-set-id/--embedding", args.embedding), ("--reranker", args.reranker)):
+    for option, value in (("--answer-model", args.answer_model), ("--query", args.query), ("--embedding-set-id", args.embedding_set_id), ("--reranker", args.reranker)):
         if not value.strip():
             parser.error(f"{option}: erwartet wird ein nichtleerer Text.")
 
     try:
         body = post_json(RAG_API_URL, {
-            "query": args.query, "embedding_set_id": args.embedding,
+            "query": args.query, "embedding_set_id": args.embedding_set_id,
             "metric": args.metric, "num_results": args.num_results,
             "top_k": args.top_k, "reranker": args.reranker,
             "answer_model": args.answer_model}, "RAG", REQUEST_TIMEOUT)

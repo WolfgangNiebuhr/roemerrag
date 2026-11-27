@@ -54,17 +54,6 @@ def text_field(data, key, *, required=True, query_parameter=False):
     return value
 
 
-def aliased_text(data, key, alias, *, conflict_detail, default=None, required=False, query_parameter=False):
-    value = text_field(data, key, required=False, query_parameter=query_parameter)
-    alias_value = text_field(data, alias, required=False, query_parameter=query_parameter)
-    if value is not None and alias_value is not None and value != alias_value:
-        invalid_request(conflict_detail)
-    selected = value if value is not None else alias_value
-    if selected is None and required:
-        invalid_request(key + ' ist erforderlich.', key, query_parameter=query_parameter)
-    return selected if selected is not None else default
-
-
 def _render_problem(type_uri, status, title, detail, extensions):
     response = jsonify(type=type_uri, title=title, status=status, detail=detail,
                        instance='urn:uuid:' + str(uuid4()), request_id=g.request_id,

@@ -18,7 +18,7 @@ Import3, CLI und RAG lesen Modell und Set aus `rag/embedding_config.py`. Beide E
 
 Die Datenbankspalte wird transaktional umbenannt; Kennungen und Vektoren bleiben unverändert. Vor jeder Bestandsmigration erzeugt das Werkzeug ein vollständiges Backup und prüft dessen Inhaltsverzeichnis. Es gibt keine automatische Migration beim API-Start. Damit sind Backup und Umstellungszeitpunkt explizite Betriebsschritte.
 
-Die Vector-API akzeptiert `embedding` weiterhin als Alias und liefert beide Namen in Einzelchunk- und Suchantworten. RAG akzeptiert weiterhin `filter`. Widersprüchliche Doppelangaben werden vor SQL- oder Modellzugriff mit HTTP 400 zurückgewiesen. Das Entfernen der Aliase benötigt eine spätere ausdrückliche Schnittstellenentscheidung. Ungefilterte Vector-Abfragen bleiben möglich.
+Vector-API und RAG-API verwenden für die Set-Kennung ausschließlich `embedding_set_id`. Die CLI verwendet `--embedding-set-id`. Nur die Zeilenzählung kann ohne Set-ID alle Sets umfassen. Die RAG-API verwendet ohne Angabe das konfigurierte Standard-Set.
 
 Migration und neue API-Version müssen gemeinsam ausgerollt werden; alte API-Versionen erwarten den alten Spaltennamen. Rückweg und Restore sind im README dokumentiert.
 

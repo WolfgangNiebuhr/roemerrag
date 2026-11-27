@@ -121,7 +121,7 @@ Die RAG-API prüfte Suchantworten nur auf den äußeren Listentyp und generierte
 
 ### TS-10 – Inkonsistentes Ressourcen- und Begriffsmodell
 
-**Status** · teilweise behoben
+**Status** · behoben
 
 **Schweregrad** · P2
 
@@ -129,13 +129,9 @@ Die RAG-API prüfte Suchantworten nur auf den äußeren Listentyp und generierte
 
 Die Vector-API verteilt Schreiben, Einzelabruf, Zählen und Löschen auf unterschiedliche Ressourcenpfade. Feldbegriffe und Set-Identität sind nicht durchgängig einheitlich. Eine Chunk-ID kann in mehreren Sets vorkommen, während Einzelabruf und ID-Suche ohne eindeutige Set-Zuordnung mehrdeutig sein können.
 
-#### Noch offen
+**Umsetzung**
 
-Set-Identität bei Einzelabruf und `/find` eindeutig machen. Einzelabrufe ohne Set verwenden `LIMIT 1`; `/find` gibt IDs ohne Set-Kennung aus. Den Ressourcenvertrag konsistent beschreiben.
-
-**Lösungsvorschlag**
-
-Mehrdeutige Einzelabfragen zurückweisen oder als Sammlung beantworten. Die Semantik mit derselben Chunk-ID in zwei Sets testen und einen Schnittstellenbruch ausdrücklich dokumentieren.
+Einzelabruf, Text- und Vektorsuche verlangen eine Set-ID. Fehlt sie, melden diese Endpunkte HTTP 400. `GET /chunks` zählt wahlweise ein Set oder alle Datensätze. Tests verwenden dieselbe Chunk-ID in zwei Sets.
 
 ### TS-11 – Widersprüchlicher und datenbanknaher Vektorvertrag
 
@@ -223,7 +219,7 @@ Das Datenbankschema legt einen HNSW-Index für euklidische Distanz an, während 
 
 **Lösungsvorschlag**
 
-Repräsentative gefilterte und ungefilterte Suchpläne messen, Treffer gegen eine exakte Referenz abgleichen und daraus eine begründete Indexstrategie ableiten.
+Repräsentative Suchpläne für setgebundene Abfragen messen, Treffer gegen eine exakte Referenz abgleichen und daraus eine begründete Indexstrategie ableiten.
 
 ### TS-17 – Testabdeckung umgeht relevante Verarbeitungspfade
 
@@ -237,7 +233,7 @@ Der [E2E-Test](../tests/podman/test_rag_e2e.py) importiert selbst und umgeht Imp
 
 #### Noch offen
 
-Regressionstests zu den offenen Verträgen aus TS-10/11/12/13/15/21 ergänzen. Repräsentative Last und Suchpläne prüfen sowie Goldantworten und erwartete Retrievaltreffer über einen breiteren Korpus absichern.
+Regressionstests zu den offenen Verträgen aus TS-11/12/13/15/21 ergänzen. Repräsentative Last und Suchpläne prüfen sowie Goldantworten und erwartete Retrievaltreffer über einen breiteren Korpus absichern.
 
 **Lösungsvorschlag**
 

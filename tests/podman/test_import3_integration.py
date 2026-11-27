@@ -34,9 +34,9 @@ def test_import3_with_real_keywords_and_embeddings(monkeypatch, vector_url, test
     ids = [f"{corpus.stem}-{index + 1}" for index in range(len(chunks))]
     try:
         importer.process_file(str(corpus), start=1)
-        assert request(vector_url, "/chunks?embedding=" + embedding)["chunks"] == len(chunks)
+        assert request(vector_url, "/chunks?embedding_set_id=" + embedding)["chunks"] == len(chunks)
         for chunk_id, chunk in zip(ids, chunks):
-            stored = request(vector_url, f"/chunks/{chunk_id}?embedding={embedding}")
+            stored = request(vector_url, f"/chunks/{chunk_id}?embedding_set_id={embedding}")
             chunktext = stored["chunktext"]
             assert chunktext.endswith("\n" + chunk)
             keywords = chunktext[:-(len(chunk) + 1)]
@@ -46,12 +46,12 @@ def test_import3_with_real_keywords_and_embeddings(monkeypatch, vector_url, test
             assert len(vector) == 1024
             assert float(vector @ vector) == pytest.approx(1.0)
             hits = request(vector_url, "/search", "POST", {
-                "vector": vector.tolist(), "embedding": embedding,
+                "vector": vector.tolist(), "embedding_set_id": embedding,
                 "metric": "euclidean", "num_results": 1,
             })
             assert hits[0]["chunk_id"] == chunk_id
             assert hits[0]["distance"] == pytest.approx(0, abs=1e-5)
     finally:
         request(vector_url, "/chunks", "DELETE", {
-            "document_id": corpus.stem, "embedding": embedding, "from": 1,
+            "document_id": corpus.stem, "embedding_set_id": embedding, "from": 1,
         })

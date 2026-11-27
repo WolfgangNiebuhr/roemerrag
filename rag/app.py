@@ -2,7 +2,7 @@ import sys
 from pathlib import Path
 sys.path.insert(0, str(Path(__file__).resolve().parents[1]))
 from rag_common.http_errors import (
-    aliased_text, install, invalid_request, json_object, problem_response, text_field, validating_request,
+    install, invalid_request, json_object, problem_response, text_field, validating_request,
 )
 from rag_common.rag_results import InvalidResults, generation_metrics, validate_results
 from rag_common.vector_contract import VectorInputError, parse_search_options, parse_vector
@@ -215,10 +215,9 @@ def read_rag_request():
 
 
 def parse_rag_options(data, *, default_top_k):
-    embedding_set = aliased_text(
-        data, "embedding_set_id", "filter", conflict_detail="Widersprüchliche Set-Kennungen.",
-        default=EMBEDDING_SET_ID,
-    )
+    if "filter" in data:
+        invalid_request("Verwende embedding_set_id als Set-Kennung.", "filter")
+    embedding_set = text_field(data, "embedding_set_id", required=False) or EMBEDDING_SET_ID
     try:
         metric, count = parse_search_options(data, default_count=NUM_RESULTS)
     except VectorInputError as error:

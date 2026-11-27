@@ -47,7 +47,7 @@ sequenceDiagram
     end
 ```
 
-Die CLI ruft pro Anfrage einmal `/process` auf und übernimmt Anzeige und lokalen Export. Die API verwendet standardmäßig das Set `snowflake-arctic-embed2-v2`. `filter` ist ein Alias für `embedding_set_id`. RAG validiert Treffer-IDs und `chunktext` vor der Kontextbildung. Leere Texte werden vor dem optionalen Reranking ausgesondert. Die Antwort enthält die ursprünglichen und ausgewählten Treffer in `retrieved_results` und `selected_results`. Bei leerem Kontext vor oder nach Reranking antwortet die API mit HTTP 200, `status: no_context`, leeren `chunks` und `metrics: null`. Bei späteren Fehlern erfolgt kein CLI-Export.
+Die CLI ruft pro Anfrage einmal `/process` auf und übernimmt Anzeige und lokalen Export. Die API verwendet standardmäßig das Set `snowflake-arctic-embed2-v2`. Die Set-ID kann pro Anfrage mit `embedding_set_id` gesetzt werden. RAG validiert Treffer-IDs und `chunktext` vor der Kontextbildung. Leere Texte werden vor dem optionalen Reranking ausgesondert. Die Antwort enthält die ursprünglichen und ausgewählten Treffer in `retrieved_results` und `selected_results`. Bei leerem Kontext vor oder nach Reranking antwortet die API mit HTTP 200, `status: no_context`, leeren `chunks` und `metrics: null`. Bei späteren Fehlern erfolgt kein CLI-Export.
 
 Die API arbeitet synchron. Verbindungs- und Lesezeitlimits sowie ein gemeinsames Restbudget begrenzen Folgeaufrufe. Bei Transportfehlern werden Embedding, Retrieval und Reranking höchstens einmal wiederholt. Die Generierung läuft ohne automatischen Retry. Fehlerantworten nennen den Verarbeitungsschritt und verwenden die [gemeinsamen Problem Details](8-3-error-handling.md). Parameter und Zeitlimits stehen im [README](../README.md).
 

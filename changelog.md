@@ -17,6 +17,24 @@ Aus README und docs übernommene Änderungshistorie. Gleichdatierte Einträge fo
 
 ## 2026-11-27
 
+### RAG-Set-ID-Alias entfernt
+
+`/process` und die Evaluationsendpunkte verwenden `embedding_set_id`. Der frühere Parameter `filter` führt vor Providerzugriff zu HTTP 400. Bei fehlender Set-ID greift das konfigurierte Standard-Set. Dokumentationsbeispiele und Vertragstests verwenden die aktuelle Benennung.
+
+313 Unit-Tests und alle 21 Podman-Integrationstests einschließlich RAG, Reranker und Ollama bestanden.
+
+### Alten Set-ID-Alias entfernt
+
+Die Vector-API nimmt `embedding_set_id` entgegen und gibt diese Kennung in Einzelchunk- und Suchantworten aus. Der frühere Set-Parameter `embedding` führt auch bei Zählabfragen vor dem Datenbankzugriff zu HTTP 400. Die CLI verwendet `--embedding-set-id`. Interne Aufrufe und Tests verwenden den aktuellen Namen.
+
+306 Unit-Tests und alle 21 Podman-Integrationstests einschließlich RAG, Reranker und Ollama bestanden. Das manuelle PowerShell-Skript wurde nicht gegen den laufenden Stack ausgeführt.
+
+### Set-ID für Einzelabruf und Suche verpflichtend
+
+TS-10 ist behoben. Die Vector-API verlangt bei Einzelabruf, `/find` und `/search` eine Set-ID und meldet bei fehlender Angabe HTTP 400 vor dem Datenbankzugriff. `GET /chunks` zählt weiterhin mit oder ohne Set-ID. Der Alias `embedding` bleibt gültig. Regressionstests prüfen dieselbe Chunk-ID in zwei Sets.
+
+306 Unit-Tests und neun Standard-Podman-Integrationstests bestanden. Beim ergänzenden RAG-Lauf bestand der Ende-zu-Ende-Test. Zwei früh gestartete API-Tests meldeten Verbindungsabbrüche. Im Wiederholungslauf mit dem Ende-zu-Ende-Test zuerst bestanden alle drei RAG-Tests. Die übrigen optionalen Integrationsfälle wurden für diese Änderung nicht ausgeführt.
+
 ### RAG-Importpfad und Persistenz bei Container-Neuerstellung getestet
 
 Der RAG-Ende-zu-Ende-Test importiert den Korpus über `Ingest.pipeline` mit Keyword-Anreicherung. Der PostgreSQL-Wiederanlauftest erstellt den Datenbankcontainer mit demselben eigenen Testvolume neu und prüft Abruf und Suche des zuvor gespeicherten Chunks. Beide Tests verwenden isolierte Podman-Ressourcen. TS-17 und das Testkonzept führen die verbleibenden Testlücken.

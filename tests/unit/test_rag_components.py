@@ -139,23 +139,18 @@ def test_generate_answer_converts_metrics_and_reports_http_error(monkeypatch):
     with pytest.raises(rag_app.ProviderUnavailable, match="Generation is unavailable"):
         rag_app.generate_answer("context", "question")
 
-@pytest.mark.parametrize("fields", [{"filter": "legacy"}, {"embedding_set_id": "new"}])
-def test_process_accepts_explicit_set_aliases(monkeypatch, fields):
+@pytest.mark.parametrize("fields, expected_set", [
+    ({}, rag_app.EMBEDDING_SET_ID),
+    ({"embedding_set_id": "new"}, "new"),
+])
+def test_process_selects_embedding_set(monkeypatch, fields, expected_set):
     monkeypatch.setattr(rag_app, "generate_embedding", Mock(return_value=[1]))
     search = Mock(return_value=[{"chunktext": "text", "chunk_id": "c"}])
     monkeypatch.setattr(rag_app, "search_vectors", search)
     monkeypatch.setattr(rag_app, "generate_answer", Mock(return_value=("answer", {})))
     response = rag_app.app.test_client().post("/process", json={"query": "q", **fields})
     assert response.status_code == 200
-    assert search.call_args.args[1] == next(iter(fields.values()))
-
-
-def test_process_rejects_conflicting_aliases_before_embedding(monkeypatch):
-    embed = Mock()
-    monkeypatch.setattr(rag_app, "generate_embedding", embed)
-    response = rag_app.app.test_client().post("/process", json={"query": "q", "filter": "a", "embedding_set_id": "b"})
-    assert response.status_code == 400
-    embed.assert_not_called()
+    assert search.call_args.args[1] == expected_set
 
 
 def test_cli_reranking_keeps_chunktext_and_chunk_identity(monkeypatch):

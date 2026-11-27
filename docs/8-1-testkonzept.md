@@ -56,11 +56,11 @@ Ollama ist ein externer, mit dem regulären Betrieb geteilter Host-Dienst. Der e
 
 ### PostgreSQL und Vector-API
 
-`tests/unit/test_vector_api_unit.py` verwendet Testdoubles für PostgreSQL-Pool und Cursor und prüft SQL-Parameter, Commit, Rollback und Poolfehler. `tests/podman/test_vector_api.py` prüft HTTP-Schreiben und -Lesen, stabile IDs bei parallelen Upserts, Set-Aliase und Variantenisolation, gefilterte und ungefilterte Suche mit L2 und Cosinus sowie `ILIKE` auf `chunktext`. Die Tests verwenden Vektoren mit 1024 Komponenten. `DELETE /chunks` wird mit gleichen Grenzen und einem inklusiven Bereich geprüft, der die Dezimalgrenze zwischen 9 und 10 überschreitet.
+`tests/unit/test_vector_api_unit.py` verwendet Testdoubles für PostgreSQL-Pool und Cursor und prüft SQL-Parameter, Commit, Rollback und Poolfehler. `tests/podman/test_vector_api.py` prüft HTTP-Schreiben und -Lesen, stabile IDs bei parallelen Upserts, Variantenisolation, setgebundene Suche mit L2 und Cosinus sowie `ILIKE` auf `chunktext`. Dieselbe Chunk-ID in zwei Sets sichert die Trennung bei Einzelabruf und Suche ab. Unit-Tests sichern HTTP 400 bei fehlender verpflichtender Set-ID oder bei Verwendung von `embedding` als Set-Parameter vor dem Datenbankzugriff ab. Die Tests verwenden Vektoren mit 1024 Komponenten. `DELETE /chunks` wird mit gleichen Grenzen und einem inklusiven Bereich geprüft, der die Dezimalgrenze zwischen 9 und 10 überschreitet.
 
 Der Wiederanlauftest startet die API in einem zusätzlichen isolierten Pod vor PostgreSQL. Er prüft Liveness ohne Datenbank und Readiness mit HTTP 503. Nach dem Datenbankstart speichert er einen Chunk, erstellt den PostgreSQL-Container mit demselben eigenen Testvolume neu und prüft, dass der Chunk ohne Neustart der API abrufbar und per Vektorsuche auffindbar bleibt. Der Test räumt Pod und Volume auch bei Fehlern auf.
 
-`tests/podman/test_embedding_migration.py` prüft `001_embedding_set_id.sql` und `002_chunktext.sql` in eigenen Testdatenbanken. Es kontrolliert erhaltene Zeilen, Vektoren und Unique Constraints, wiederholbare Migrationen und die Wiederherstellung der gesicherten Struktur. Die API-Vertragstests prüfen Set-Aliase, Konflikte und das Antwortfeld `chunktext`.
+`tests/podman/test_embedding_migration.py` prüft `001_embedding_set_id.sql` und `002_chunktext.sql` in eigenen Testdatenbanken. Es kontrolliert erhaltene Zeilen, Vektoren und Unique Constraints, wiederholbare Migrationen und die Wiederherstellung der gesicherten Struktur. Die API-Vertragstests prüfen die Set-Kennung `embedding_set_id` und das Antwortfeld `chunktext`.
 
 ### Dokumentimport
 
@@ -72,7 +72,7 @@ Die Standardintegration in `tests/podman/test_import_pipeline_integration.py` pr
 
 ### RAG-API, CLI und Evaluation
 
-`tests/unit/test_rag_components.py` prüft Embedding, Retrieval, Kontextbildung und Generierung mit gemockten Diensten. Die Fälle umfassen ungültige Providerantworten, Fehler beim Retrieval, leeren Kontext, Metrikgrenzen, Reranking-Zuordnung und Wiederholungsbudgets. Tests mit kontrollierter monotoner Uhr prüfen Teil- und Gesamtzeiten einschließlich `no_context` und den Alias `generation_duration`/`total_duration`.
+`tests/unit/test_rag_components.py` prüft Embedding, Retrieval, Kontextbildung und Generierung mit gemockten Diensten. Die Fälle umfassen die Set-Auswahl, ungültige Providerantworten, Fehler beim Retrieval, leeren Kontext, Metrikgrenzen, Reranking-Zuordnung und Wiederholungsbudgets. Tests mit kontrollierter monotoner Uhr prüfen Teil- und Gesamtzeiten einschließlich `no_context` und den Alias `generation_duration`/`total_duration`.
 
 `tests/unit/test_interact.py` prüft die Delegation in einem API-Aufruf, Modell- und Reranking-Parameter, getrennte ursprüngliche und ausgewählte Treffer, Export und Anzeige, CLI-Fehler und Zeitlimits. `tests/podman/test_rag_api.py` prüft die Eingabevalidierung am HTTP-Endpunkt.
 
@@ -86,7 +86,7 @@ Evaluations-Vertragstests prüfen direkt verkettbare `next_request`-Antworten, e
 
 ### Fehlervertrag und Image-Build
 
-`tests/unit/test_http_errors.py` prüft frühe Validierung vor Modell- und Poolzugriff, RFC-9457-Medientyp und -Felder, Request-Korrelation, sichere interne Fehler, HTTP-Status und den `Allow`-Header. `tests/podman/test_http_errors.py` prüft den HTTP-Vertrag der drei APIs im isolierten Stack. `tests/unit/test_build_image.py` prüft die explizite Dateiauswahl des Build-Skripts und die Bereinigung temporärer Build-Kontexte bei Erfolg und Fehler.
+`tests/unit/test_http_errors.py` prüft unter anderem HTTP 400 für den entfernten RAG-Parameter `filter` vor Providerzugriff. Weitere Fälle betreffen frühe Validierung vor Modell- und Poolzugriff, RFC-9457-Medientyp und -Felder, Request-Korrelation, sichere interne Fehler, HTTP-Status und den `Allow`-Header. `tests/podman/test_http_errors.py` prüft den HTTP-Vertrag der drei APIs im isolierten Stack. `tests/unit/test_build_image.py` prüft die explizite Dateiauswahl des Build-Skripts und die Bereinigung temporärer Build-Kontexte bei Erfolg und Fehler.
 
 ## Pytest-Konfiguration und temporäre Dateien
 

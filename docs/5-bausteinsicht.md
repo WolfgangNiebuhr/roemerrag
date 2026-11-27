@@ -68,7 +68,7 @@ Der separate Einstieg `import3.py` bleibt bis zum persönlichen Test der Pipelin
 
 | Teil | Verantwortung / Konfiguration |
 |---|---|
-| HTTP-Einstieg | `POST /process` liest `query`, `embedding_set_id` (Alias `filter`), `metric`, `num_results` und optionale Modell- und Reranking-Parameter. Standard sind Set `snowflake-arctic-embed2-v2`, Metrik `euclidean` und fünf Treffer. |
+| HTTP-Einstieg | `POST /process` liest `query`, `embedding_set_id`, `metric`, `num_results` und optionale Modell- und Reranking-Parameter. Standard sind Set `snowflake-arctic-embed2-v2`, Metrik `euclidean` und fünf Treffer. |
 | Ollama-Resolver | `OLLAMA_BASE_URL` hat Vorrang. Sonst Prüfung des Podman-Hostnamens und unter WSL der sichtbaren IPv4-Default-Gateways über `/api/tags`. Erfolgreiche Auswahl wird pro Prozess gespeichert. |
 | Embeddingadapter | `/api/embeddings`, Modell `snowflake-arctic-embed2`, Normalisierung des Fragevektors. |
 | Retrievaladapter | `VECTOR_API_URL`, Standard `http://host.containers.internal:5500/search`. Im gemeinsamen Pod explizit `http://127.0.0.1:5500/search` setzen. |
@@ -91,15 +91,15 @@ Die Vector-API initialisiert den `ThreadedConnectionPool` erst nach der Eingabev
 | Methode / Pfad | Aufgabe |
 |---|---|
 | `GET /chunks?embedding_set_id=...` | Zeilen zählen; Antwortfeld `chunks`, Filter optional |
-| `GET /chunks/<chunk_id>?embedding_set_id=...` | Einzelnen Chunk lesen; Filter optional |
+| `GET /chunks/<chunk_id>?embedding_set_id=...` | Einzelnen Chunk aus dem angegebenen Set lesen |
 | `POST /vectors` | Datensatz anhand von `chunk_id` und `embedding_set_id` per Upsert speichern und interne ID bei Updates erhalten. HTTP 201 |
-| `GET /find?query=...` | Chunk-IDs anhand eines case-insensitiven Musters in `chunktext` (`ILIKE`) finden |
+| `GET /find?query=...&embedding_set_id=...` | Chunk-IDs im angegebenen Set anhand eines case-insensitiven Musters in `chunktext` (`ILIKE`) finden |
 | `DELETE /chunks` | Kanonische Chunknummern in einem Dokument und Set im inklusiven Bereich `from` bis `to` löschen |
-| `POST /search` | Suche mit `vector`, optional `embedding_set_id`, `metric`, `num_results`; `euclidean` (`<->`) und `cosine` (`<=>`) werden unterstützt, ungültige Metriken liefern HTTP 400 |
+| `POST /search` | Suche mit `vector`, `embedding_set_id`, optional `metric` und `num_results`; `euclidean` (`<->`) und `cosine` (`<=>`) werden unterstützt, ungültige Metriken liefern HTTP 400 |
 
 Der JSON-Body für `DELETE /chunks` enthält `document_id` (Dateistamm), `embedding_set_id` und die positive Ganzzahl `from`. `to` ist optional und muss als Ganzzahl mindestens so groß wie `from` sein. Gleiche Grenzen löschen einen einzelnen Chunk. Ohne `to` reicht der Bereich bis zum Ende. IDs im Format `<Dateistamm>-<Nummer ab 1>` werden exakt dem Dokument zugeordnet. HTTP 200 gibt mit `{"deleted": 2}` die Anzahl gelöschter Zeilen an. Ungültige Angaben ergeben HTTP 400.
 
-Die Tabelle `vectors` enthält `id SERIAL PRIMARY KEY`, `chunk_id TEXT NOT NULL`, `embedding_set_id TEXT NOT NULL`, `vector VECTOR(1024)` und `chunktext TEXT NOT NULL`. Ein Check-Constraint verlangt mindestens ein Zeichen außerhalb von Leerzeichen, LF und CR. Die Vector-API prüft dieselbe Regel vor dem Datenbankzugriff. `embedding_set_id` ist die Variantenkennung, kein numerischer Vektor. `UNIQUE(chunk_id, embedding_set_id)` trennt Importvarianten. Einzelwrites verwenden Upserts und sind nach der jeweiligen Transaktion abrufbar. Die abschließende Bereinigung verwendet eine eigene Transaktion. Ein HNSW-Index mit `vector_l2_ops` unterstützt euklidische Suche. Die Vector-API prüft Vektoren auf 1024 endliche Zahlen und akzeptiert JSON-Listen sowie JSON-kodierte Listenstrings. `embedding` ist ein Alias für `embedding_set_id`. Einzelchunk- und Suchantworten enthalten beide Namen. Widersprüchliche Angaben ergeben HTTP 400.
+Die Tabelle `vectors` enthält `id SERIAL PRIMARY KEY`, `chunk_id TEXT NOT NULL`, `embedding_set_id TEXT NOT NULL`, `vector VECTOR(1024)` und `chunktext TEXT NOT NULL`. Ein Check-Constraint verlangt mindestens ein Zeichen außerhalb von Leerzeichen, LF und CR. Die Vector-API prüft dieselbe Regel vor dem Datenbankzugriff. `embedding_set_id` ist die Variantenkennung, kein numerischer Vektor. `UNIQUE(chunk_id, embedding_set_id)` trennt Importvarianten. Einzelwrites verwenden Upserts und sind nach der jeweiligen Transaktion abrufbar. Die abschließende Bereinigung verwendet eine eigene Transaktion. Ein HNSW-Index mit `vector_l2_ops` unterstützt euklidische Suche. Die Vector-API prüft Vektoren auf 1024 endliche Zahlen und akzeptiert JSON-Listen sowie JSON-kodierte Listenstrings. Die Vector-API verwendet `embedding_set_id` als Set-Kennung in Anfragen und Antworten.
 
 ### 5.3.4 Ollama und Reranker
 
@@ -123,7 +123,7 @@ Die Testfixture baut einen eigenen Pod mit eindeutigen Container-/Image-Namen un
 
 Das [Schuldenregister](11-2-technische-schulden.md) führt aktuelle Befunde und Schweregrade. Für die Bausteinsicht sind insbesondere folgende Einschränkungen relevant:
 
-- Einzelabrufe ohne Set und die ID-Suche können bei mehreren Sets mehrdeutig sein. Die Vektorausgabe ist an die Datenbankdarstellung gekoppelt.
+- Die Vektorausgabe ist an die Datenbankdarstellung gekoppelt.
 - Paketversionen und pgvector-Quellstand sind nicht vollständig fixiert. Der HNSW-Index unterstützt euklidische Distanz.
 - Die Dienste verwenden Flask-Entwicklungsserver ohne API-Authentifizierung. Für RAG und Reranker fehlt eine vergleichbare Trennung von Liveness und Readiness.
 - Die Evaluationsendpunkte ermöglichen Einzelversuche. Goldvergleich und aggregierte Qualitätsmessung sind offen.

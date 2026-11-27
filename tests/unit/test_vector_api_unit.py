@@ -47,7 +47,7 @@ def test_count_chunks_uses_embedding_filter_and_returns_count(database):
     vector_app, pool, connection, cursor = database
     cursor.fetchone.return_value = (7,)
 
-    response = vector_app.app.test_client().get("/chunks?embedding=embed-a")
+    response = vector_app.app.test_client().get("/chunks?embedding_set_id=embed-a")
 
     assert response.status_code == 200
     assert response.get_json() == {"chunks": 7}
@@ -61,12 +61,12 @@ def test_search_uses_cosine_operator_and_filter_parameters(database):
     cursor.fetchall.return_value = [(1, "chunk-1", "embed-a", "[1,0]", "text", -0.9)]
 
     response = vector_app.app.test_client().post("/search", json={
-        "vector": [0.9, 0.1] + [0.0] * 1022, "embedding": "embed-a", "metric": "cosine", "num_results": 4,
+        "vector": [0.9, 0.1] + [0.0] * 1022, "embedding_set_id": "embed-a", "metric": "cosine", "num_results": 4,
     })
 
     assert response.status_code == 200
     assert response.get_json() == [{
-        "id": 1, "chunk_id": "chunk-1", "embedding": "embed-a", "embedding_set_id": "embed-a",
+        "id": 1, "chunk_id": "chunk-1", "embedding_set_id": "embed-a",
         "vector": "[1,0]", "chunktext": "text", "distance": -0.9,
     }]
     sql, parameters = cursor.execute.call_args_list[0].args
@@ -87,18 +87,19 @@ def test_api_reports_unavailable_database_pool(vector_module, monkeypatch):
 
 def test_search_rejects_unsupported_metric_without_database_call(database):
     vector_app, pool, _, _ = database
-    response = vector_app.app.test_client().post("/search", json={"vector": [1, 0], "metric": "inner_product"})
+    response = vector_app.app.test_client().post("/search", json={"vector": [1, 0], "metric": "inner_product", "embedding_set_id": "set-a"})
     assert response.status_code == 400
     pool.getconn.assert_not_called()
 
 def test_find_chunks_uses_parameterized_ilike_query(database):
     vector_app, pool, connection, cursor = database
     cursor.fetchall.return_value = [("chunk-1",), ("chunk-2",)]
-    response = vector_app.app.test_client().get("/find?query=%25rome%25")
+    response = vector_app.app.test_client().get("/find?query=%25rome%25&embedding_set_id=set-a")
     assert response.status_code == 200
     assert response.get_json() == {"chunk_ids": ["chunk-1", "chunk-2"]}
     assert cursor.execute.call_args_list[0].args == (
-        "SELECT chunk_id FROM vectors WHERE chunktext ILIKE %s", ("%rome%",)
+        "SELECT chunk_id FROM vectors WHERE embedding_set_id = %s AND chunktext ILIKE %s",
+        ("set-a", "%rome%"),
     )
     pool.putconn.assert_called_once_with(connection)
 
@@ -122,22 +123,24 @@ def test_api_recovers_when_database_becomes_available(vector_module, monkeypatch
     assert client.get("/chunks").status_code == 200
     factory.assert_called_once()
 
-@pytest.mark.parametrize("path,method", [("/chunks", "get"), ("/chunks/c", "get"), ("/vectors", "post"), ("/chunks", "delete"), ("/search", "post")])
-def test_conflicting_aliases_rejected_before_sql(database, path, method):
+@pytest.mark.parametrize("path,method", [("/chunks", "get"), ("/chunks/c", "get"), ("/find", "get"), ("/vectors", "post"), ("/chunks", "delete"), ("/search", "post")])
+def test_legacy_embedding_parameter_is_rejected_before_sql(database, path, method):
     module, pool, _, _ = database
     client = module.app.test_client()
-    fields = {"embedding_set_id": "a", "embedding": "b", "chunk_id": "c", "vector": [1]}
+    fields = {"embedding": "b", "query": "rom", "chunk_id": "c", "document_id": "rom",
+              "from": 1, "vector": [1] * 1024}
     response = getattr(client, method)(path, **({"query_string": fields} if method == "get" else {"json": fields}))
     assert response.status_code == 400
+    location = {"parameter": "embedding"} if method == "get" else {"pointer": "/embedding"}
+    assert response.get_json()["errors"][0].items() >= location.items()
     pool.getconn.assert_not_called()
 
 
-@pytest.mark.parametrize("key", ["embedding", "embedding_set_id"])
-def test_set_aliases_write_same_database_column(database, key):
+def test_write_uses_set_id_database_column(database):
     module, _, connection, cursor = database
     chunktext = " \r\nRom\n "
     response = module.app.test_client().post(
-        "/vectors", json={"chunk_id": "c", key: "set", "vector": [1] * 1024, "chunktext": chunktext},
+        "/vectors", json={"chunk_id": "c", "embedding_set_id": "set", "vector": [1] * 1024, "chunktext": chunktext},
     )
     assert response.status_code == 201
     assert "embedding_set_id" in cursor.execute.call_args.args[0]

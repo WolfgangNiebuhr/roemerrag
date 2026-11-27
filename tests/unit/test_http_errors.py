@@ -28,13 +28,35 @@ def problem(response, status, kind):
 @pytest.mark.parametrize('payload', [None, [], 123, {}, {'query': ' '}, {'query': 3},
     {'query': 'q', 'metric': []}, {'query': 'q', 'metric': 'bad'},
     *[{'query': 'q', 'num_results': x} for x in [True, 0, -1, 101, '2', 1.5]],
-    {'query': 'q', 'filter': None}, {'query': 'q', 'filter': 'a', 'embedding_set_id': 'b'}])
+    {'query': 'q', 'embedding_set_id': None}, {'query': 'q', 'embedding_set_id': ' '}])
 def test_rag_validation_precedes_embedding(monkeypatch, payload):
     embed = Mock()
     monkeypatch.setattr(rag, 'generate_embedding', embed)
     response = rag.app.test_client().post('/process', json=payload)
     assert problem(response, 400, 'urn:rag:problem:invalid-request')['stage'] == 'validation'
     embed.assert_not_called()
+
+
+@pytest.mark.parametrize('path', ['/process', '/evaluate/retrieve', '/evaluate/rerank', '/evaluate/generate'])
+@pytest.mark.parametrize('fields', [{'filter': 'old'}, {'filter': 'old', 'embedding_set_id': 'old'}])
+def test_rag_rejects_removed_set_alias_before_provider_call(monkeypatch, path, fields):
+    embed = Mock()
+    search = Mock()
+    rerank = Mock()
+    generate = Mock()
+    monkeypatch.setattr(rag, 'generate_embedding', embed)
+    monkeypatch.setattr(rag, 'search_vectors', search)
+    monkeypatch.setattr(rag, 'rerank_results', rerank)
+    monkeypatch.setattr(rag, 'generate_answer', generate)
+    response = rag.app.test_client().post(path, json={
+        'query': 'q', 'results': [{'chunk_id': 'c', 'chunktext': 'Text'}], **fields,
+    })
+    body = problem(response, 400, 'urn:rag:problem:invalid-request')
+    assert body['errors'] == [{'pointer': '/filter', 'detail': body['detail']}]
+    embed.assert_not_called()
+    search.assert_not_called()
+    rerank.assert_not_called()
+    generate.assert_not_called()
 
 
 @pytest.mark.parametrize('payload', [123, {}, {'query': ' ', 'documents': []},
@@ -49,13 +71,13 @@ def test_reranker_validation_precedes_loading(monkeypatch, payload):
 
 @pytest.mark.parametrize('path,method,payload', [
     ('/vectors', 'post', {}), ('/vectors', 'post', {'chunk_id': 4}),
-    ('/chunks', 'delete', {}), ('/search', 'post', {'vector': [1]}),
-    ('/search', 'post', {'vector': [1]*1024, 'num_results': 'abc'}),
-    ('/search', 'post', {'vector': [1]*1024, 'metric': {}}),
-    ('/search', 'post', {'vector': [float('nan')]*1024}),
-    ('/search', 'post', {'vector': [True]*1024}),
-    ('/search', 'post', {'vector': [0]*1024, 'metric': 'cosine'}),
-    ('/chunks?embedding_set_id=', 'get', None), ('/chunks/c?embedding=', 'get', None),
+    ('/chunks', 'delete', {}), ('/search', 'post', {'embedding_set_id': 'set-a', 'vector': [1]}),
+    ('/search', 'post', {'embedding_set_id': 'set-a', 'vector': [1]*1024, 'num_results': 'abc'}),
+    ('/search', 'post', {'embedding_set_id': 'set-a', 'vector': [1]*1024, 'metric': {}}),
+    ('/search', 'post', {'embedding_set_id': 'set-a', 'vector': [float('nan')]*1024}),
+    ('/search', 'post', {'embedding_set_id': 'set-a', 'vector': [True]*1024}),
+    ('/search', 'post', {'embedding_set_id': 'set-a', 'vector': [0]*1024, 'metric': 'cosine'}),
+    ('/chunks?embedding_set_id=', 'get', None), ('/chunks/c?embedding_set_id=', 'get', None),
     ('/find', 'get', None),
 ])
 def test_vector_validation_precedes_pool_initialization(vector_module, monkeypatch, path, method, payload):
@@ -66,7 +88,22 @@ def test_vector_validation_precedes_pool_initialization(vector_module, monkeypat
     initialize.assert_not_called()
 
 
-@pytest.mark.parametrize('path', ['/chunks?embedding_set_id=', '/chunks/c?embedding=', '/find'])
+@pytest.mark.parametrize("path,method,payload", [
+    ("/chunks/c", "get", None),
+    ("/find?query=rome", "get", None),
+    ("/search", "post", {"vector": [1] * 1024}),
+])
+def test_vector_reads_require_set_before_database(vector_module, monkeypatch, path, method, payload):
+    initialize = Mock()
+    monkeypatch.setattr(vector_module, "ensure_db_pool", initialize)
+    response = getattr(vector_module.app.test_client(), method)(path, json=payload)
+    body = problem(response, 400, "urn:rag:problem:invalid-request")
+    location = {"parameter": "embedding_set_id"} if method == "get" else {"pointer": "/embedding_set_id"}
+    assert body["errors"] == [{**location, "detail": body["detail"]}]
+    initialize.assert_not_called()
+
+
+@pytest.mark.parametrize('path', ['/chunks?embedding_set_id=', '/chunks/c?embedding_set_id=', '/find'])
 def test_invalid_vector_head_does_not_initialize_pool(vector_module, monkeypatch, path):
     initialize = Mock()
     monkeypatch.setattr(vector_module, 'ensure_db_pool', initialize)
@@ -86,7 +123,8 @@ def test_invalid_requests_keep_field_locations_and_correlation(vector_module, mo
     headers = {'X-Request-ID': 'vector-validation'}
     cases = [
         (client.get('/find', headers=headers), 'parameter', 'query'),
-        (client.post('/search', json={'metric': 'invalid'}, headers=headers), 'pointer', '/metric'),
+        (client.post('/search', json={'metric': 'invalid', 'embedding_set_id': 'set-a'},
+                     headers=headers), 'pointer', '/metric'),
     ]
     for response, location, field in cases:
         body = problem(response, 400, 'urn:rag:problem:invalid-request')
