@@ -59,7 +59,7 @@ Die Werte stehen in ungerundeten Sekunden. `metrics.generation_duration` stammt 
 
 ### Schrittweise Evaluation
 
-`POST /evaluate/retrieve` erzeugt ein Embedding oder verwendet einen übergebenen Fragevektor, sucht Treffer und liefert die Reranking-Eingabe in `next_request`. `POST /evaluate/rerank` verarbeitet die übergebenen Treffer, erhält ihre Identität und Felder, ergänzt Scores und liefert die Generierungseingabe in `next_request`. `POST /evaluate/generate` verwendet den daraus gebildeten Kontext sowie die übergebene Frage, Modellwahl und Promptvorlagen. Jeder Schritt kann unabhängig wiederholt werden. Leerer Kontext überspringt Reranking beziehungsweise Generierung. Zeiten werden je Aufruf gemessen.
+`POST /evaluate/retrieve` erzeugt ein Embedding oder verwendet einen übergebenen Fragevektor, sucht Treffer und liefert die Reranking-Eingabe in `next_request`. Bei `include_distances: true` lädt RAG die gespeicherten Vektoren für die Berechnung der Distanzdiagnostik. `include_query_vector: true` gibt den Fragevektor für Wiederholungsversuche separat aus. `POST /evaluate/rerank` verarbeitet die übergebenen Treffer, erhält ihre Identität und Felder, ergänzt Scores und liefert die Generierungseingabe in `next_request`. `POST /evaluate/generate` verwendet den daraus gebildeten Kontext sowie die übergebene Frage, Modellwahl und Promptvorlagen. Jeder Schritt kann unabhängig wiederholt werden. Leerer Kontext überspringt Reranking beziehungsweise Generierung. Zeiten werden je Aufruf gemessen.
 
 ## 6.2 Dokumentimport und Ende-zu-Ende-Test
 

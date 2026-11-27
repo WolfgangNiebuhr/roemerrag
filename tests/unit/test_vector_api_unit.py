@@ -58,22 +58,40 @@ def test_count_chunks_uses_embedding_filter_and_returns_count(database):
 
 def test_search_uses_cosine_operator_and_filter_parameters(database):
     vector_app, pool, connection, cursor = database
-    cursor.fetchall.return_value = [(1, "chunk-1", "embed-a", "[1,0]", "text", -0.9)]
+    stored_vector = [1.0] + [0.0] * 1023
+    cursor.fetchall.return_value = [(1, "chunk-1", "embed-a", stored_vector, "text", -0.9)]
 
     response = vector_app.app.test_client().post("/search", json={
         "vector": [0.9, 0.1] + [0.0] * 1022, "embedding_set_id": "embed-a", "metric": "cosine", "num_results": 4,
+        "include_vector": True,
     })
 
     assert response.status_code == 200
     assert response.get_json() == [{
         "id": 1, "chunk_id": "chunk-1", "embedding_set_id": "embed-a",
-        "vector": "[1,0]", "chunktext": "text", "distance": -0.9,
+        "vector": stored_vector, "chunktext": "text", "distance": -0.9,
     }]
     sql, parameters = cursor.execute.call_args_list[0].args
     assert "vector <=> %s::VECTOR" in sql
+    assert "vector::text::json AS vector" in sql
     assert "WHERE embedding_set_id = %s" in sql
     assert parameters == ([0.9, 0.1] + [0.0] * 1022, "embed-a", [0.9, 0.1] + [0.0] * 1022, 4)
     pool.putconn.assert_called_once_with(connection)
+
+
+@pytest.mark.parametrize("include", [{}, {"include_vector": False}])
+def test_search_omits_vector_projection_by_default(database, include):
+    module, _, _, cursor = database
+    cursor.description = [(key,) for key in ("chunk_id", "chunktext", "distance")]
+    cursor.fetchall.return_value = [("c", "text", 0.0)]
+    response = module.app.test_client().post("/search", json={
+        "embedding_set_id": "set", "vector": [1.0] * 1024, **include,
+    })
+    assert response.status_code == 200
+    assert response.json == [{"chunk_id": "c", "chunktext": "text", "distance": 0.0}]
+    sql = cursor.execute.call_args.args[0]
+    assert "chunktext," in sql
+    assert ", vector" not in sql
 
 
 def test_api_reports_unavailable_database_pool(vector_module, monkeypatch):

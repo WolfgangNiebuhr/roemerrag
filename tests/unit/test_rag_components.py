@@ -15,9 +15,9 @@ def fixed_ollama_endpoint(monkeypatch):
 
 def test_rag_api_success_with_mocked_dependencies():
     query = "Wer beherrschte das westliche Mittelmeer?"
-    embedding = [3.0, 4.0]
+    embedding = [3.0, 4.0] + [0.0] * 1022
     retrieved = [
-        {"chunktext": "Rom kontrollierte große Teile des westlichen Mittelmeers.", "chunk_id": "chunk-rome-1"},
+        {"chunktext": "Rom kontrollierte große Teile des westlichen Mittelmeers.", "chunk_id": "chunk-rome-1", "vector": [1.] + [0.] * 1023},
         {"chunktext": "Karthago war Roms bedeutender Rivale.", "chunk_id": "chunk-carthage-2"},
     ]
     ollama_embedding = Mock(status_code=200)
@@ -43,6 +43,7 @@ def test_rag_api_success_with_mocked_dependencies():
     body = response.get_json()
     assert body["response"] == "Rom beherrschte große Teile des westlichen Mittelmeers."
     assert body["chunks"] == ["chunk-rome-1", "chunk-carthage-2"]
+    assert all("vector" not in row for row in body["retrieved_results"])
     assert body["metrics"]["total_duration"] == 2.0
     assert body["metrics"]["prompt_tokens"] == 20
     assert body["metrics"]["answer_tokens"] == 10
@@ -53,7 +54,8 @@ def test_rag_api_success_with_mocked_dependencies():
     assert embedding_call.kwargs["json"] == {"model": rag_app.EMBEDDING_MODEL_NAME, "prompt": query}
     assert vector_call.args[0] == rag_app.VECTOR_API_URL
     vector_payload = vector_call.kwargs["json"]
-    assert vector_payload["vector"] == [0.6, 0.8]
+    assert vector_payload["vector"] == [0.6, 0.8] + [0.0] * 1022
+    assert "include_vector" not in vector_payload
     assert vector_payload["embedding_set_id"] == rag_app.EMBEDDING_SET_ID
     assert vector_payload["metric"] == "cosine" and vector_payload["num_results"] == 2
     assert answer_call.args[0] == rag_app.OLLAMA_ANSWER_URL
@@ -66,13 +68,13 @@ def test_rag_api_success_with_mocked_dependencies():
 
 def test_generate_embedding_normalizes_vector(monkeypatch):
     response = Mock(status_code=200)
-    response.json.return_value = {"embedding": [3.0, 4.0]}
+    response.json.return_value = {"embedding": [3.0, 4.0] + [0.0] * 1022}
     post = Mock(return_value=response)
     monkeypatch.setattr("requests.post", post)
 
     result = rag_app.generate_embedding("test query")
 
-    assert result.tolist() == pytest.approx([0.6, 0.8])
+    assert result.tolist() == pytest.approx([0.6, 0.8] + [0.0] * 1022)
     post.assert_called_once_with(
         rag_app.OLLAMA_EMBEDDING_URL,
         json={"model": rag_app.EMBEDDING_MODEL_NAME, "prompt": "test query"},
@@ -80,7 +82,7 @@ def test_generate_embedding_normalizes_vector(monkeypatch):
     )
 
 
-@pytest.mark.parametrize("embedding", [None, [], [0.0, 0.0]])
+@pytest.mark.parametrize("embedding", [None, [], [0.0] * 1024])
 def test_generate_embedding_rejects_missing_or_zero_vector(monkeypatch, embedding):
     response = Mock(status_code=200)
     response.json.return_value = {"embedding": embedding}
@@ -352,13 +354,25 @@ def test_cli_and_http_equivalent_configuration(monkeypatch):
     export.assert_called_once_with('q', rows)
 
 
-@pytest.mark.parametrize('embedding', [[float('nan')], [float('inf')], [True], [[1]], ['1']])
-def test_embedding_invalid_provider_vectors(monkeypatch, embedding):
+@pytest.mark.parametrize("value", [float("nan"), float("inf"), True, [1], "1"])
+def test_embedding_invalid_provider_vectors(monkeypatch, value):
     response = Mock(status_code=200)
-    response.json.return_value = {'embedding':embedding}
+    response.json.return_value = {"embedding": [value] + [0.0] * 1023}
     monkeypatch.setattr("requests.post", Mock(return_value=response))
     with pytest.raises(rag_app.InvalidProviderResponse, match='Embedding returned an invalid vector'):
         rag_app.generate_embedding('q')
+
+
+@pytest.mark.parametrize("path", ["/process", "/evaluate/retrieve"])
+def test_wrong_provider_dimension_fails_before_retrieval(monkeypatch, path):
+    provider = Mock(status_code=200, json=lambda: {"embedding": [1.0] * 1023})
+    post = Mock(return_value=provider)
+    monkeypatch.setattr("requests.post", post)
+    response = rag_app.app.test_client().post(path, json={"query": "q"})
+    assert response.status_code == 502
+    assert response.json["type"] == "urn:rag:problem:upstream-invalid-response"
+    assert response.json["stage"] == "embedding"
+    post.assert_called_once()
 
 
 @pytest.mark.parametrize('body', [{}, {'response':None}, {'response':3}, []])
@@ -463,6 +477,7 @@ def test_evaluation_chain_is_reusable_and_isolated(monkeypatch):
         'answer_model':'model','system_prompt':'system','user_prompt':'{question}: {context}'}).json
     assert retrieved['results'] == rows
     assert 'diagnostics' not in retrieved
+    assert 'vector' not in retrieved
     assert retrieved['metrics']['embedding']['prompt_tokens'] == 3
     post.assert_not_called()
     generate.assert_not_called()
@@ -498,18 +513,20 @@ def test_empty_evaluation_does_not_call_provider(monkeypatch, endpoint):
     post.assert_not_called()
 
 
-@pytest.mark.parametrize('vector_as_string', [False, True])
-def test_retrieve_accepts_cached_vector(monkeypatch, vector_as_string):
+def test_retrieve_accepts_cached_vector(monkeypatch):
     embed = Mock()
     search = Mock(return_value=[])
     monkeypatch.setattr(rag_app, 'generate_embedding', embed)
     monkeypatch.setattr(rag_app, 'search_vectors', search)
     vector = [1.0] + [0.0] * 1023
     response = rag_app.app.test_client().post('/evaluate/retrieve', json={
-        'query': 'q', 'vector': json.dumps(vector) if vector_as_string else vector,
+        'query': 'q', 'vector': vector,
+        'include_query_vector': True,
     })
     assert response.status_code == 200
     assert response.json['vector'] == vector
+    assert 'vector' not in response.json['next_request']
+    assert not search.call_args.kwargs['include_vector']
     assert response.json['embedding_model'] is None
     assert response.json['timings']['embedding_duration'] is None
     embed.assert_not_called()
@@ -517,21 +534,28 @@ def test_retrieve_accepts_cached_vector(monkeypatch, vector_as_string):
 
 def test_retrieval_diagnostics_preserve_hits_and_compare_reference(monkeypatch):
     embed = Mock(side_effect=[
-        (rag_app.np.array([1., 0.]), {}),
-        rag_app.np.array([-1., 0.]),
+        (rag_app.np.array([1.] + [0.] * 1023), {}),
+        rag_app.np.array([-1.] + [0.] * 1023),
     ])
     rows = [
-        {'chunk_id': 'a', 'chunktext': 'first', 'vector': '[0.6, 0.8]', 'distance': 0.4},
-        {'chunk_id': 'b', 'chunktext': 'second', 'vector': [0., 0.], 'distance': 1.0},
+        {'chunk_id': 'a', 'chunktext': 'first', 'vector': [0.6, 0.8] + [0.] * 1022, 'distance': 0.4},
+        {'chunk_id': 'b', 'chunktext': 'second', 'vector': [0.] * 1024, 'distance': 1.0},
     ]
     monkeypatch.setattr(rag_app, 'generate_embedding', embed)
-    monkeypatch.setattr(rag_app, 'search_vectors', Mock(return_value=rows))
+    search = Mock(return_value=rows)
+    monkeypatch.setattr(rag_app, 'search_vectors', search)
     response = rag_app.app.test_client().post('/evaluate/retrieve', json={
         'query': 'question', 'metric': 'cosine', 'include_distances': True, 'reference_text': 'gold',
     })
     assert response.status_code == 200
     body = response.json
-    assert body['results'] == body['next_request']['results'] == rows
+    assert search.call_args.kwargs['include_vector'] is True
+    assert 'vector' not in body
+    assert body['results'] == body['next_request']['results']
+    assert body['results'] == [
+        {'chunk_id': 'a', 'chunktext': 'first', 'distance': 0.4},
+        {'chunk_id': 'b', 'chunktext': 'second', 'distance': 1.0},
+    ]
     assert 'reference_text' not in body['next_request']
     assert body['diagnostics']['hits'][0] == {
         'chunk_id': 'a', 'distance': 0.4, 'cosine_similarity': pytest.approx(0.6),
@@ -546,6 +570,7 @@ def test_retrieval_diagnostics_preserve_hits_and_compare_reference(monkeypatch):
 
 @pytest.mark.parametrize('fields, pointer', [
     ({'include_distances': 1}, '/include_distances'),
+    ({'include_query_vector': 'true'}, '/include_query_vector'),
     ({'reference_text': ' '}, '/reference_text'),
     ({'reference_text': 'gold', 'vector': [1.] * 1024}, '/reference_text'),
 ])
@@ -559,9 +584,10 @@ def test_invalid_diagnostics_options_are_rejected_before_provider_access(monkeyp
     post.assert_not_called()
 
 
-@pytest.mark.parametrize('stored_vector', [None, 'invalid json', '[true, 0]', [1.0]])
+@pytest.mark.parametrize('stored_vector', [None, json.dumps([1.] + [0.] * 1023),
+                                          [True] + [0.] * 1023, [1.0]])
 def test_retrieval_diagnostics_reject_invalid_stored_vectors(monkeypatch, stored_vector):
-    monkeypatch.setattr(rag_app, 'generate_embedding', Mock(return_value=(rag_app.np.array([1., 0.]), {})))
+    monkeypatch.setattr(rag_app, 'generate_embedding', Mock(return_value=(rag_app.np.array([1.] + [0.] * 1023), {})))
     monkeypatch.setattr(rag_app, 'search_vectors', Mock(return_value=[
         {'chunk_id': 'c', 'chunktext': 'text', 'vector': stored_vector, 'distance': 0},
     ]))

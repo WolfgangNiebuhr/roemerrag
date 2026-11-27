@@ -78,7 +78,7 @@ Der separate Einstieg `import3.py` bleibt bis zum persönlichen Test der Pipelin
 
 Die Antwort enthält `response`, `chunks`, `metrics` sowie getrennte `retrieved_results` und `selected_results`. Leerer Kontext führt zu HTTP 200 mit `status: no_context`, leeren `chunks` und `metrics: null`. Ungültige Retrievalantworten ergeben HTTP 502. Die Serverzeiten `embedding_duration`, `retrieval_duration` und `pipeline_duration` stehen in `timings`, auch bei `no_context`. Generierungsmetriken verwenden `generation_duration` mit `total_duration` als Alias. Ungültige optionale Metriken werden als `null` ausgegeben. Der Prompt begrenzt die Antwort auf den Kontext. Ein erfolgreicher API-Aufruf garantiert keine Faktentreue.
 
-Die Evaluationsendpunkte `POST /evaluate/retrieve`, `POST /evaluate/rerank` und `POST /evaluate/generate` verwenden dieselben Providerfunktionen. `next_request` verbindet die Schritte über serialisierbare Eingaben. Trefferidentität und Trefferfelder bleiben erhalten. Die Endpunkte speichern weder Vektoren noch Sitzungszustand.
+Die Evaluationsendpunkte `POST /evaluate/retrieve`, `POST /evaluate/rerank` und `POST /evaluate/generate` verwenden dieselben Providerfunktionen. `next_request` verbindet die Schritte über serialisierbare Eingaben. Trefferidentität und Trefferfelder bleiben erhalten. `/evaluate/retrieve` fordert Treffervektoren nur für `include_distances: true` an und liefert daraus berechnete Diagnosen. Der Fragevektor ist mit `include_query_vector: true` abrufbar. Trefferausgabe und Folgeaufrufe aus Retrieve enthalten keine Vektoren. Die Endpunkte speichern weder Vektoren noch Sitzungszustand.
 
 `interact.py` validiert CLI-Argumente, ruft `/process` auf und übernimmt Ausgabe und lokalen Export. `analyze.py` ruft `/evaluate/retrieve` mit Distanzdiagnostik auf und übergibt `next_request` an `/evaluate/generate`. RAG berechnet Cosinus-Ähnlichkeit und euklidischen Abstand für die Treffer und optional für den vom Analysewerkzeug übergebenen Gold-Chunk. Die Transportadapter begrenzen Zeitlimits und Wiederholungen für sicher wiederholbare Aufrufe. Generierung und Writes werden nicht automatisch wiederholt. Die [Laufzeitsicht](6-laufzeitsicht.md) beschreibt Aufrufreihenfolge, Netzwerk und Retry-Verhalten.
 
@@ -91,15 +91,15 @@ Die Vector-API initialisiert den `ThreadedConnectionPool` erst nach der Eingabev
 | Methode / Pfad | Aufgabe |
 |---|---|
 | `GET /chunks?embedding_set_id=...` | Zeilen zählen; Antwortfeld `chunks`, Filter optional |
-| `GET /chunks/<chunk_id>?embedding_set_id=...` | Einzelnen Chunk aus dem angegebenen Set lesen |
+| `GET /chunks/<chunk_id>?embedding_set_id=...` | Einzelnen Chunk aus dem angegebenen Set lesen. `include_vector=true` liefert den gespeicherten Vektor mit. |
 | `POST /vectors` | Datensatz anhand von `chunk_id` und `embedding_set_id` per Upsert speichern und interne ID bei Updates erhalten. HTTP 201 |
 | `GET /find?query=...&embedding_set_id=...` | Chunk-IDs im angegebenen Set anhand eines case-insensitiven Musters in `chunktext` (`ILIKE`) finden |
 | `DELETE /chunks` | Kanonische Chunknummern in einem Dokument und Set im inklusiven Bereich `from` bis `to` löschen |
-| `POST /search` | Suche mit `vector`, `embedding_set_id`, optional `metric` und `num_results`; `euclidean` (`<->`) und `cosine` (`<=>`) werden unterstützt, ungültige Metriken liefern HTTP 400 |
+| `POST /search` | Suche mit `vector`, `embedding_set_id`, optional `metric`, `num_results` und boolesches `include_vector`; `euclidean` (`<->`) und `cosine` (`<=>`) werden unterstützt, ungültige Metriken liefern HTTP 400 |
 
 Der JSON-Body für `DELETE /chunks` enthält `document_id` (Dateistamm), `embedding_set_id` und die positive Ganzzahl `from`. `to` ist optional und muss als Ganzzahl mindestens so groß wie `from` sein. Gleiche Grenzen löschen einen einzelnen Chunk. Ohne `to` reicht der Bereich bis zum Ende. IDs im Format `<Dateistamm>-<Nummer ab 1>` werden exakt dem Dokument zugeordnet. HTTP 200 gibt mit `{"deleted": 2}` die Anzahl gelöschter Zeilen an. Ungültige Angaben ergeben HTTP 400.
 
-Die Tabelle `vectors` enthält `id SERIAL PRIMARY KEY`, `chunk_id TEXT NOT NULL`, `embedding_set_id TEXT NOT NULL`, `vector VECTOR(1024)` und `chunktext TEXT NOT NULL`. Ein Check-Constraint verlangt mindestens ein Zeichen außerhalb von Leerzeichen, LF und CR. Die Vector-API prüft dieselbe Regel vor dem Datenbankzugriff. `embedding_set_id` ist die Variantenkennung, kein numerischer Vektor. `UNIQUE(chunk_id, embedding_set_id)` trennt Importvarianten. Einzelwrites verwenden Upserts und sind nach der jeweiligen Transaktion abrufbar. Die abschließende Bereinigung verwendet eine eigene Transaktion. Ein HNSW-Index mit `vector_l2_ops` unterstützt euklidische Suche. Die Vector-API prüft Vektoren auf 1024 endliche Zahlen und akzeptiert JSON-Listen sowie JSON-kodierte Listenstrings. Die Vector-API verwendet `embedding_set_id` als Set-Kennung in Anfragen und Antworten.
+Die Tabelle `vectors` enthält `id SERIAL PRIMARY KEY`, `chunk_id TEXT NOT NULL`, `embedding_set_id TEXT NOT NULL`, `vector VECTOR(1024)` und `chunktext TEXT NOT NULL`. Ein Check-Constraint verlangt mindestens ein Zeichen außerhalb von Leerzeichen, LF und CR. Die Vector-API prüft dieselbe Regel vor dem Datenbankzugriff. `embedding_set_id` ist die Variantenkennung, kein numerischer Vektor. `UNIQUE(chunk_id, embedding_set_id)` trennt Importvarianten. Einzelwrites verwenden Upserts und sind nach der jeweiligen Transaktion abrufbar. Die abschließende Bereinigung verwendet eine eigene Transaktion. Ein HNSW-Index mit `vector_l2_ops` unterstützt euklidische Suche. Die Vector-API akzeptiert Vektoren als JSON-Zahlenlisten mit 1024 endlichen Zahlen. Die Vector-API verwendet `embedding_set_id` als Set-Kennung in Anfragen und Antworten. Angeforderte Vektoren werden wie der RAG-Fragevektor als JSON-Zahlenlisten ausgegeben.
 
 ### 5.3.4 Ollama und Reranker
 
@@ -123,7 +123,6 @@ Die Testfixture baut einen eigenen Pod mit eindeutigen Container-/Image-Namen un
 
 Das [Schuldenregister](11-2-technische-schulden.md) führt aktuelle Befunde und Schweregrade. Für die Bausteinsicht sind insbesondere folgende Einschränkungen relevant:
 
-- Die Vektorausgabe ist an die Datenbankdarstellung gekoppelt.
 - Paketversionen und pgvector-Quellstand sind nicht vollständig fixiert. Der HNSW-Index unterstützt euklidische Distanz.
 - Die Dienste verwenden Flask-Entwicklungsserver ohne API-Authentifizierung. Für RAG und Reranker fehlt eine vergleichbare Trennung von Liveness und Readiness.
 - Die Evaluationsendpunkte ermöglichen Einzelversuche. Goldvergleich und aggregierte Qualitätsmessung sind offen.

@@ -149,13 +149,13 @@ def test_import3_compatible_matches_real_keywords_and_embeddings(
 
         for row in pipeline.read_json(output / "embeddings.json")["chunks"]:
             chunk_id = row["chunk_id"]
-            old = request(vector_url, f"/chunks/{chunk_id}?embedding_set_id={legacy_set}")
-            new = request(vector_url, f"/chunks/{chunk_id}?embedding_set_id={pipeline_set}")
+            old = request(vector_url, f"/chunks/{chunk_id}?embedding_set_id={legacy_set}&include_vector=true")
+            new = request(vector_url, f"/chunks/{chunk_id}?embedding_set_id={pipeline_set}&include_vector=true")
             suffix = "\n" + row["source_text"]
             assert old["chunktext"].endswith(suffix)
             old_keywords = old["chunktext"][:-len(suffix)]
             assert new["chunktext"] == row["enrichment"] + suffix
-            old_vector, new_vector = [json.loads(record["vector"]) for record in (old, new)]
+            old_vector, new_vector = old["vector"], new["vector"]
             assert len(old_vector) == len(new_vector) == 1024
             assert math.hypot(*old_vector) == pytest.approx(1.0, abs=1e-6)
             assert math.hypot(*new_vector) == pytest.approx(1.0, abs=1e-6)

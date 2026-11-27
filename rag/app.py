@@ -2,15 +2,14 @@ import sys
 from pathlib import Path
 sys.path.insert(0, str(Path(__file__).resolve().parents[1]))
 from rag_common.http_errors import (
-    install, invalid_request, json_object, problem_response, text_field, validating_request,
+    boolean_field, install, invalid_request, json_object, problem_response, text_field, validating_request,
 )
 from rag_common.rag_results import InvalidResults, generation_metrics, validate_results
-from rag_common.vector_contract import VectorInputError, parse_search_options, parse_vector
+from rag_common.vector_contract import VectorInputError, embedding_norm, parse_search_options, parse_vector
 from flask import Flask, jsonify, g, has_request_context
 import os
 import time
 import random
-import json
 import math
 from string import Formatter
 import requests
@@ -108,14 +107,9 @@ def generate_embedding(query, with_metrics=False):
     if response.status_code == 200:
         try:
             body = response.json()
-            vector = body.get("embedding")
-            if not isinstance(vector, list) or any(type(x) not in (int, float) for x in vector):
-                raise ValueError()
-            vec = np.array(vector, dtype=float)
-            norm = np.linalg.norm(vec)
-            if vec.ndim != 1 or not vec.size or not np.isfinite(vec).all() or not np.isfinite(norm) or norm <= 0:
-                raise ValueError()
-            normalized = vec / norm
+            vector = body.get("embedding") if isinstance(body, dict) else None
+            norm = embedding_norm(vector)
+            normalized = np.array(vector, dtype=float) / norm
             if with_metrics:
                 available = generation_metrics(body)
                 return normalized, {"total_duration": available["generation_duration"],
@@ -128,7 +122,7 @@ def generate_embedding(query, with_metrics=False):
     raise ProviderUnavailable("Embedding is unavailable.")
 
 
-def search_vectors(embedding, embedding_set_id, metric, num_results):
+def search_vectors(embedding, embedding_set_id, metric, num_results, *, include_vector=False):
     """Führt eine Suche über die Vektor-API aus und gibt die besten Treffer zurück."""
     payload = {
         "vector": embedding.tolist(),
@@ -136,13 +130,19 @@ def search_vectors(embedding, embedding_set_id, metric, num_results):
         "num_results": num_results,
         "metric": metric
     }
+    if include_vector:
+        payload["include_vector"] = True
     response = upstream_post(VECTOR_API_URL, payload, "retrieval")
     if response.status_code == 200:
         try:
             results = response.json()
         except ValueError as error:
             raise InvalidProviderResponse("Retrieval returned invalid JSON.") from error
-        return validate_results(results)
+        results = validate_results(results)
+        if not include_vector:
+            for row in results:
+                row.pop("vector", None)
+        return results
     else:
         raise ProviderUnavailable("Retrieval is unavailable.")
 
@@ -284,15 +284,9 @@ def compare_embeddings(query_vector, other_vector):
 def retrieval_distances(embedding, results):
     distances = []
     for row in results:
-        vector = row.get("vector")
         try:
-            if isinstance(vector, str):
-                vector = json.loads(vector)
-            if not isinstance(vector, list) or not all(
-                type(value) in (int, float) and math.isfinite(value) for value in vector
-            ):
-                raise ValueError()
-        except (ValueError, OverflowError) as error:
+            vector = parse_vector(row.get("vector"), None)
+        except VectorInputError as error:
             raise InvalidProviderResponse("Retrieval returned an invalid stored vector.") from error
         distances.append({
             "chunk_id": row["chunk_id"],
@@ -306,9 +300,8 @@ def retrieval_distances(embedding, results):
 def evaluate_retrieve():
     with validating_request():
         data = read_rag_request()
-        include_distances = data.get("include_distances", False)
-        if type(include_distances) is not bool:
-            invalid_request("include_distances muss ein boolescher Wert sein.", "include_distances")
+        include_distances = boolean_field(data, "include_distances")
+        include_query_vector = boolean_field(data, "include_query_vector")
         reference_text = text_field(data, "reference_text", required=False)
         supplied_vector = None
         if "vector" in data:
@@ -333,18 +326,21 @@ def evaluate_retrieve():
     retrieval_started = time.monotonic()
     embedding_set = data["embedding_set_id"]
     metric = data["metric"]
-    results = search_vectors(embedding, embedding_set, metric, data["num_results"])
+    results = search_vectors(
+        embedding, embedding_set, metric, data["num_results"], include_vector=include_distances,
+    )
     retrieval_duration = time.monotonic() - retrieval_started
     diagnostics = {}
     if include_distances:
         diagnostics["hits"] = retrieval_distances(embedding, results)
+        results = [{key: value for key, value in row.items() if key != "vector"} for row in results]
     if reference_text is not None:
         g.stage = "embedding"
         reference_vector = generate_embedding(reference_text)
         diagnostics["reference"] = compare_embeddings(embedding, reference_vector)
     next_request = generation_input(data, results)
     next_request.update(top_k=data["top_k"], reranker=data.get("reranker", RERANKER_MODEL))
-    return jsonify(query=data["query"], results=results, vector=embedding.tolist(),
+    return jsonify(query=data["query"], results=results,
                    embedding_model=EMBEDDING_MODEL_NAME if supplied_vector is None else None,
                    embedding_set_id=embedding_set, metric=metric,
                    metrics={"retrieved_count": len(results), "embedding": embedding_metrics},
@@ -352,6 +348,7 @@ def evaluate_retrieve():
                             "retrieval_duration": retrieval_duration,
                             "evaluation_duration": time.monotonic() - started},
                    next_request=next_request,
+                   **({"vector": embedding.tolist()} if include_query_vector else {}),
                    **({"diagnostics": diagnostics} if diagnostics else {}))
 
 

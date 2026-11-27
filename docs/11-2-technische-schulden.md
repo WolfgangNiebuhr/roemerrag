@@ -135,17 +135,13 @@ Einzelabruf, Text- und Vektorsuche verlangen eine Set-ID. Fehlt sie, melden dies
 
 ### TS-11 – Widersprüchlicher und datenbanknaher Vektorvertrag
 
-**Status** · teilweise behoben
+**Status** · behoben
 
 **Schweregrad** · P2
 
 **Problembeschreibung**
 
 [Vector-Docstrings](../Vector/app.py) erwarten pgvector-Strings; aktuelle Clients senden Zahlenlisten. Dimension, endliche Zahlenwerte und Metadatentypen sind nicht vollständig abgesichert. Suchantworten enthalten auch die gespeicherten Vektoren; [analyze.py](../analyze.py) verarbeitet diese als JSON-Strings. Das [Schema](../Vector/init.sql) bindet alle Varianten an 1024 Dimensionen. Clientkopplung an Datenbankdarstellung, späte SQL-Fehler und unnötige Nutzlasten. Weitere Embeddingmodelle sind nicht allein durch eine neue Variantenkennung anschließbar.
-
-#### Noch offen
-
-Vektorausgabe und Opt-in für Diagnosevektoren vereinheitlichen. Die Vector-Docstrings an den Eingabevertrag anpassen. Erwartete Providervektordimension vor dem Retrieval prüfen. Für den Import3-Fallback fehlt weiterhin die Norm- und Endlichkeitsprüfung.
 
 ### TS-12 – Unvollständige Adapter und ungenutzte Konfiguration
 
@@ -233,7 +229,7 @@ Der [E2E-Test](../tests/podman/test_rag_e2e.py) importiert selbst und umgeht Imp
 
 #### Noch offen
 
-Regressionstests zu den offenen Verträgen aus TS-11/12/13/15/21 ergänzen. Repräsentative Last und Suchpläne prüfen sowie Goldantworten und erwartete Retrievaltreffer über einen breiteren Korpus absichern.
+Regressionstests zu den offenen Verträgen aus TS-12/13/15/21 ergänzen. Repräsentative Last und Suchpläne prüfen sowie Goldantworten und erwartete Retrievaltreffer über einen breiteren Korpus absichern.
 
 **Lösungsvorschlag**
 

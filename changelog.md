@@ -17,6 +17,24 @@ Aus README und docs übernommene Änderungshistorie. Gleichdatierte Einträge fo
 
 ## 2026-11-27
 
+### Vektoreingaben auf JSON-Zahlenlisten beschränkt
+
+`POST /vectors`, `POST /search` und `POST /evaluate/retrieve` verlangen im Eingabefeld `vector` eine JSON-Zahlenliste. Listenstrings ergeben HTTP 400 vor Datenbank- oder Providerzugriff. Die RAG-Distanzdiagnostik erwartet auch die gespeicherten Treffervektoren als JSON-Zahlenlisten.
+
+325 Unit-Tests und alle 21 Podman-Integrationstests mit eigenen Testdatenbanken und -volumes bestanden.
+
+### Vektorausgabe als JSON-Zahlenliste vereinheitlicht
+
+Die Vector-API gibt angeforderte gespeicherte Vektoren bei Einzelabruf und Suche als JSON-Zahlenlisten aus. Das entspricht dem Ausgabeformat des RAG-Fragevektors. Die Opt-ins gelten weiter. Als Eingabe bleiben JSON-Zahlenlisten und JSON-Listenstrings zulässig. TS-11 ist behoben.
+
+323 Unit-Tests und alle 21 Podman-Integrationstests mit isolierten Testdatenbanken und Testvolumes bestanden.
+
+### Vektorausgabe an getrennte Opt-ins gebunden
+
+Die Vector-API liefert gespeicherte Vektoren nur mit `include_vector`. RAG fordert sie zur Distanzdiagnostik an und gibt nur die berechneten Werte weiter. `include_query_vector` schaltet separat den Fragevektor in `/evaluate/retrieve` frei. Beide Vektorausgabeformate bleiben erhalten. RAG und Import3 prüfen Ollama-Vektoren vor der Weiterverarbeitung auf Dimension, endliche Komponenten und positive, endliche Norm. TS-11 bleibt wegen des zurückgestellten gemeinsamen Ausgabeformats teilweise behoben. Die umgesetzten Regressionstests sind aus den offenen Punkten von TS-17 entfernt.
+
+323 Unit-Tests und alle 21 Podman-Integrationstests bestanden. Die Integration verwendete eigene Pods, Datenbanken und Volumes sowie Host-Ollama zur Inferenz.
+
 ### RAG-Set-ID-Alias entfernt
 
 `/process` und die Evaluationsendpunkte verwenden `embedding_set_id`. Der frühere Parameter `filter` führt vor Providerzugriff zu HTTP 400. Bei fehlender Set-ID greift das konfigurierte Standard-Set. Dokumentationsbeispiele und Vertragstests verwenden die aktuelle Benennung.

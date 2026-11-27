@@ -1,4 +1,5 @@
 ﻿"""Cross-service RFC 9457 and validation regression tests."""
+import json
 from unittest.mock import Mock
 from uuid import UUID
 
@@ -23,6 +24,26 @@ def problem(response, status, kind):
     assert body['request_id'] == response.headers['X-Request-ID']
     assert type(body['retryable']) is bool
     return body
+
+
+@pytest.mark.parametrize("path", ["/vectors", "/search", "/evaluate/retrieve"])
+def test_vector_list_strings_are_rejected_before_io(vector_module, monkeypatch, path):
+    initialize = Mock()
+    embed = Mock()
+    search = Mock()
+    monkeypatch.setattr(vector_module, "ensure_db_pool", initialize)
+    monkeypatch.setattr(rag, "generate_embedding", embed)
+    monkeypatch.setattr(rag, "search_vectors", search)
+    service = rag if path == "/evaluate/retrieve" else vector_module
+    response = service.app.test_client().post(path, json={
+        "query": "q", "embedding_set_id": "set", "chunk_id": "c", "chunktext": "Text",
+        "vector": json.dumps([1.0] + [0.0] * 1023),
+    })
+    body = problem(response, 400, "urn:rag:problem:invalid-request")
+    assert body["errors"] == [{"pointer": "/vector", "detail": body["detail"]}]
+    initialize.assert_not_called()
+    embed.assert_not_called()
+    search.assert_not_called()
 
 
 @pytest.mark.parametrize('payload', [None, [], 123, {}, {'query': ' '}, {'query': 3},
@@ -79,6 +100,8 @@ def test_reranker_validation_precedes_loading(monkeypatch, payload):
     ('/search', 'post', {'embedding_set_id': 'set-a', 'vector': [0]*1024, 'metric': 'cosine'}),
     ('/chunks?embedding_set_id=', 'get', None), ('/chunks/c?embedding_set_id=', 'get', None),
     ('/find', 'get', None),
+    ('/chunks/c?embedding_set_id=set&include_vector=1', 'get', None),
+    ('/search', 'post', {'embedding_set_id': 'set', 'vector': [1] * 1024, 'include_vector': 'true'}),
 ])
 def test_vector_validation_precedes_pool_initialization(vector_module, monkeypatch, path, method, payload):
     initialize = Mock()

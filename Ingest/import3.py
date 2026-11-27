@@ -23,6 +23,7 @@ import sys
 from pathlib import Path
 sys.path.insert(0, str(Path(__file__).resolve().parents[1]))
 from rag.embedding_config import EMBEDDING_MODEL, EMBEDDING_SET_ID
+from rag_common.vector_contract import embedding_norm
 MODEL_NAME = EMBEDDING_MODEL
 CHUNK_SIZE = 1000  # Größe der Chunks in Zeichen
 OVERLAP = 150  # Überlappung zwischen den Chunks
@@ -51,9 +52,10 @@ def generate_embedding(chunk):
     }
     response = requests.post(OLLAMA_URL, json=payload, timeout=(float(os.getenv("IMPORT_CONNECT_TIMEOUT", "5")), float(os.getenv("IMPORT_EMBED_TIMEOUT", "300"))))
     if response.status_code == 200:
-        vec = np.array(response.json().get("embedding"))
-        vec = vec / np.linalg.norm(vec)  # Normalisierung des Embeddings
-        return vec
+        body = response.json()
+        vector = body.get("embedding") if isinstance(body, dict) else None
+        norm = embedding_norm(vector)
+        return np.array(vector, dtype=float) / norm
     else:
         raise Exception(f"Fehler beim Abrufen des Embeddings: {response.text}")
 

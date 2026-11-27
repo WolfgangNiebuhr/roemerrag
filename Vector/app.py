@@ -2,7 +2,7 @@ import sys
 from pathlib import Path
 sys.path.insert(0, str(Path(__file__).resolve().parents[1]))
 from rag_common.http_errors import (
-    Problem, install, invalid_request, json_object, problem_response, text_field, validating_request,
+    Problem, boolean_field, install, invalid_request, json_object, problem_response, text_field, validating_request,
 )
 from rag_common.vector_contract import VectorInputError, parse_search_options, parse_vector
 from flask import Flask, request, jsonify
@@ -127,13 +127,11 @@ def resolve_set_id(data, *, required=False, query_parameter=False):
     )
 
 
-def sql_vector(raw_vector, metric):
+def validated_vector(raw_vector, metric):
     try:
-        parsed = parse_vector(raw_vector, metric)
+        return parse_vector(raw_vector, metric)
     except VectorInputError as error:
         invalid_request(str(error), error.field)
-    # Keep the existing pgvector text and psycopg2 list bindings.
-    return raw_vector if isinstance(raw_vector, str) else parsed
 
 
 def parse_delete_range(data):
@@ -165,13 +163,15 @@ def count_chunks():
 
 @app.route("/chunks/<chunk_id>", methods=["GET"])
 def get_chunk(chunk_id):
-    """GET /chunks/<chunk_id>?embedding_set_id=... -> eine Zeile"""
+    """Liest einen Chunk. include_vector=true liefert zusätzlich den gespeicherten Vektor."""
     with validating_request():
         embedding_set_id = resolve_set_id(request.args, required=True, query_parameter=True)
+        include_vector = boolean_field(request.args, "include_vector", query_parameter=True)
+    vector_column = ", vector::text::json AS vector" if include_vector else ""
     with transaction() as conn:
         with conn.cursor() as cur:
-            cur.execute("""
-                SELECT id, chunk_id, embedding_set_id, vector, chunktext
+            cur.execute(f"""
+                SELECT id, chunk_id, embedding_set_id, chunktext{vector_column}
                 FROM vectors
                 WHERE chunk_id = %s AND embedding_set_id = %s
             """, (chunk_id, embedding_set_id))
@@ -185,7 +185,7 @@ def get_chunk(chunk_id):
 def upsert_chunk():
     """
     Body (JSON): {chunk_id, embedding_set_id, vector, chunktext}
-    - vector: String im pgvector-Format, z.B. '[0.1, 0.2, 0.3]'
+    - vector: JSON-Zahlenliste mit 1024 endlichen Zahlen
     """
     with validating_request():
         data = json_object()
@@ -194,7 +194,7 @@ def upsert_chunk():
         chunktext = data.get("chunktext")
         if not isinstance(chunktext, str) or not chunktext.strip(" \n\r"):
             invalid_request("chunktext muss ein nichtleerer String sein.", "chunktext")
-        vector = sql_vector(data.get("vector"), data.get("metric"))
+        vector = validated_vector(data.get("vector"), data.get("metric"))
 
     with transaction() as conn:
         with conn.cursor() as cur:
@@ -236,25 +236,27 @@ def delete_chunks():
 @app.route("/search", methods=["POST"])
 def search_vectors():
     """
-    Body (JSON): {vector, num_results?, metric?('euclidean'|'cosine'), embedding_set_id}
-    - vector: String im pgvector-Format, z.B. '[0.1, 0.2, 0.3]'
+    Body (JSON): {vector, num_results?, metric?, embedding_set_id, include_vector?}
+    - vector: JSON-Zahlenliste mit 1024 endlichen Zahlen
     """
     with validating_request():
         data = json_object()
         embedding_filter = resolve_set_id(data, required=True)
+        include_vector = boolean_field(data, "include_vector")
         try:
             metric, num_results = parse_search_options(data, default_count=10)
         except VectorInputError as error:
             invalid_request(str(error), error.field)
-        query_vector = sql_vector(data.get("vector"), metric)
+        query_vector = validated_vector(data.get("vector"), metric)
 
     operators = {"euclidean": "<->", "cosine": "<=>"}
     distance_op = operators[metric]
+    vector_column = ", vector::text::json AS vector" if include_vector else ""
 
     with transaction() as conn:
         with conn.cursor() as cur:
             sql = f"""
-                SELECT id, chunk_id, embedding_set_id, vector, chunktext,
+                SELECT id, chunk_id, embedding_set_id, chunktext{vector_column},
                        vector {distance_op} %s::VECTOR AS distance
                 FROM vectors
                 WHERE embedding_set_id = %s

@@ -21,7 +21,7 @@ def test_import_file_enriches_embeds_and_stores_chunks(monkeypatch, start):
         if url.endswith("/api/chat"):
             return Mock(status_code=200, json=lambda: {"message": {"content": "Roma, Capua"}})
         if url == importer.OLLAMA_URL:
-            return Mock(status_code=200, json=lambda: {"embedding": [3.0, 4.0]})
+            return Mock(status_code=200, json=lambda: {"embedding": [3.0, 4.0] + [0.0] * 1022})
         assert url == importer.VECTOR_API_URL
         return Mock(status_code=201)
 
@@ -45,9 +45,23 @@ def test_import_file_enriches_embeds_and_stores_chunks(monkeypatch, start):
         assert payload == {
             "chunk_id": f"{source.stem}-{index + start}",
             "embedding_set_id": importer.EMBEDDING_SET_ID,
-            "vector": pytest.approx([0.6, 0.8]),
+            "vector": pytest.approx([0.6, 0.8] + [0.0] * 1022),
             "chunktext": enriched,
         }
+
+
+@pytest.mark.parametrize("embedding", [[1.0], [0.0] * 1024, [float("inf")] + [0.0] * 1023])
+def test_invalid_provider_embedding_is_not_stored(monkeypatch, tmp_path, embedding):
+    from Ingest import import3 as importer
+
+    source = tmp_path / "rome.txt"
+    source.write_text("Roma", encoding="utf-8")
+    monkeypatch.setattr(importer, "get_keywords_ollama", lambda text: ("Roma", {}, None))
+    post = Mock(return_value=Mock(status_code=200, json=lambda: {"embedding": embedding}))
+    monkeypatch.setattr(importer.requests, "post", post)
+    importer.process_file(source, start=1)
+    post.assert_called_once()
+    assert post.call_args.args == (importer.OLLAMA_URL,)
 
 
 def test_standard_import_is_selected_by_standard_retrieval(monkeypatch):

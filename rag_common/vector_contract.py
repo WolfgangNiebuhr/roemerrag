@@ -1,5 +1,4 @@
 """Vector API input constraints used by the Vector API and its RAG client."""
-import json
 import math
 
 
@@ -20,12 +19,9 @@ def parse_search_options(data, default_count):
 
 
 def parse_vector(value, metric):
-    if isinstance(value, str):
-        try:
-            value = json.loads(value)
-        except ValueError as error:
-            raise VectorInputError('vector', 'vector muss eine Zahlenliste sein.') from error
-    if not isinstance(value, list) or len(value) != 1024:
+    if not isinstance(value, list):
+        raise VectorInputError('vector', 'vector muss eine JSON-Zahlenliste sein.')
+    if len(value) != 1024:
         raise VectorInputError('vector', 'vector muss genau 1024 Zahlen enthalten.')
     try:
         valid = all(type(x) in (int, float) and math.isfinite(x) for x in value)
@@ -36,3 +32,12 @@ def parse_vector(value, metric):
     if metric == 'cosine' and not any(value):
         raise VectorInputError('vector', 'Cosine erfordert einen Vektor mit positiver Norm.')
     return value
+
+
+def embedding_norm(vector):
+    """Validate an Ollama embedding before normalization."""
+    parse_vector(vector, None)
+    norm = math.hypot(*vector)
+    if not math.isfinite(norm) or norm <= 0:
+        raise VectorInputError("vector", "Das Embedding muss eine positive, endliche Norm haben.")
+    return norm

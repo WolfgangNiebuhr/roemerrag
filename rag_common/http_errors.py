@@ -54,6 +54,17 @@ def text_field(data, key, *, required=True, query_parameter=False):
     return value
 
 
+def boolean_field(data, key, *, query_parameter=False):
+    if key not in data:
+        return False
+    value = data[key]
+    if query_parameter and value in ("true", "false"):
+        return value == "true"
+    if not query_parameter and type(value) is bool:
+        return value
+    invalid_request(key + " muss ein boolescher Wert sein.", key, query_parameter=query_parameter)
+
+
 def _render_problem(type_uri, status, title, detail, extensions):
     response = jsonify(type=type_uri, title=title, status=status, detail=detail,
                        instance='urn:uuid:' + str(uuid4()), request_id=g.request_id,
