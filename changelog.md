@@ -15,6 +15,42 @@ agent_instructions:
 
 Aus README und docs übernommene Änderungshistorie. Gleichdatierte Einträge folgen der umgekehrten Reihenfolge der dortigen Nachträge. Nicht datierbare Einträge stehen am Ende. Anleitungen: [README](README.md). Fachkonzepte: [Testkonzept](docs/8-1-testkonzept.md) und [Error-Handling](docs/8-3-error-handling.md).
 
+## 2026-11-27
+
+### Pflegevorgaben für Kapitel 4 ergänzt
+
+Ein ausgeblendeter Anweisungsblock begrenzt die Lösungsstrategie auf grundlegende Entscheidungen nach arc42, verlangt kurze Begründungen und verweist für Details auf die Fachkapitel. Änderungshistorie sowie Prüf- und Ausrollnachweise gehören in das Changelog. `git diff --check` geprüft. Anwendungstests entfallen bei dieser Dokumentationsänderung.
+
+### Schuldenregister um Befunde zu Verantwortlichkeiten ergänzt
+
+TS-23 bis TS-26 erfassen in absteigender Priorität für die Erweiterbarkeit die Kopplung der Dokumentzugehörigkeit an Chunk-IDs, verteilte RAG-Kontextregeln, die Verflechtung der Importorchestrierung und den SQL-nahen Vector-Suchhandler. Der datenbanknahe Vektorvertrag und der Modelllade- und Health-Lebenszyklus sind bereits in TS-11 und TS-13 erfasst.
+
+Quellstellen, Statusfelder, lokale Linkziele und `git diff --check` geprüft. Anwendungstests entfallen bei dieser Dokumentationsänderung.
+
+### Separation of Concerns als Entwurfsprinzip präzisiert
+
+Kapitel 4 beschreibt die Trennung unabhängig änderbarer Belange zwischen Diensten und innerhalb von Bausteinen. Die Bausteinsicht erläutert die konkreten Zuständigkeiten, das Import- und das Fehlerkonzept zeigen Anwendungen des Prinzips. Lokale Linkziele und `git diff --check` geprüft. Anwendungstests entfallen bei dieser Dokumentationsänderung.
+
+### Entwurfsprinzipien in der Lösungsstrategie benannt
+
+Kapitel 4 beschreibt den DDD-orientierten Dienstschnitt, Single Responsibility und Separation of Concerns im bestehenden Abschnitt zu Verantwortlichkeiten. `git diff --check` geprüft. Anwendungstests entfallen bei dieser Dokumentationsänderung.
+
+### Lösungsstrategie an den Qualitätszielen ausgerichtet
+
+Kapitel 4 fasst Dienstschnitt, vergleichbare Experimente, Testbarkeit und Plattformkompatibilität zusammen und verweist auf die zugehörigen Details. Kapitel 1 und 3 beschreiben die optionale Einbindung des Rerankers in die RAG-API.
+
+Der Reranking-Standardwert und die Aufrufbedingung wurden mit der Implementierung abgeglichen. Lokale Linkziele und `git diff --check` wurden geprüft. Anwendungstests entfallen bei dieser Dokumentationsänderung.
+
+### Lösungsstrategie aus Bausteinsicht und Fehlerkonzept verlinkt
+
+Beide Kapitel verweisen auf den Abschnitt „Verantwortlichkeiten und Abhängigkeiten“. Die Linkziele und `git diff --check` wurden geprüft. Anwendungstests entfallen bei dieser Dokumentationsänderung.
+
+### Lösungsstrategie zu Architekturgrenzen ergänzt
+
+Kapitel 4 beschreibt die fachlichen Zuständigkeiten, die Trennung von Verarbeitung und Transport sowie die Voraussetzungen für gemeinsam genutzten Code. Es verweist auf Bausteinsicht und Fehlerkonzept.
+
+Lokale Links und `git diff --check` geprüft. Anwendungstests entfallen bei dieser Dokumentationsänderung.
+
 ## 2026-11-26
 
 ### Gold-Vergleich nach vollständigem Stack-Update wiederholt

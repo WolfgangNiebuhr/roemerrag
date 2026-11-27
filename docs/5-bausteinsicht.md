@@ -9,6 +9,8 @@ agent_instructions:
 
 # 5 Bausteinsicht nach arc42 – Römer-RAG
 
+Die [Lösungsstrategie](4-loesungsstrategie.md#verantwortlichkeiten-und-abhängigkeiten) erläutert die Prinzipien, nach denen Zuständigkeiten und Abhängigkeiten der Bausteine festgelegt sind.
+
 Die [Laufzeitsicht](6-laufzeitsicht.md) beschreibt Aufrufreihenfolge und Netzwerkverhalten; das [README](../README.md) enthält Setup und Startbefehle.
 
 ## 5.1 Gesamtsystem als Blackbox

@@ -26,9 +26,9 @@ Korpus und Modelldienst sind technische beziehungsweise fachliche Nachbarn und k
 | Verbindung | Schnittstelle / Übertragung | Einordnung |
 |---|---|---|
 | Experimentator → lokale Werkzeuge | Python-Aufrufe im Projektstamm; Dateizugriff auf UTF-8-Texte | Import, direkte Abfragen und Analyse auf dem Host |
-| HTTP-Client → RAG-API | HTTP/JSON, `POST /process`, Containerport 5600 | Frage, Set-Filter und Suchparameter; Antwort mit `response`, `chunks` und `metrics` |
+| HTTP-Client → RAG-API | HTTP/JSON, `POST /process`, Containerport 5600 | Frage, Set-Filter und Suchparameter; optionales Reranking bei vorhandenen Treffern und `top_k > 0` (Standardwert `0`); Antwort mit `response`, `chunks` und `metrics` |
 | Lokale Werkzeuge → Vector-API | HTTP/JSON, Port 5500 | Speicherung, Suche und Inspektion von Chunks und Embeddings |
-| Lokale Werkzeuge → Reranker | HTTP/JSON, `POST /rerank`, Port 5000 | Optionales Bewerten und Sortieren von Frage-Dokument-Paaren; kein Bestandteil des aktuellen RAG-API-Ablaufs |
+| HTTP-Client → Reranker | HTTP/JSON, `POST /rerank`, Port 5000 | Direkter Zugriff zum Bewerten und Sortieren von Frage-Dokument-Paaren. Die RAG-API nutzt dieselbe Schnittstelle beim optionalen Reranking. |
 | System → Ollama | HTTP/JSON, üblicherweise Port 11434; unter anderem `/api/embeddings` und `/api/generate` | Host- und Containerzugriffe können unterschiedliche Adressen benötigen. |
 | Build und Modellbereitstellung → externe Quellen | Paket-, Quellcode-, Basisimage- und Modelldownloads | Bereitstellung der Abhängigkeiten; keine weiteren menschlichen Stakeholder |
 

@@ -4,6 +4,8 @@ Stand: 21.11.2026. Dieses Querschnittskonzept beschreibt den Zielzustand und den
 
 ## 8.3.1 Ziele und Verantwortlichkeiten
 
+Die [Lösungsstrategie](4-loesungsstrategie.md#verantwortlichkeiten-und-abhängigkeiten) beschreibt die Trennung zwischen Fehlerursachen in den Diensten und ihrer Übersetzung an der HTTP-Grenze.
+
 Fehler werden an ihrer Ursache eingeordnet, mit ihrem Verarbeitungsschritt versehen und an HTTP- beziehungsweise CLI-Grenzen einheitlich ausgegeben. Technische Ausfälle müssen von fachlichen Ergebnissen unterscheidbar bleiben, damit Evaluationen keine fehlgeschlagenen Verarbeitungsschritte als erfolgreiche Versuche werten.
 
 - Die HTTP-Endpunkte prüfen JSON-Struktur, Pflichtfelder, Typen, Wertebereiche, widersprüchliche Aliasangaben und Vektoren vor Modell- oder Datenbankzugriffen. Vektoren müssen die erwartete Dimension, endliche Zahlen und bei Normalisierung eine positive Norm haben. Die Vector-API initialisiert den Pool bei Bedarf beim Transaktionsbeginn nach der Validierung.

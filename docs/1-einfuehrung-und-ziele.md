@@ -9,7 +9,7 @@ Das System unterstützt folgende Aufgaben:
 - Texte in Chunks zerlegen, optional mit Keywords anreichern, Embeddings erzeugen und zusammen mit dem Quelltext speichern.
 - Importvarianten über Set-Kennungen auswählen und Retrieval mit unterschiedlichen Suchparametern untersuchen.
 - Antworten aus gefundenen Textabschnitten generieren und Quell-Chunk-IDs sowie Generierungsmetriken ausgeben.
-- Modelle und Reranking über lokale Werkzeuge beziehungsweise HTTP-Schnittstellen erproben. Der eigenständige Reranker ist derzeit nicht in den Ablauf der RAG-API eingebunden.
+- Modelle und Reranking über lokale Werkzeuge beziehungsweise HTTP-Schnittstellen erproben. Die RAG-API kann Retrievaltreffer vor der Antwortgenerierung durch den separaten Reranker neu bewerten lassen. [Laufzeitsicht](6-laufzeitsicht.md#61-fragebeantwortung)
 
 Neue Ideen sollen sich schrittweise als Experimente ergänzen lassen. Das Projekt ist eine lokale Experimentierumgebung; eine fachlich korrekte Modellantwort ist durch den RAG-Ablauf allein nicht garantiert. Komponenten und aktueller Funktionsumfang stehen in der [Bausteinsicht](5-bausteinsicht.md).
 

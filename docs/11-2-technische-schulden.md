@@ -24,6 +24,8 @@ Das Register enthält den aktuellen Status. Historische Änderungen und Prüfnac
 | P2 | Strukturelle Inkonsistenzen, Betriebsstabilität oder fehlende Reproduzierbarkeit |
 | P3 | Nach Stabilisierung oder bei entsprechendem Betriebsbedarf zu bearbeiten |
 
+Für die Erweiterbarkeit sind die Befunde TS-23 bis TS-26 nach abnehmender Auswirkung geordnet. Vorrang haben Änderungen, die mehrere Dienste und Bestandsdaten berühren, gefolgt von Änderungen an mehreren RAG-Verarbeitungspfaden und Kopplungen innerhalb eines Bausteins.
+
 ## 11.2.2 Schuldenregister
 
 ### TS-01 – Abweichende Import- und Retrievaldefaults
@@ -315,3 +317,59 @@ Für Strategien mit garantierter Obergrenze einen Fallback samt Regressionstest 
 **Problembeschreibung**
 
 Die Bausteinsicht nennt noch `snowflake-arctic-embed2` als RAG-Standardfilter und beschreibt das Schreiben als Löschen und Einfügen. Der Code verwendet standardmäßig das Set `snowflake-arctic-embed2-v2` und einen atomaren Upsert. Die Übersicht führt die alte Abweichung der Defaults noch als offenen Punkt. Die Ergänzung zu TS-03 bezeichnet die Transaktions- und Poolnebenläufigkeit weiterhin als offen, obwohl TS-06 abgeschlossen ist. [Bausteinsicht](5-bausteinsicht.md)
+
+### TS-23 – Dokumentzugehörigkeit an das Format der Chunk-ID gekoppelt
+
+**Status** · offen
+
+**Schweregrad** · P2
+
+**Problembeschreibung**
+
+`make_chunks()` im [Import](../Ingest/pipeline.py) erzeugt IDs aus Dateistamm und laufender Nummer. `delete_chunks()` in der [Vector-API](../Vector/app.py) leitet Dokumentzugehörigkeit und Chunknummer aus dem Präfix und dem kanonischen numerischen Suffix dieser IDs ab. Neue Importstrategien mit einem anderen ID-Format erfordern dadurch Anpassungen am Import, an der Löschabfrage und gegebenenfalls am Umgang mit Bestandsdaten. [TS-05](#ts-05--chunk-identität-und-importabschluss) erfasst den bereits umgesetzten Importabschluss, [R-02](11-1-risiken.md#r-02-dateistamm-als-dokumentidentitaet) das akzeptierte Kollisionsrisiko bei gleichen Dateistämmen.
+
+**Lösungsvorschlag**
+
+Dokumentzugehörigkeit und Chunkreihenfolge als explizite Merkmale im Speicher- und Löschvertrag modellieren. Bei einer Umstellung vorhandene IDs und Set-Zuordnungen berücksichtigen und die Bereinigung für beide Datenstände absichern.
+
+### TS-24 – Treffer- und Kontextregeln in mehreren RAG-HTTP-Handlern
+
+**Status** · offen
+
+**Schweregrad** · P2
+
+**Problembeschreibung**
+
+In der [RAG-API](../rag/app.py) filtern `process_request()`, `evaluate_rerank()` und `evaluate_generate()` leere Treffertexte separat. `process_request()` und `evaluate_generate()` bilden jeweils den Kontext und behandeln fehlenden Kontext im HTTP-Handler. Die Providerfunktionen werden bereits gemeinsam genutzt. Eine neue Auswahl- oder Kontextstrategie muss trotzdem in mehreren Endpunkten eingearbeitet werden. Das erschwert konsistente Vergleiche zwischen dem regulären Ablauf und der schrittweisen Evaluation.
+
+**Lösungsvorschlag**
+
+Gemeinsame Trefferaufbereitung und Kontextbildung unabhängig von Flask ausführen. HTTP-Handler übernehmen Eingabe und Ausgabe entsprechend ihrem jeweiligen Vertrag.
+
+### TS-25 – Importablauf mit Transport, Artefakten und CLI-Ausgabe verflochten
+
+**Status** · offen
+
+**Schweregrad** · P2
+
+**Problembeschreibung**
+
+`run()` in der [Importpipeline](../Ingest/pipeline.py) steuert Anreicherung, Embedding, Speicherung und Wiederaufnahme. Dieselbe Funktion liest Zeitlimits aus der Umgebung, schreibt lokale Artefakte, sendet Vector-HTTP-Anfragen, prüft deren konkrete Antwortfelder und formatiert die Wiederaufnahmeanweisung für `stderr`. Änderungen am Speichervertrag, Artefaktziel oder an der Bedienung greifen damit direkt in die Orchestrierung ein. [TS-12](#ts-12--unvollständige-adapter-und-ungenutzte-konfiguration) erfasst Provideradapter und deren Ergebnistypen.
+
+**Lösungsvorschlag**
+
+Speicherzugriff, Artefaktausgabe und CLI-Darstellung über eigene Schnittstellen anbinden. Der Importablauf bestimmt die Reihenfolge und liefert die Wiederaufnahmeinformationen als Ergebnis.
+
+### TS-26 – Vector-Suchhandler vermischt HTTP-Vertrag und Persistenz
+
+**Status** · offen
+
+**Schweregrad** · P2
+
+**Problembeschreibung**
+
+`search_vectors()` in der [Vector-API](../Vector/app.py) verarbeitet HTTP-Eingaben, wählt den pgvector-Operator, führt SQL aus und formt die Treffer zur JSON-Antwort mit Kompatibilitätsalias. Die Transaktion ist bereits gekapselt. Weitere Suchstrategien oder Änderungen am Rückgabeformat betreffen trotzdem dieselbe Funktion. Der nach außen sichtbare Vektorvertrag ist bereits in [TS-11](#ts-11--widersprüchlicher-und-datenbanknaher-vektorvertrag) erfasst.
+
+**Lösungsvorschlag**
+
+Suchoperation und SQL hinter einer internen Schnittstelle bündeln. Der HTTP-Handler übersetzt Anfrage und Treffer in das öffentliche Format.
