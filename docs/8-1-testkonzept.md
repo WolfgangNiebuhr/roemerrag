@@ -1,6 +1,9 @@
 <!--
 
+purpose: "Systemübergreifende Teststrategie mit Teststufen, Isolation und Abdeckung wichtiger Verträge."
 agent_instructions:
+  - "Je Teststufe erläutern, was sie prüft, welche Abhängigkeiten sie braucht und wie Testdaten und Betriebsdaten getrennt werden. Stabile Aufrufoptionen und relevante Abdeckung dürfen hier als Referenz stehen."
+  - "Qualitätsanforderungen und ihre Erfolgskriterien in Kapitel 10 pflegen. Testtopologie steht in Kapitel 7, konkrete Prüfergebnisse im Changelog."
   - "In diesem Kapitel nur den aktuellen Stand und ausdrücklich als offen gekennzeichnete Ziele beschreiben."
   - "Weiterhin gültige Änderungen direkt in den fachlich passenden Abschnitt einarbeiten und überholte Aussagen ersetzen."
   - "Keine datierten Nachträge, Änderungshistorie, Prüfergebnisse oder Ausrollstände in dieses Kapitel aufnehmen. Diese ausschließlich in ../changelog.md dokumentieren."

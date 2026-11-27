@@ -1,3 +1,13 @@
+<!--
+
+purpose: "Ausdrücklich identifizierte Architekturrisiken mit ihren möglichen Auswirkungen und dem Umgang damit."
+agent_instructions:
+  - "Je Risiko eine stabile R-ID, Auslöser oder Ursache, mögliche Auswirkungen, Status und den Umgang damit festhalten. Wo belastbar, Eintrittswahrscheinlichkeit und Auswirkung für die Priorisierung angeben."
+  - "Akzeptierte Restrisiken und ihre Begründung kenntlich machen. Technische Schulden in 11.2 pflegen und bei einem ausdrücklich erfassten Zusammenhang aufeinander verweisen."
+  - "Gültige Änderungen direkt einarbeiten. Datierte Nachträge sowie Änderungs-, Prüf- und Ausrollnachweise ausschließlich in ../changelog.md pflegen."
+
+-->
+
 # 11.1 Risiken
 
 Stand: 25.11.2026. Dieses Register enthält ausschließlich ausdrücklich als Risiko markierte Einträge. Technische Schulden werden separat in [Abschnitt 11.2](11-2-technische-schulden.md) geführt und gelten nicht automatisch als Risiken. Risiken erhalten eine eigene Nummerierung mit dem Präfix R.

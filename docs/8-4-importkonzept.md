@@ -1,3 +1,13 @@
+<!--
+
+purpose: "Gemeinsame Regeln für erweiterbare Importstrategien, Artefakte und den Speichervertrag mit der Vector-API."
+agent_instructions:
+  - "Strategiewahl, Verarbeitungsschritte und ihre Verträge erklären. Artefakte, Identität, Wiederaufnahme und Abschluss so beschreiben, dass weitere Importvarianten anschließen können."
+  - "Umgesetzte Regeln und ausdrücklich offene oder zurückgestellte Konzepte unterscheidbar halten. Bedienbefehle in Ingest/README.md, repräsentative Laufzeitabläufe in Kapitel 6 und begründete Architekturentscheidungen in Kapitel 9 pflegen."
+  - "Gültige Änderungen direkt einarbeiten. Datierte Nachträge sowie Änderungs-, Prüf- und Ausrollnachweise ausschließlich in ../changelog.md pflegen."
+
+-->
+
 # 8.4 Variantenfaehiges Importkonzept
 
 Stand: 24.11.2026. Der gemeinsame Import ist als `python -m Ingest.pipeline` verfuegbar. Er unterstuetzt rekursives Chunking, keine Anreicherung oder Keywords und denselben Chunktext fuer Embedding und Speicherung. `Ingest/import3.py` bleibt als eigenstaendiger Einstieg erhalten. Die Abschnitte kennzeichnen offene Teile des Zielbilds.

@@ -1,6 +1,9 @@
 <!--
 
+purpose: "Architekturrelevante Szenarien und Interaktionen der Bausteine zur Laufzeit."
 agent_instructions:
+  - "Wenige repräsentative fachliche, externe, betriebliche oder Fehlerabläufe auswählen. Beteiligte Bausteine und die wesentliche Reihenfolge und Wirkung ihrer Interaktionen zeigen."
+  - "Bausteinnamen aus Kapitel 5 verwenden. Für statische Zuständigkeiten auf Kapitel 5, für Topologie auf Kapitel 7 und für Setup oder Diagnosebefehle auf die README verweisen."
   - "In diesem Kapitel nur den aktuellen Stand und ausdrücklich als offen gekennzeichnete Ziele beschreiben."
   - "Weiterhin gültige Änderungen direkt in den fachlich passenden Abschnitt einarbeiten und überholte Aussagen ersetzen."
   - "Keine datierten Nachträge, Änderungshistorie, Prüfergebnisse oder Ausrollstände in dieses Kapitel aufnehmen. Diese ausschließlich in ../changelog.md dokumentieren."

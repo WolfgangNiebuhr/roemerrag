@@ -1,3 +1,13 @@
+<!--
+
+purpose: "Aufgabenstellung, wichtigste Architekturqualitätsziele und Erwartungen der Stakeholder im Überblick."
+agent_instructions:
+  - "Die wesentlichen Aufgaben und den Nutzen des Systems aus Sicht der Stakeholder kurz beschreiben. Relevante Rollen und ihre Erwartungen ausdrücklich benennen."
+  - "Die drei bis höchstens fünf wichtigsten Qualitätsziele der Architektur mit ihrer Bedeutung festhalten. Detaillierte Prüfszenarien in Kapitel 10 pflegen und von hier verlinken. Lösungsansätze stehen in Kapitel 4."
+  - "Gültige Änderungen direkt einarbeiten. Datierte Nachträge sowie Änderungs-, Prüf- und Ausrollnachweise ausschließlich in ../changelog.md pflegen."
+
+-->
+
 # 1 Einführung und Ziele  (draft)
 
 ## 1.1 Aufgabenstellung
@@ -15,15 +25,13 @@ Neue Ideen sollen sich schrittweise als Experimente ergänzen lassen. Das Projek
 
 ## 1.2 Qualitätsziele
 
-Die folgenden drei Qualitäten sind gefordert. Die Szenarien beschreiben Zielkriterien, keine pauschal bereits nachgewiesenen Eigenschaften.
+Die folgenden drei Qualitäten sind gefordert. Kapitel 10 konkretisiert sie mit Prüfszenarien.
 
-| Qualität | Bedeutung für den Experimentator | Konkretes Prüfszenario |
+| Qualität | Bedeutung für den Experimentator | Prüfszenario |
 |---|---|---|
-| Erweiterbarkeit | Neue Ideen, Verarbeitungsstrategien und Experimente können mit überschaubaren, lokal begrenzten Änderungen ergänzt werden. | Eine weitere Chunking-, Anreicherungs- oder Retrievalstrategie wird ergänzt und gezielt ausgewählt. Bestehende Varianten bleiben nutzbar; ein Vergleich mit der bisherigen Strategie ist möglich. |
-| Testbarkeit | Änderungen für neue Experimente lassen sich prüfen, damit bestehende Funktionen und Experimente weiterhin funktionieren. | Vor der Änderung werden relevante Verträge durch Tests abgesichert. Nach Ergänzung eines Experiments bestehen die bisherigen containerfreien Tests und die betroffenen Integrationstests; neue Verarbeitungswege und Fehlerfälle sind gezielt geprüft. |
-| Kompatibilität | Das System soll auf verschiedenen Plattformen lauffähig sein. Plattformabhängige Einrichtung soll sich auf dokumentierte Konfiguration und Startschritte begrenzen. | Auf einer weiteren Zielplattform werden Images gebaut, Dienste gestartet, ein kleiner Korpus importiert und eine RAG-Anfrage erfolgreich ausgeführt. Plattformabhängige Netzwerkadressen und Pfade werden dokumentiert; der reguläre Ablauf benötigt keine plattformspezifische Änderung der fachlichen Verarbeitung. |
-
-Für die Kompatibilität ist Windows mit PowerShell, Podman und Ollama die aktuell dokumentierte Referenzumgebung. Ein erfolgreicher Betrieb auf weiteren Plattformen ist separat nachzuweisen. Eine verbindliche Plattformmatrix ist bisher nicht festgelegt. Plattformkompatibilität bedeutet keine bitgleichen Modellantworten auf unterschiedlicher Hardware.
+| Erweiterbarkeit | Neue Ideen, Verarbeitungsstrategien und Experimente können mit überschaubaren, lokal begrenzten Änderungen ergänzt werden. | [QS-01](10-qualitaetsanforderungen.md#qs-01-erweiterbarkeit) |
+| Testbarkeit | Änderungen für neue Experimente lassen sich prüfen, damit bestehende Funktionen und Experimente weiterhin funktionieren. | [QS-02](10-qualitaetsanforderungen.md#qs-02-testbarkeit) |
+| Kompatibilität | Das System soll auf verschiedenen Plattformen lauffähig sein. Plattformabhängige Einrichtung soll sich auf dokumentierte Konfiguration und Startschritte begrenzen. | [QS-03](10-qualitaetsanforderungen.md#qs-03-kompatibilität) |
 
 Das [Testkonzept](8-1-testkonzept.md) beschreibt die vorhandenen Teststufen und ihre Grenzen. Offene Verbesserungen stehen im [Schuldenregister](11-2-technische-schulden.md); sie gelten nur bei ausdrücklicher Markierung als Risiken im [Risikoregister](11-1-risiken.md).
 

@@ -1,3 +1,13 @@
+<!--
+
+purpose: "Gründe und Konsequenzen wesentlicher Architekturentscheidungen nachvollziehbar festhalten."
+agent_instructions:
+  - "Nur weitreichende, schwer umkehrbare, riskante oder strittige Entscheidungen aufnehmen. Lokale Entscheidungen beim zuständigen Baustein oder Konzept dokumentieren."
+  - "Je Entscheidung möglichst Datum und Status, Kontext und Kriterien, erwogene Alternativen, Entscheidung und wesentliche Konsequenzen erfassen. Fehlende Informationen als unbekannt kennzeichnen. Abgelöste Entscheidungen als solche markieren und mit der Nachfolgeentscheidung verknüpfen."
+  - "Die Kurzfassung wesentlicher Lösungsentscheidungen steht in Kapitel 4. Das Datum einer Entscheidung gehört zum Entscheidungsdatensatz. Chronologische Änderungs-, Prüf- und Ausrollnachweise ausschließlich in ../changelog.md pflegen."
+
+-->
+
 # 9 Architekturentscheidungen
 
 ## 9.1 Modell und Embedding-Set trennen (21.11.2026, TS-01)

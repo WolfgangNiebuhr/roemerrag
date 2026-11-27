@@ -1,6 +1,9 @@
 <!--
 
+purpose: "Zuordnung ausführbarer Bausteine zu Infrastruktur, Umgebungen und Betriebsvarianten."
 agent_instructions:
+  - "Relevante Betriebs- und Testumgebungen separat darstellen. Bausteine aus Kapitel 5 den Hosts, Pods oder Containern zuordnen und relevante Netzwerkgrenzen, Verbindungen und persistente Speicher benennen."
+  - "Hier die Topologie und ihre Bedeutung dokumentieren. Laufzeitabläufe gehören in Kapitel 6, konkrete Setup- und Startbefehle in die README."
   - "In diesem Kapitel nur den aktuellen Stand und ausdrücklich als offen gekennzeichnete Ziele beschreiben."
   - "Weiterhin gültige Änderungen direkt in den fachlich passenden Abschnitt einarbeiten und überholte Aussagen ersetzen."
   - "Keine datierten Nachträge, Änderungshistorie, Prüfergebnisse oder Ausrollstände in dieses Kapitel aufnehmen. Diese ausschließlich in ../changelog.md dokumentieren."

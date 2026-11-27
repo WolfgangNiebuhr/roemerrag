@@ -1,3 +1,13 @@
+<!--
+
+purpose: "Gemeinsame Regeln für Fehlererkennung, Fehlerübersetzung und Diagnose an Dienst- und Werkzeuggrenzen."
+agent_instructions:
+  - "Geltungsbereich und Verantwortlichkeiten je Schicht erklären. Gemeinsame Fehlerverträge, Fehlerklassen, Zeitbudgets und Diagnoseregeln zentral pflegen."
+  - "Umgesetzte Verträge und ausdrücklich offene Zielregeln klar kennzeichnen. Konkrete Fehlerabläufe in Kapitel 6 und Prüfverfahren in Kapitel 8.1 beschreiben."
+  - "Gültige Änderungen direkt einarbeiten. Datierte Nachträge sowie Änderungs-, Prüf- und Ausrollnachweise ausschließlich in ../changelog.md pflegen."
+
+-->
+
 # 8.3 Übergreifendes Error-Handling
 
 Stand: 21.11.2026. Dieses Querschnittskonzept beschreibt den Zielzustand und den unten ausgewiesenen aktuellen Umsetzungsstand. Es gilt für RAG-API, Vector-API, Reranker sowie unterstützte Import- und Analysewerkzeuge. Die Umsetzung betrifft insbesondere TS-03, TS-05 bis TS-09, TS-13 und TS-17 aus [Kapitel 11.2](11-2-technische-schulden.md). Bausteine und Teststufen beschreiben die [Bausteinsicht](5-bausteinsicht.md) und das [Testkonzept](8-1-testkonzept.md).

@@ -17,6 +17,12 @@ Aus README und docs übernommene Änderungshistorie. Gleichdatierte Einträge fo
 
 ## 2026-11-27
 
+### Pflegevorgaben für die arc42-Kapitel 1 bis 11 vereinheitlicht
+
+Die Architekturdateien haben ausgeblendete Zweckbeschreibungen und kapitelbezogene Pflegevorgaben. Maßstab sind die [arc42-Dokumentation](https://docs.arc42.org/home/) und das Praxisbeispiel [DokChess](https://www.dokchess.de/). Das neue [Kapitel 10](docs/10-qualitaetsanforderungen.md) bündelt die bisherigen Prüfszenarien aus Kapitel 1. Kapitel 1 behält die Qualitätszielübersicht und verlinkt die Szenarien.
+
+Pflegeblöcke, lokale Linkziele und `git diff --check` geprüft. Anwendungstests entfallen bei dieser Dokumentationsänderung.
+
 ### Pflegevorgaben für Kapitel 4 ergänzt
 
 Ein ausgeblendeter Anweisungsblock begrenzt die Lösungsstrategie auf grundlegende Entscheidungen nach arc42, verlangt kurze Begründungen und verweist für Details auf die Fachkapitel. Änderungshistorie sowie Prüf- und Ausrollnachweise gehören in das Changelog. `git diff --check` geprüft. Anwendungstests entfallen bei dieser Dokumentationsänderung.

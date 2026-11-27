@@ -1,3 +1,13 @@
+<!--
+
+purpose: "Systemgrenze, externe Kommunikationspartner und fachliche sowie technische Außenschnittstellen."
+agent_instructions:
+  - "Das System als Blackbox zeigen. Im fachlichen Kontext für jeden relevanten externen Partner die ausgetauschten Informationen und ihre Richtung benennen."
+  - "Im technischen Kontext die fachlichen Ein- und Ausgaben den Schnittstellen, Kanälen oder Protokollen zuordnen. Interne Bausteine in Kapitel 5, Betriebsinfrastruktur und Netzwerkzuordnung in Kapitel 7 beschreiben."
+  - "Gültige Änderungen direkt einarbeiten. Datierte Nachträge sowie Änderungs-, Prüf- und Ausrollnachweise ausschließlich in ../changelog.md pflegen."
+
+-->
+
 # 3 Kontextabgrenzung (draft)
 
 ## 3.1 Fachlicher Kontext

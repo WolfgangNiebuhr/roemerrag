@@ -1,7 +1,8 @@
 <!--
 
-purpose: "Aktueller Status technischer Schulden im Römer-RAG-Projekt."
+purpose: "Bestehende technische Schulden, ihre Auswirkungen, Schweregrade und verbleibenden Arbeiten im Römer-RAG-Projekt."
 agent_instructions:
+  - "Einträge anhand der bestehenden Schweregrade nach ihrer Auswirkung priorisieren. Konkrete betroffene Schnittstellen, Bausteine oder Qualitätsziele benennen und bei Bedarf verlinken. Ausdrücklich erfasste Risiken gehören in Kapitel 11.1."
   - "Jeder Eintrag hat eine stabile TS-ID und genau einen Status: offen, teilweise behoben, behoben oder abgelehnt."
   - "Neben Titel und Status sind die ursprüngliche Problembeschreibung, eine Bewertung nach Schweregrad und ein Lösungsvorschlag zulässig."
   - "Bei Statusänderungen die ursprüngliche Problembeschreibung unverändert erhalten."

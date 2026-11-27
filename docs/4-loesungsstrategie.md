@@ -1,5 +1,6 @@
 <!--
 
+purpose: "Kompakte Zusammenfassung der prägenden Architekturentscheidungen mit Bezug zu Zielen und Randbedingungen."
 agent_instructions:
   - "Diese Anweisungen gelten für das gesamte Kapitel 4 und bleiben im HTML-Kommentar."
   - "Nach arc42 nur grundlegende Lösungsansätze und Entscheidungen aufnehmen, die die Architektur prägen. Dazu gehören der grobe Systemzuschnitt, wesentliche Technologieentscheidungen und Ansätze zur Erreichung der wichtigsten Qualitätsziele."
