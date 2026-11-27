@@ -17,6 +17,10 @@ Aus README und docs übernommene Änderungshistorie. Gleichdatierte Einträge fo
 
 ## 2026-11-27
 
+### Chunk-ID-Format als Architekturentscheidung dokumentiert
+
+Kapitel 9.5 hält fest, warum Dateistamm und Chunknummer Teil der ID sind. TS-23 ist als abgelehnt vermerkt. Die Änderungen betreffen ausschließlich die Dokumentation.
+
 ### Leere Chunker-Ausgaben vor der Nummerierung entfernt
 
 `make_chunks` filtert `None`, leere Strings und Texte aus ausschließlich Leerzeichen, LF oder CR. Gültige Chunks werden unverändert und lückenlos nummeriert. Bleibt kein Chunk übrig, bricht die Verarbeitung mit dem bestehenden Eingabefehler ab. Die Prüfung gespeicherter Chunk-Artefakte verwendet dieselbe Definition.

@@ -42,6 +42,16 @@ Eine automatische Sicherung der bisherigen Chunks vor jedem Wiederholungsimport 
 
 Historische Aenderungs- und Pruefnachweise: [Changelog](../changelog.md).
 
+## 9.5 Herkunft und Reihenfolge in der Chunk-ID abbilden (27.11.2026, TS-23)
+
+**Status** · entschieden
+
+Bei der Auswertung muss jederzeit direkt an der Chunk-ID erkennbar sein, aus welchem Dokument ein Treffer stammt und wo er ungefähr im Dokument liegt. Die ID behält deshalb das Format `<Dateistamm>-<Chunknummer>`. Der Dateistamm bezeichnet den Dateinamen ohne die letzte Erweiterung. Die bei 1 beginnende Chunknummer gibt die Reihenfolge im Dokument für den jeweiligen Import an. Beispielsweise bezeichnet `rom.band1-17` den 17. Chunk aus `rom.band1.txt`. [Importkonzept 8.4](8-4-importkonzept.md#847-identitaet-wiederholung-und-abschluss)
+
+Eine künstliche ID mit separat gespeicherter Dokumentkennung und Chunknummer wurde erwogen. Für diese Anwendung müssten viele Abfragen und Reports dann zusätzliche Felder abrufen und ausgeben, um die Herkunft und ungefähre Position eines Treffers sichtbar zu machen.
+
+Import und Löschabfrage verwenden das Format gemeinsam. Eine spätere Formatänderung muss deshalb beide Bausteine und bestehende IDs berücksichtigen. Der Dateistamm muss innerhalb eines Embedding-Sets eindeutig sein. [TS-23](11-2-technische-schulden.md#ts-23--dokumentzugehörigkeit-an-das-format-der-chunk-id-gekoppelt) · [Risiko R-02](11-1-risiken.md#r-02-dateistamm-als-dokumentidentitaet)
+
 ## RAG-Orchestrierung als einziger CLI-Verarbeitungspfad (TS-09)
 
 `interact.py` delegiert die Verarbeitung an `/process` und übernimmt Argumentprüfung, Darstellung und Dateiexport. Reranking und Modellwahl sind explizite API-Parameter. Ursprüngliche und ausgewählte Treffer stehen in eigenen Antwortfeldern. API-Clients erhalten ohne neue Parameter kein Reranking. `analyze.py` delegiert Retrieval, Distanzdiagnostik und Antwortgenerierung an die Evaluationsendpunkte derselben RAG-API. Der Standard für das Antwortmodell ist `gemma4:e4b`. Die Schnittstelle unterstützt weder Fortschrittsstreaming noch einen Export nach späteren Providerfehlern.

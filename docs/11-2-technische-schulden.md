@@ -321,7 +321,7 @@ Die Bausteinsicht nennt noch `snowflake-arctic-embed2` als RAG-Standardfilter un
 
 ### TS-23 – Dokumentzugehörigkeit an das Format der Chunk-ID gekoppelt
 
-**Status** · offen
+**Status** · abgelehnt
 
 **Schweregrad** · P2
 
@@ -332,6 +332,8 @@ Die Bausteinsicht nennt noch `snowflake-arctic-embed2` als RAG-Standardfilter un
 **Lösungsvorschlag**
 
 Dokumentzugehörigkeit und Chunkreihenfolge als explizite Merkmale im Speicher- und Löschvertrag modellieren. Bei einer Umstellung vorhandene IDs und Set-Zuordnungen berücksichtigen und die Bereinigung für beide Datenstände absichern.
+
+Das bestehende Format ist eine bewusste [Architekturentscheidung](9-architekturentscheidungen.md#95-herkunft-und-reihenfolge-in-der-chunk-id-abbilden-27112026-ts-23).
 
 ### TS-24 – Treffer- und Kontextregeln in mehreren RAG-HTTP-Handlern
 
