@@ -38,7 +38,7 @@ Ein aktueller Codezustand belegt nicht die historische Herkunft bereits gespeich
 | Quelle | UTF-8-Textdateien; vollständige Dateiliste und Inhaltsstände des historischen Bestands unbekannt |
 | Chunking | LangChain `RecursiveCharacterTextSplitter`, Zeichenbasis, `chunk_size=1000`, `chunk_overlap=150` |
 | Trennzeichen | In dieser Reihenfolge: `"\n\n"`, `".\n"`, `". "`; siehe [chunking.py](../Ingest/utils/chunking.py) |
-| Keyword-Anreicherung | Aktiv, über Ollama `/api/chat`, Modell `gemma3:4b`, `temperature=0.0`, `stream=false`; siehe [gateway.py](../Ingest/utils/gateway.py) |
+| Keyword-Anreicherung | Aktiv, über Ollama `/api/chat`, Modell `gemma3:4b`, `temperature=0.0`, `stream=false`; siehe [pipeline.py](../Ingest/pipeline.py) |
 | Keyword-Anzahl | Aus der Länge des ursprünglichen Chunks: unter 200 Zeichen Aufforderung zu einem Keyword; 200–399 zu 1, 400–599 zu 2, 600–799 zu 3, ab 800 zu 4 Keywords |
 | Keyword-Prompts | Momentaufnahme unten; Implementierung: [keywords.py](../Ingest/utils/keywords.py) |
 | Eingabe fürs Embedding | Unveränderte Keyword-Antwort + `"\n"` + ursprünglicher Chunk; kein zusätzlicher Embedding-Prompt oder Präfix |

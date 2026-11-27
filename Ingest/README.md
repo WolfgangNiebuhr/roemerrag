@@ -54,16 +54,14 @@ Kopiere für jede Variante die JSON-Konfiguration und verwende einen eigenen Aus
 
 Mit `Ingest.pipeline --from enriched` kannst du die gewählte Variante einbetten und speichern. Verwende dafür eine vollständige Konfiguration mit derselben Chunking- und Anreicherungseinstellung sowie der gewünschten Set-ID.
 
-## Dienstadressen und Zeitlimits
+## Dienstadressen
 
 | Umgebungsvariable | Standard |
 |---|---|
 | `OLLAMA_HOST_URL` | `http://localhost:11434` |
 | `IMPORT_VECTOR_URL` | `http://127.0.0.1:5500/vectors` |
-| `IMPORT_CONNECT_TIMEOUT` | 5 Sekunden |
-| `IMPORT_KEYWORD_TIMEOUT` | 120 Sekunden |
-| `IMPORT_EMBED_TIMEOUT` | 300 Sekunden |
-| `IMPORT_STORE_TIMEOUT` | 60 Sekunden |
+
+[Zeitlimits und Wiederholungsregeln für den Import](../docs/8-3-error-handling.md#834-timeouts-und-wiederholungen)
 
 **IPv6 und `localhost` unter Windows.** Python kann `localhost` zuerst zu `::1` auflösen. Ist der veröffentlichte Podman-Port der Vector-API nur über IPv4 erreichbar, wartet Python auf die Ablehnung der IPv6-Verbindung, bevor es `127.0.0.1` versucht. In der lokalen Messung kostete das rund zwei Sekunden pro Verbindungsversuch. Der Standard `127.0.0.1` verbindet sich direkt über IPv4. Für einen anderen Host oder Port lässt sich `IMPORT_VECTOR_URL` weiterhin setzen.
 

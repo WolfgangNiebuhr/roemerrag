@@ -83,13 +83,36 @@ Die Spalte Typ nennt den Suffix hinter `urn:rag:problem:`. Alle hier definierten
 
 Ein 404 von Ollama ist beispielsweise kein fehlender Chunk: Der Adapter ordnet ihn nach Ursache ein. Unbekannte, vom Client ausdrücklich wählbare Modellkennungen können als ungültige Anfrage behandelt werden; ein fehlendes serverseitig benötigtes Modell ist `model-unavailable`. Rohantworten anderer Dienste werden nicht ungeprüft weitergereicht. Deren Request-ID und Ursache bleiben intern nachvollziehbar; der aufrufende Dienst erzeugt ein eigenes Fehlerereignis.
 
+Findet die automatische Ollama-Suche keinen verwendbaren Endpunkt, liefert die RAG-API für Embedding und Generierung `dependency-unavailable` (HTTP 503) mit dem Detail „Ollama ist nicht erreichbar.“ Kandidatenadressen und Probeursachen stehen im internen Log mit Request-ID und Verarbeitungsschritt.
+
 ## 8.3.4 Timeouts und Wiederholungen
 
-Alle externen Aufrufe erhalten konfigurierbare Verbindungs- und Antwortzeitlimits. Für die RAG-Verarbeitung gilt zusätzlich ein Gesamtbudget über Auflösung, Embedding, Retrieval und Generierung hinweg. Jeder weitere Aufruf und Retry berücksichtigt die verbleibende Zeit; einzelne Bibliotheks-Timeouts allein garantieren kein Gesamtlimit.
+### Konfiguration der Zeitlimits
 
-Retries sind begrenzt, verwenden wachsende Wartezeiten mit Zufallsanteil und erfolgen nur bei vorübergehenden Ursachen sowie sicher wiederholbaren Operationen. Ungültige Requests, Vertragsverletzungen und Programmfehler werden nicht automatisch wiederholt. Ein begründetes `Retry-After` kann bei 503 mitgegeben und muss innerhalb des verbleibenden Budgets berücksichtigt werden. Retryverantwortung liegt bei einem festgelegten Adapter; verschachtelte Retries über mehrere Schichten sind zu vermeiden.
+Die Werte in der Tabelle sind Standardwerte in Sekunden. Die Umgebungsvariablen gelten im jeweils aufrufenden Prozess. HTTP-Verbindungs- und Lesezeitlimits gelten pro Aufruf. Das Lesezeitlimit von Requests begrenzt die Wartezeit auf Daten am Socket.
 
-Generierung wird zunächst nicht automatisch wiederholt, weil Ollama nach einem Timeout weiterrechnen kann. Schreiboperationen dürfen erst nach gesicherter Idempotenz wiederholt werden. Ein Timeout belegt nicht, dass ein Schreibvorgang fehlgeschlagen ist.
+| Aufrufender Prozess | Umgebungsvariable | Standard (s) | Geltungsbereich |
+|---|---|---:|---|
+| RAG-API, `interact.py`, `analyze.py` | `RAG_CONNECT_TIMEOUT` | 5 | HTTP-Verbindungsaufbau |
+| RAG-API | `RAG_EMBEDDING_TIMEOUT` | 300 | Lesen der Embedding-Antwort |
+| RAG-API | `RAG_RETRIEVAL_TIMEOUT` | 60 | Lesen der Antwort der Vector-API |
+| RAG-API | `RAG_RERANKING_TIMEOUT` | 600 | Lesen der Reranker-Antwort |
+| RAG-API | `RAG_GENERATION_TIMEOUT` | 600 | Lesen der Antwort des Generierungsmodells |
+| `interact.py`, `analyze.py` | `RAG_CLI_TIMEOUT` | 1800 | Lesen der RAG-API-Antwort |
+| Importpipeline und `Ingest.enrich` | `IMPORT_CONNECT_TIMEOUT` | 5 | HTTP-Verbindungsaufbau |
+| Importpipeline und `Ingest.enrich` | `IMPORT_KEYWORD_TIMEOUT` | 120 | Lesen der Ollama-Chat-Antwort |
+| Importpipeline | `IMPORT_EMBED_TIMEOUT` | 300 | Lesen der Embedding-Antwort |
+| Importpipeline | `IMPORT_STORE_TIMEOUT` | 60 | Lesen der Vector-API-Antwort beim Speichern und Bereinigen |
+
+Die automatische Ollama-Ermittlung in der RAG-API verwendet ein festes Socket-Zeitlimit von drei Sekunden je Probe. Die Vector-API setzt für PostgreSQL feste Zeitlimits von jeweils drei Sekunden für Verbindungsaufbau, SQL-Anweisungen und Sperrwartezeit.
+
+### Wiederholungen
+
+Die RAG-API wiederholt Embedding, Retrieval und Reranking bei einem Verbindungsfehler oder Timeout höchstens einmal nach 100 Millisekunden plus bis zu 100 Millisekunden Zufallsanteil. Für HTTP-Fehler und Generierung ist keine automatische Wiederholung vorgesehen. Ollama kann nach einem Timeout weiter generieren. Die CLI und die Importpipeline wiederholen ihre HTTP-Aufrufe nicht automatisch. Auch die Vector-API wiederholt Schreiboperationen nicht automatisch. Ein Timeout beim Schreiben lässt den Ausgang der Operation offen.
+
+Nach einer fehlgeschlagenen Poolinitialisierung der Vector-API kann eine spätere gültige Anfrage einen neuen Initialisierungsversuch auslösen. Parallele Anfragen warten dabei nicht auf einen laufenden Initialisierungsversuch.
+
+Als Zielregel liegen automatische Wiederholungen bei einem zuständigen Adapter und sind auf vorübergehende Ursachen sowie sicher wiederholbare Operationen begrenzt. Für Schreibwiederholungen setzt das gesicherte Idempotenz voraus. Ungültige Requests, Vertragsverletzungen und Programmfehler werden nicht automatisch wiederholt. Ein begründetes `Retry-After` kann bei HTTP 503 mitgegeben werden.
 
 ## 8.3.5 Datenbank und Ressourcenbereinigung
 
@@ -97,7 +120,7 @@ Jeder Datenbankzugriff hat einen eindeutig begrenzten Transaktions- und Verbindu
 
 Upserts erfolgen atomar über `INSERT ... ON CONFLICT DO UPDATE` auf dem bestehenden Schlüssel `(chunk_id, embedding_set_id)`. Der Pool muss zur Nebenläufigkeit des Servers passen. Poolerschöpfung und Nichterreichbarkeit werden kontrolliert behandelt; verzögerter Datenbankstart darf durch spätere Initialisierungsversuche aufgeholt werden. Bereinigung darf den ursprünglichen Fehler nicht verdecken.
 
-TS-06 ist in Vector/app.py umgesetzt: zentraler Transaktionskontext, ThreadedConnectionPool (maximal zehn Verbindungen), atomarer Upsert mit stabiler ID. Poolersch?pfung ergibt 503; automatische Schreibwiederholungen erfolgen nicht. Unit- und isolierte Podman-Pruefungen bestehen: parallele Upserts, stabile IDs sowie SQL-Rollback und Poolwiederverwendung sind nachgewiesen (siehe Changelog).
+TS-06 ist in Vector/app.py umgesetzt: zentraler Transaktionskontext, ThreadedConnectionPool (maximal zehn Verbindungen), atomarer Upsert mit stabiler ID. Poolersch?pfung ergibt 503. Unit- und isolierte Podman-Pruefungen bestehen: parallele Upserts, stabile IDs sowie SQL-Rollback und Poolwiederverwendung sind nachgewiesen (siehe Changelog).
 
 ## 8.3.6 Fachliche Ergebnisse und Importabschluss
 
@@ -117,15 +140,15 @@ Strukturierte Logs enthalten Dienst, Request-/Lauf-ID, Fehlerereignis, Verarbeit
 
 Liveness prüft nur, ob der Prozess lebt, und löst keine Modellinitialisierung aus. Readiness beschreibt, ob der Dienst seine Aufgaben ausführen kann; fehlende erforderliche Abhängigkeiten oder Modelle führen zu 503 mit Problem Details. Prüfungen sind zeitlich begrenzt und berücksichtigen die tatsächlich benötigten Abhängigkeiten.
 
-Vector-API (TS-07): `/health/live` prueft nur den Prozess; `/health/ready` prueft eine Transaktion auf den benoetigten Spalten der Tabelle vectors. Fehlende Bereitschaft ergibt 503 Problem Details. Initialisierung erfolgt bedarfsgesteuert und ohne wartende Initialisierungswarteschlange; spaetere Requests versuchen fehlgeschlagene Initialisierung erneut. connect_timeout, statement_timeout und lock_timeout betragen jeweils drei Sekunden (kein Gesamtbudget). Defekte Poolverbindungen werden verworfen; spaetere Probes stellen die Bereitschaft nach Datenbankwiederanlauf wieder fest.
+Vector-API (TS-07): `/health/live` prueft nur den Prozess; `/health/ready` prueft eine Transaktion auf den benoetigten Spalten der Tabelle vectors. Fehlende Bereitschaft ergibt 503 Problem Details. Die Initialisierung erfolgt bedarfsgesteuert. Die [Zeitlimits und Initialisierungsversuche](#834-timeouts-und-wiederholungen) sind in Abschnitt 8.3.4 beschrieben. Defekte Poolverbindungen werden verworfen; spaetere Probes stellen die Bereitschaft nach Datenbankwiederanlauf wieder fest.
 
 ## 8.3.8 Umsetzung und Abnahmekriterien
 
 1. Gemeinsames Fehlerprofil und Typregister, frühe Validierung sowie zentrale Flask-Handler einführen. Die Umstellung vom bisherigen `{"error": ...}`-Format ist eine Schnittstellenänderung: unterstützte Clients, Tests und README gemeinsam aktualisieren.
-2. Adapterfehler, Zeitlimits und Retrybudget sowie atomare Writes und sichere Poolbereinigung umsetzen.
+2. Adapterfehler, Zeitlimits und Grenzen für Wiederholungen sowie atomare Writes und sichere Poolbereinigung umsetzen.
 3. Fachliche Ergebniszustände, Importberichte und Exitcodes, Wiederaufnahme und Readiness ergänzen.
 
-Containerfreie Tests prüfen Medientyp, Top-Level-Problemobjekt, Typidentität, Feldtypen, Übereinstimmung von HTTP- und Bodystatus, Erhalt von HTTP-Fehlern und Headern, sichere Meldungen sowie Validierung vor Dienstzugriff. Weitere Tests prüfen Fehlerübersetzung, ungültige Upstreamantworten, Budget-/Retrygrenzen, Korrelationskennungen, leeren Kontext und Import-Teilfehler.
+Containerfreie Tests prüfen Medientyp, Top-Level-Problemobjekt, Typidentität, Feldtypen, Übereinstimmung von HTTP- und Bodystatus, Erhalt von HTTP-Fehlern und Headern, sichere Meldungen sowie Validierung vor Dienstzugriff. Weitere Tests prüfen Fehlerübersetzung, ungültige Upstreamantworten, Grenzen für Wiederholungen, Korrelationskennungen, leeren Kontext und Import-Teilfehler.
 
 Isolierte Podman-Tests prüfen Rollback und Wiederverwendung nach SQL-Fehlern, atomare parallele Upserts, Pool-/Dienstausfälle, verzögerten Datenbankstart und Readiness. Bestehende Datenbestände und manuell genutzte Volumes bleiben erhalten. Teststufen und Ausführungsoptionen folgen [Kapitel 8.1](8-1-testkonzept.md). Die genannten Maßnahmen und Abnahmekriterien sind bis zu ihrer Umsetzung offene Zielzustände.
 
@@ -137,14 +160,14 @@ TS-03 und TS-08 sind implementiert. Frühe Validierung an den Endpunkten und gem
 
 `interact.py` zeigt HTTP-Fehler mit Schritt, tatsächlichem Status, verständlichen Problemfeldern und vorhandener Request-ID auf stderr. Exitcode 0 steht für Erfolg einschließlich fehlendem Kontext, 1 für Verarbeitungs-/Exportabbruch und 2 für ungültige Argumente. Ohne Kontext entfallen Export, Reranking und Generierung. Ein leeres Rerankingergebnis unterbindet ebenfalls die Generierung. Argumentfehler werden auf Deutsch ausgegeben; Parameterabkürzungen sind deaktiviert.
 
-Die CLI verwendet einen einzigen RAG-Aufruf mit getrenntem Verbindungs-/Antwortzeitlimit. Die RAG-API kapselt Providerfehler und prueft Embeddingvektoren, Retrievaltreffer, Reranking-Indizes sowie Generierungsantworten. Ollama-Embeddings werden vor der Weiterverarbeitung auf 1024 endliche Zahlen und eine positive, endliche Norm geprueft. Fehlende oder ungueltige Treffervektoren bei angeforderter Distanzdiagnostik ergeben HTTP 502. Ungueltige Antworten ergeben 502, Transportfehler und fehlgeschlagene Provideraufrufe 503. Konfigurierbare Zeitlimits, Restbudget und maximal ein Transportretry fuer Embedding/Retrieval/Reranking sind implementiert; Generierung wird nicht wiederholt. Requests kann laufende Socket-Aufrufe nicht hart abbrechen; die Budgetpruefung erfolgt vor und nach jedem Aufruf.
+Die interaktive CLI delegiert die Anfrage in einem Aufruf an die RAG-API. Die RAG-API kapselt Providerfehler und prueft Embeddingvektoren, Retrievaltreffer, Reranking-Indizes sowie Generierungsantworten. Ollama-Embeddings werden vor der Weiterverarbeitung auf 1024 endliche Zahlen und eine positive, endliche Norm geprueft. Fehlende oder ungueltige Treffervektoren bei angeforderter Distanzdiagnostik ergeben HTTP 502. Ungueltige Antworten ergeben 502, Transportfehler und fehlgeschlagene Provideraufrufe 503.
 
 ## Abgrenzung von Implementierung und Zielkonzept
 
-Die Abschnitte 8.3.1 bis 8.3.8 enthalten weiterhin offene Zielregeln fuer andere Dienste. TS-09 konsolidiert CLI/HTTP-Verarbeitung und Analyse-Providerfunktionen. Die API gibt Request-IDs weiter und meldet Fehler mit Verarbeitungsschritt. Restbudget und Transportzeitlimits sind konfigurierbar; eine harte Unterbrechung blockierender Socket-Aufrufe ist nicht implementiert. Importabschluss und Readiness anderer Dienste bleiben separate Aufgaben.
+Die Abschnitte 8.3.1 bis 8.3.8 enthalten weiterhin offene Zielregeln fuer andere Dienste. TS-09 konsolidiert CLI/HTTP-Verarbeitung und Analyse-Providerfunktionen. Die API gibt Request-IDs weiter und meldet Fehler mit Verarbeitungsschritt. Importabschluss und Readiness anderer Dienste bleiben separate Aufgaben.
 
 Nicht alle Adapterfehler sind bereits als spezifische Problemtypen klassifiziert: Nicht erfolgreiche Retrieval-HTTP-Antworten werden derzeit als dependency-unavailable (503) ausgegeben; ungültiges Retrieval-JSON beziehungsweise Trefferverträge als upstream-invalid-response (502). Unerwartete Fehler einschließlich weiterer nicht speziell übersetzter Netzwerk-/Modellfehler erreichen den neutralen 500-Handler. Der derzeitige Handler setzt retryable auf false. Request-IDs werden am API-Eingang geprüft und zurückgegeben, aber noch nicht durch sämtliche ausgehenden Dienstaufrufe weitergereicht. Die Importpipeline schreibt einzeln, bricht beim ersten Fehler ab und gibt beim Abbruch eine Startnummer für den nächsten Aufruf aus. Die Exitcodes und Fehlerausgabe beschreibt [Kapitel 8.4](8-4-importkonzept.md#848-fehler-wiederaufnahme-und-metriken).
 
-Die Evaluationsendpunkte verwenden denselben Problem-Details-Vertrag und dieselben Provideradapter wie /process. Ergebnisse fuer Rerank/Generate sind Client-Eingaben: fehlende Chunk-ID oder ungueltige Texttypen ergeben 400 vor Dienstzugriff. Ungueltige Reranking-Indizes oder Scores ergeben 502. Promptvorlagen erlauben nur context/question ohne Attributzugriff oder Formatkonvertierung. Leere Ergebnisse sind ein fachliches no_context mit HTTP 200 und ohne Provideraufruf. Jeder Einzelaufruf besitzt ein eigenes RAG-Zeitbudget; gespeicherte vorherige Laufzeiten werden nicht fortgeschrieben.
+Die Evaluationsendpunkte verwenden denselben Problem-Details-Vertrag und dieselben Provideradapter wie /process. Ergebnisse fuer Rerank/Generate sind Client-Eingaben: fehlende Chunk-ID oder ungueltige Texttypen ergeben 400 vor Dienstzugriff. Ungueltige Reranking-Indizes oder Scores ergeben 502. Promptvorlagen erlauben nur context/question ohne Attributzugriff oder Formatkonvertierung. Leere Ergebnisse sind ein fachliches no_context mit HTTP 200 und ohne Provideraufruf.
 
 Der Reranker prüft Modellscores vor dem Sortieren auf Konvertierbarkeit und Endlichkeit. Für `/process` und `/evaluate/rerank` muss jeder zurückgegebene Treffer vor der `top_k`-Auswahl eine endliche JSON-Zahl als Score enthalten. Fehler dieser Prüfungen ergeben HTTP 502 vom Typ `upstream-invalid-response` im Schritt `reranking`. Die Score-Anzahl fällt unter [R-04](11-1-risiken.md#r-04--fehlende-oder-überzählige-scores-beim-reranking).

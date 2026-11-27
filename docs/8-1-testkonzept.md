@@ -70,7 +70,7 @@ Die Standardintegration in `tests/podman/test_import_pipeline_integration.py` pr
 
 ### RAG-API, CLI und Evaluation
 
-`tests/unit/test_rag_components.py` prüft Embedding, Retrieval, Kontextbildung und Generierung mit gemockten Diensten. Die Fälle umfassen die Set-Auswahl, ungültige Providerantworten, Fehler beim Retrieval, leeren Kontext, Metrikgrenzen, Reranking-Zuordnung und Wiederholungsbudgets. Tests mit kontrollierter monotoner Uhr prüfen Teil- und Gesamtzeiten einschließlich `no_context` und den Alias `generation_duration`/`total_duration`.
+`tests/unit/test_rag_components.py` prüft Embedding, Retrieval, Kontextbildung und Generierung mit gemockten Diensten. Die Fälle umfassen die Set-Auswahl, ungültige Providerantworten, Fehler beim Retrieval, leeren Kontext, Metrikgrenzen, Reranking-Zuordnung und Grenzen für Wiederholungen. Tests mit kontrollierter monotoner Uhr prüfen Teil- und Gesamtzeiten einschließlich `no_context` und den Alias `generation_duration`/`total_duration`.
 
 `tests/unit/test_interact.py` prüft die Delegation in einem API-Aufruf, Modell- und Reranking-Parameter, getrennte ursprüngliche und ausgewählte Treffer, Export und Anzeige, CLI-Fehler und Zeitlimits. `tests/podman/test_rag_api.py` prüft die Eingabevalidierung am HTTP-Endpunkt.
 

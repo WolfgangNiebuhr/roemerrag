@@ -17,6 +17,26 @@ Aus README und docs übernommene Änderungshistorie. Gleichdatierte Einträge fo
 
 ## 2026-11-27
 
+### RAG-API mit TS-12 im laufenden System aktualisiert
+
+`rag-api` läuft mit Image `384928724033` im bisherigen eigenständigen `pasta`-Netzwerk auf Port 5600. Der lesende Retrieval-Aufruf lieferte wie vor dem Wechsel einen Treffer. Eine leere Anfrage wurde mit HTTP 400 abgewiesen. Der vorherige Container steht gestoppt als `rag-api-before-ts12-20261127-175802` für den Rückwechsel bereit.
+
+### TS-12 abgeschlossen
+
+Eine erfolglose automatische Ollama-Suche ergibt bei Embedding und Generierung HTTP 503 mit neutralem Fehlertext. Kandidatenadressen und Probeursachen bleiben im internen Log. Der Unit-Test zur Podman-Testfixture verwendet jetzt einen Mock für die HTTP-Bereitschaftsprüfung.
+
+319 Unit-Tests, zwei RAG-API-Tests und der Ollama-End-to-End-Grundfall im isolierten Podman-Test-Pod bestanden. Zwei optionale Reranker-End-to-End-Tests waren nicht aktiviert.
+
+### Zeitlimits und Wiederholungsregeln zentral dokumentiert
+
+Kapitel 8.3 bündelt Zeitlimits, Wiederholungsregeln und die zugehörigen Umgebungsvariablen. README-Dateien und Architektursichten verweisen auf den zentralen Abschnitt.
+
+### Keyword-Gateway und RAG-Gesamtzeitbudget entfernt
+
+Die Importpipeline übernimmt den Ollama-Chat-Aufruf für die Keyword-Anreicherung. Das frühere Gateway und der Import3-Vergleichstest wurden entfernt. Die RAG-Komponententests prüfen die URLs anhand einer eigenen Resolver-Testadresse. Die RAG-API verwendet für jeden Dienstaufruf ihre konfigurierten Verbindungs- und Lesezeitlimits. Die Podman-Testfixture wartet auf eine HTTP-Antwort der RAG-API.
+
+313 Unit-Tests, drei Podman-Importtests sowie zwei RAG-API-Tests und der RAG-End-to-End-Grundfall bestanden. Zwei optionale End-to-End-Tests mit Reranker waren nicht aktiviert.
+
 ### Aktualisierte API-Images im laufenden Podman-Stack ausgerollt
 
 `vector-api` läuft mit Image `d10ad8f4b7c8`, `rag-api` mit `3dc5d7706e34` und `reranker` mit `d6f6e70618b1`. Beim Reranker enthält das neue Image die aktualisierten gemeinsamen HTTP-Helfer. Die Container verwenden ihre bisherigen Startparameter. Für den Rückwechsel stehen die gestoppten Container `vector-api-before-20261127-130649`, `rag-api-before-20261127-130651` und `reranker-before-20261127-130650` zur Verfügung.

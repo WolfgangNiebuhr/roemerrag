@@ -37,6 +37,23 @@ def _wait_tcp(port, timeout=120):
     raise RuntimeError(f"Timed out waiting for 127.0.0.1:{port}")
 
 
+def _wait_rag_ready(base_url, timeout=120):
+    url = base_url + "/process"
+    deadline = time.monotonic() + timeout
+    while time.monotonic() < deadline:
+        try:
+            with urllib.request.urlopen(url, timeout=2):
+                pass
+        except urllib.error.HTTPError as exc:
+            with exc:
+                if exc.code == 405:
+                    return
+        except OSError:
+            pass
+        time.sleep(1)
+    raise RuntimeError(f"Timed out waiting for the RAG API at {url}")
+
+
 def _wait_reranker_ready(base_url, timeout=600):
     url = base_url + "/health"
     deadline = time.monotonic() + timeout
@@ -149,7 +166,7 @@ def podman_stack(request):
 
         _wait_tcp(vector_port)
         if include_rag:
-            _wait_tcp(rag_port)
+            _wait_rag_ready(f"http://127.0.0.1:{rag_port}")
         if include_reranker:
             _wait_reranker_ready(f"http://127.0.0.1:{reranker_port}")
         yield {

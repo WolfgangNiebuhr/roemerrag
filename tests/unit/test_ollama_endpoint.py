@@ -1,6 +1,7 @@
 """Endpoint selection, explicit overrides and retry after an unavailable server."""
 
 import io
+from http.client import BadStatusLine
 from unittest.mock import Mock
 
 import pytest
@@ -32,12 +33,19 @@ def test_gateway_fallback_is_cached(monkeypatch):
     assert opener.open.call_count == 2
 
 
-def test_failure_is_retried(monkeypatch):
+@pytest.mark.parametrize("failed_probe", [
+    OSError("refused"),
+    TimeoutError("probe timed out"),
+    BadStatusLine("invalid HTTP response"),
+    io.BytesIO(b'invalid JSON'),
+    io.BytesIO(b'{"models": "invalid"}'),
+])
+def test_failure_is_retried(monkeypatch, failed_probe):
     monkeypatch.setattr(endpoint, "wsl_gateways", lambda: [])
     opener = Mock()
-    opener.open.side_effect = [OSError("refused"), io.BytesIO(b'{"models": []}')]
+    opener.open.side_effect = [failed_probe, io.BytesIO(b'{"models": []}')]
     monkeypatch.setattr(endpoint.urllib.request, "build_opener", lambda *args: opener)
-    with pytest.raises(RuntimeError, match="Ollama is unreachable"):
+    with pytest.raises(endpoint.OllamaResolutionError, match="Ollama is unreachable"):
         endpoint.resolve_ollama_base_url()
     assert endpoint.resolve_ollama_base_url() == endpoint.DEFAULT_URL
 

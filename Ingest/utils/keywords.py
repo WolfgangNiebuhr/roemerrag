@@ -1,7 +1,4 @@
-# Definiert den Keyword-Prompt und wertet die zugehoerige Ollama-Antwort aus.
-
-from .gateway import call_ollama_gateway
-import logging
+# Definiert den Prompt für die Keyword-Anreicherung.
 
 MAX_SIZE = 1000  # Max Size für 5 Keywords
 
@@ -29,7 +26,7 @@ def get_keyword_question2(chunk):
 
 # Baut den Systemprompt und die kontextbezogene Keyword-Anfrage zusammen.
 def keyword_messages(chunk):
-    """Generiert eine Antwort basierend auf dem Kontext und der Frage über die Ollama-API."""
+    """Erstellt Systemprompt, Anfrage und Frage für einen Chunk."""
     system_prompt = (
         "Du bist ein Experte für die Analyse von Texten. Du extrahierst keywords aus Texten die als Kontext übergeben werden."
         "Priorität der keywords: "
@@ -50,30 +47,3 @@ def keyword_messages(chunk):
     query = f"<<BEGINN KONTEXT>>:\n{chunk}\n<<ENDE KONTEXT>>\nFrage: {question}\nBerücksichtige, dass als Antwort eusschließliche ien Mommaseparierte Liste von Keywords gewünscht ist, keine weiteren Erläuterungen oder Ergänzungen."
 
     return system_prompt, query, question
-
-
-# Liest Keyword-Text und Laufzeit aus der Ollama-Antwort
-def get_keywords_ollama(chunk):
-    system_prompt, query, question = keyword_messages(chunk)
-    response = call_ollama_gateway(chunk, system_prompt, query)
-
-    data = response.json()
-
-
-    total_duration = data.get("total_duration", 0) / 1e9  # Sekunden
-
-    metrics_report = (
-        f"\n\n--- [Ausführungs-Metriken] ---\n"
-        f"Duration:       {total_duration} Sekunden\n"
-    )
-
-    # Sicherstellen, dass das content-Feld existiert (kommt vor wenn Antworten gefiltert werden wg zb violence)
-    answer = ""
-    try:
-        answer = data.get("message", {}).get("content", "")
-    except (KeyError, IndexError, TypeError):
-        logging.warning("Keine Keywords generiert:\n"+query+"\n\n")
-        answer = ""
-
-
-    return answer, metrics_report, question

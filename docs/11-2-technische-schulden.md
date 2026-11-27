@@ -144,7 +144,7 @@ Einzelabruf, Text- und Vektorsuche verlangen eine Set-ID. Fehlt sie, melden dies
 
 ### TS-12 – Unvollständige Adapter und ungenutzte Konfiguration
 
-**Status** · teilweise behoben
+**Status** · behoben
 
 **Schweregrad** · P2
 
@@ -152,13 +152,9 @@ Einzelabruf, Text- und Vektorsuche verlangen eine Set-ID. Fehlt sie, melden dies
 
 [gateway.py](../Ingest/utils/gateway.py) gibt rohe `requests.Response`-Objekte zurück; [keywords.py](../Ingest/utils/keywords.py) kennt weiterhin die jeweiligen Providerformate. Der Gatewayparameter `chunk` wird nicht genutzt. Import3 verwirft die gelieferten Metriken und die Frage. In [RAG](../rag/app.py) definierte Ollama-Endpunktkonstanten steuern die echten Aufrufe nicht; diese verwenden den Resolver. Tests orientieren sich teilweise an den Konstanten. Auch `QUERY` und `NUM_RESULTS` sind dort ungenutzt. Die scheinbar gemeinsame Abstraktion kapselt Providerdetails nicht; Änderungen und Tests können sich auf wirkungslose Konfiguration beziehen.
 
-#### Noch offen
-
-Import- und Keyword-Adapter mit einem gemeinsamen Ergebnistyp versehen. Den ungenutzten Gatewayparameter `chunk` sowie `QUERY` und die ungenutzten Ollama-Endpunktkonstanten in der RAG-API bereinigen. Fehler des Ollama-Resolvers einheitlich übersetzen, dessen Probes ans Restbudget binden und sichere Fehlerausgaben prüfen.
-
 **Lösungsvorschlag**
 
-Die Schnittstellen auf die gemeinsame Fehlerübersetzung aus [Kapitel 8.3](8-3-error-handling.md) stützen und Tests auf tatsächlich aufgelöste Dienstadressen beziehen.
+Eine erfolglose automatische Ollama-Suche wird bei Embedding und Generierung als `dependency-unavailable` (HTTP 503) mit neutralem Fehlertext ausgegeben. Die Zuordnung steht im [Fehlerkonzept](8-3-error-handling.md#833-problemtypregister-und-statuszuordnung).
 
 ### TS-13 – Widersprüchlicher Modelllade- und Health-Lebenszyklus
 

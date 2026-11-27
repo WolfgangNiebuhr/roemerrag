@@ -31,6 +31,7 @@ def test_stack_uses_allocated_ports_and_internal_retrieval(monkeypatch, reranker
     monkeypatch.setattr("subprocess.run", lambda *a, **kw: SimpleNamespace(returncode=0))
     ready = []
     monkeypatch.setitem(vars(stack), "_wait_tcp", ready.append)
+    monkeypatch.setitem(vars(stack), "_wait_rag_ready", ready.append)
     monkeypatch.setitem(vars(stack), "_wait_reranker_ready", ready.append)
     options = {"--include-rag": True, "--include-reranker": reranker}
     request = SimpleNamespace(config=SimpleNamespace(getoption=lambda key: options.get(key, False)))
@@ -44,6 +45,9 @@ def test_stack_uses_allocated_ports_and_internal_retrieval(monkeypatch, reranker
         assert create[4:] == (("-p", "5500", "-p", "5600", "-p", "5000") if reranker else ("-p", "5500", "-p", "5600"))
         rag_run = next(call for call in calls if "VECTOR_API_URL=http://127.0.0.1:5500/search" in call)
         assert rag_run[0] == "run"
-        assert ready == ([45100, 45101, "http://127.0.0.1:45102"] if reranker else [45100, 45101])
+        expected_ready = [45100, "http://127.0.0.1:45101"]
+        if reranker:
+            expected_ready.append("http://127.0.0.1:45102")
+        assert ready == expected_ready
     finally:
         fixture.close()

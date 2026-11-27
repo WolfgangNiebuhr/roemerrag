@@ -1,12 +1,10 @@
 import json
-import math
 import os
 from pathlib import Path
 
 import pytest
 
-from Ingest import chunk, enrich, import3, pipeline
-from Ingest.utils import gateway
+from Ingest import chunk, enrich, pipeline
 from common import request
 
 
@@ -111,63 +109,6 @@ def test_pipeline_with_real_keywords_and_embeddings(tmp_path, monkeypatch, vecto
         request(vector_url, "/chunks", "DELETE", {
             "document_id": source.stem, "embedding_set_id": embedding_set, "from": 1,
         })
-
-
-@pytest.mark.podman
-@pytest.mark.ollama
-def test_import3_compatible_matches_real_keywords_and_embeddings(
-    tmp_path, monkeypatch, vector_url, test_id,
-):
-    host = os.getenv("OLLAMA_HOST_URL", "http://localhost:11434").rstrip("/")
-    monkeypatch.setenv("OLLAMA_HOST_URL", host)
-    monkeypatch.setenv("IMPORT_VECTOR_URL", vector_url + "/vectors")
-    monkeypatch.setattr(gateway, "OLLAMA_CHAT_URL", host + "/api/chat")
-    monkeypatch.setattr(import3, "OLLAMA_URL", host + "/api/embeddings")
-    monkeypatch.setattr(import3, "VECTOR_API_URL", vector_url + "/vectors")
-    monkeypatch.setattr(import3, "MODEL_NAME", "snowflake-arctic-embed2")
-    legacy_set = f"compatible-legacy-{test_id}"
-    pipeline_set = f"compatible-pipeline-{test_id}"
-    monkeypatch.setattr("Ingest.import3.EMBEDDING_SET_ID", legacy_set)
-
-    sample = Path(pipeline.__file__).parent / "experiments" / "snowflake-arctic-embed-v2.json"
-    settings = pipeline.read_json(sample)
-    settings["embedding_set_id"] = pipeline_set
-    config = tmp_path / sample.name
-    pipeline.write_json(config, settings)
-    source = Path(__file__).parent / "fixtures" / "early_rome.txt"
-    legacy_chunks = import3.split_text_into_chunks(source, import3.CHUNK_SIZE, import3.OVERLAP)
-    chunks = pipeline.make_chunks(source, pipeline.resolve_config(settings))["chunks"]
-    assert [row["source_text"] for row in chunks] == legacy_chunks
-
-    try:
-        import3.process_file(source, start=1)
-        output = tmp_path / "run"
-        assert pipeline.main(["--file", str(source), "--config", str(config),
-                              "--output-dir", str(output)]) == 0
-        for embedding_set in (legacy_set, pipeline_set):
-            assert request(vector_url, f"/chunks?embedding_set_id={embedding_set}")["chunks"] == len(chunks)
-
-        for row in pipeline.read_json(output / "embeddings.json")["chunks"]:
-            chunk_id = row["chunk_id"]
-            old = request(vector_url, f"/chunks/{chunk_id}?embedding_set_id={legacy_set}&include_vector=true")
-            new = request(vector_url, f"/chunks/{chunk_id}?embedding_set_id={pipeline_set}&include_vector=true")
-            suffix = "\n" + row["source_text"]
-            assert old["chunktext"].endswith(suffix)
-            old_keywords = old["chunktext"][:-len(suffix)]
-            assert new["chunktext"] == row["enrichment"] + suffix
-            old_vector, new_vector = old["vector"], new["vector"]
-            assert len(old_vector) == len(new_vector) == 1024
-            assert math.hypot(*old_vector) == pytest.approx(1.0, abs=1e-6)
-            assert math.hypot(*new_vector) == pytest.approx(1.0, abs=1e-6)
-            max_delta = max(abs(a - b) for a, b in zip(old_vector, new_vector))
-            print(f"{chunk_id}: keywords={row['enrichment']!r}, maximum vector difference={max_delta:.9g}")
-            assert row["enrichment"] == old_keywords, f"{chunk_id}: max vector delta = {max_delta:.9g}"
-            assert max_delta <= 1e-6, chunk_id
-    finally:
-        for embedding_set in (legacy_set, pipeline_set):
-            request(vector_url, "/chunks", "DELETE", {
-                "document_id": source.stem, "embedding_set_id": embedding_set, "from": 1,
-            })
 
 
 @pytest.mark.podman

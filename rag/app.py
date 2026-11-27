@@ -15,9 +15,9 @@ from string import Formatter
 import requests
 import numpy as np
 if __package__:
-    from .ollama_endpoint import resolve_ollama_base_url
+    from .ollama_endpoint import OllamaResolutionError, resolve_ollama_base_url
 else:
-    from ollama_endpoint import resolve_ollama_base_url
+    from ollama_endpoint import OllamaResolutionError, resolve_ollama_base_url
 
 app = Flask(__name__)
 install(app, default_stage="processing")
@@ -25,8 +25,6 @@ install(app, default_stage="processing")
 # Konfiguration
 
 ## Embedding
-OLLAMA_BASE_URL = os.environ.get("OLLAMA_BASE_URL", "http://host.containers.internal:11434").rstrip("/")
-OLLAMA_EMBEDDING_URL = OLLAMA_BASE_URL + "/api/embeddings"
 if __package__:
     from .embedding_config import EMBEDDING_MODEL, EMBEDDING_SET_ID, ANSWER_MODEL
 else:
@@ -38,16 +36,12 @@ VECTOR_API_URL = os.environ.get("VECTOR_API_URL", "http://host.containers.intern
 NUM_RESULTS = 5
 
 ## Generation
-OLLAMA_ANSWER_URL = OLLAMA_BASE_URL + "/api/generate"
 ANSWER_MODEL_NAME = ANSWER_MODEL
 RERANKER_URL = os.getenv("RERANKER_URL", "http://host.containers.internal:5000/rerank")
 RERANKER_MODEL = os.getenv("RERANK_MODEL", "cross-encoder/ms-marco-MiniLM-L6-v2")
 
-QUERY = "Wer beherrschte die westliche Hälfte des Mittelmeeres?"
-
 # All adapters share bounded transport settings; generation is never retried.
 CONNECT_TIMEOUT = float(os.getenv("RAG_CONNECT_TIMEOUT", "5"))
-TOTAL_TIMEOUT = float(os.getenv("RAG_TOTAL_TIMEOUT", "1800"))
 READ_TIMEOUTS = {name: float(os.getenv("RAG_" + name.upper() + "_TIMEOUT", str(default)))
                  for name, default in (("embedding", 300), ("retrieval", 60),
                                        ("reranking", 600), ("generation", 600))}
@@ -66,6 +60,12 @@ def provider_unavailable(error):
     return problem_response("dependency-unavailable", str(error))
 
 
+@app.errorhandler(OllamaResolutionError)
+def ollama_resolution_failed(error):
+    app.logger.warning("ollama_resolution_failed request_id=%s stage=%s: %s", g.request_id, g.stage, error)
+    return problem_response("dependency-unavailable", "Ollama ist nicht erreichbar.")
+
+
 @app.errorhandler(InvalidResults)
 @app.errorhandler(InvalidProviderResponse)
 def invalid_upstream_response(error):
@@ -75,24 +75,15 @@ def invalid_upstream_response(error):
 def upstream_post(url, payload, stage):
     attempts = 1 if stage == "generation" else 2
     for attempt in range(attempts):
-        remaining = TOTAL_TIMEOUT
-        if has_request_context():
-            remaining = g.get("deadline", time.monotonic() + TOTAL_TIMEOUT) - time.monotonic()
-        if remaining <= 0:
-            raise ProviderUnavailable("RAG time budget exhausted.")
         try:
             response = requests.post(url, json=payload,
-                timeout=(min(CONNECT_TIMEOUT, remaining), min(READ_TIMEOUTS[stage], remaining)),
+                timeout=(CONNECT_TIMEOUT, READ_TIMEOUTS[stage]),
                 headers={"X-Request-ID": g.request_id} if has_request_context() else {})
-            if has_request_context() and time.monotonic() > g.deadline:
-                raise ProviderUnavailable("RAG time budget exhausted.")
             return response
         except (requests.Timeout, requests.ConnectionError) as exc:
             if attempt + 1 == attempts:
                 raise ProviderUnavailable(stage + " is unavailable.") from exc
             delay = 0.1 * (2 ** attempt) + random.uniform(0, 0.1)
-            if has_request_context() and time.monotonic() + delay >= g.deadline:
-                raise ProviderUnavailable("RAG time budget exhausted.") from exc
             app.logger.warning("upstream_retry stage=%s attempt=%s", stage, attempt + 1)
             time.sleep(delay)
 
@@ -253,12 +244,6 @@ def validate_evaluation_prompts(data):
         invalid_request("user_prompt erlaubt nur {context} und {question}.", "user_prompt")
 
 
-def evaluation_start():
-    started = time.monotonic()
-    g.deadline = started + TOTAL_TIMEOUT
-    return started
-
-
 def generation_input(data, results):
     payload = {"query": data["query"], "results": results,
                "answer_model": data.get("answer_model", ANSWER_MODEL_NAME)}
@@ -313,7 +298,7 @@ def evaluate_retrieve():
                 invalid_request(str(error), error.field)
         validate_evaluation_prompts(data)
         data = parse_rag_options(data, default_top_k=5)
-    started = evaluation_start()
+    started = time.monotonic()
     g.stage = "embedding"
     embedding_started = time.monotonic()
     embedding_metrics = None
@@ -359,7 +344,7 @@ def evaluate_rerank():
         validate_evaluation_results(data)
         validate_evaluation_prompts(data)
         data = parse_rag_options(data, default_top_k=5)
-    started = evaluation_start()
+    started = time.monotonic()
     g.stage = "reranking"
     # Match /process: whitespace-only passages are never sent to the reranker.
     results = [row for row in data["results"] if row["chunktext"].strip()]
@@ -380,7 +365,7 @@ def evaluate_generate():
         validate_evaluation_results(data)
         validate_evaluation_prompts(data)
         data = parse_rag_options(data, default_top_k=5)
-    started = evaluation_start()
+    started = time.monotonic()
     g.stage = "generation"
     selected = [row for row in data["results"] if row["chunktext"].strip()]
     context = "\n".join(row["chunktext"] for row in selected)
@@ -403,7 +388,6 @@ def process_request():
     with validating_request():
         data = parse_rag_options(read_rag_request(), default_top_k=0)
     pipeline_started = time.monotonic()
-    g.deadline = pipeline_started + TOTAL_TIMEOUT
     timings = {}
     query = data["query"]
     embedding_set = data["embedding_set_id"]

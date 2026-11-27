@@ -92,7 +92,7 @@ podman run -d --name rag-api -p 5600:5600 localhost/rag-api:local
 
 Diese Variante nutzt `http://host.containers.internal:5500/search` für die bereits veröffentlichte Vector-API. Falls diese Adresse in der eigenen Netzwerkkonfiguration nicht erreichbar ist, `VECTOR_API_URL` beim Containerstart explizit setzen. Die automatische Gateway-Ermittlung gilt nur für Ollama.
 
-Import3, CLI und RAG verwenden gemeinsame Defaults aus `rag/embedding_config.py`: `EMBEDDING_MODEL=snowflake-arctic-embed2` und `EMBEDDING_SET_ID=snowflake-arctic-embed2-v2`. Beide sind unabhängig über gleichnamige Umgebungsvariablen konfigurierbar (Windows vor dem Import; Container mit `-e`). Die Set-Kennung wählt gespeicherte Daten und legt kein Modell fest.
+CLI und RAG verwenden gemeinsame Defaults aus `rag/embedding_config.py`: `EMBEDDING_MODEL=snowflake-arctic-embed2` und `EMBEDDING_SET_ID=snowflake-arctic-embed2-v2`. Beide sind unabhängig über gleichnamige Umgebungsvariablen konfigurierbar. Die Importpipeline liest Embeddingmodell und Set-Kennung aus ihrer Versuchskonfiguration. Die Set-Kennung wählt gespeicherte Daten und legt kein Modell fest.
 
 Die Vector-API verwendet `embedding_set_id` in Anfragen und Antworten. Der frühere Parameter `embedding` führt zu HTTP 400. Einzelabruf, Textsuche und Vektorsuche benötigen eine Set-ID. Nur `GET /chunks` zählt bei fehlender Set-ID alle Datensätze. RAG verwendet `embedding_set_id` und setzt ohne Angabe das konfigurierte Standard-Set ein. Der frühere Parameter `filter` führt bei `/process` und den Evaluationsendpunkten zu HTTP 400. Die CLI wählt das Set über `--embedding-set-id`.
 
@@ -235,7 +235,7 @@ Bei erfolgreicher GPU-Einrichtung liefert die Prüfung `CUDA verfügbar: True` u
 
 ### Vector-API nach Pod-Neustart
 
-`podman pod start vectorpod` startet die Container, wartet aber nicht auf die Datenbankbereitschaft. Die Vector-API versucht nach einem fehlgeschlagenen Pool-Aufbau bei jeder späteren gültigen Anfrage erneut eine Verbindung aufzubauen (Verbindungs-Timeout: 3 Sekunden). Sobald PostgreSQL bereit ist, erholt sie sich ohne Containerneustart. Solange die Datenbank nicht verfügbar ist, liefern gültige Anfragen HTTP 503 mit Problem Details. Ungültige Requests werden vorher mit HTTP 400 zurückgewiesen.
+`podman pod start vectorpod` startet die Container, wartet aber nicht auf die Datenbankbereitschaft. Sobald PostgreSQL bereit ist, erholt sich die Vector-API ohne Containerneustart. Solange die Datenbank nicht verfügbar ist, liefern gültige Anfragen HTTP 503 mit Problem Details. Ungültige Requests werden vorher mit HTTP 400 zurückgewiesen. [Zeitlimits und Initialisierungsversuche](docs/8-3-error-handling.md#834-timeouts-und-wiederholungen)
 
 Nach Änderungen an der API muss das Image neu gebaut und der API-Container neu erstellt werden; ein bloßes `podman restart` übernimmt kein neues Image:
 
@@ -248,10 +248,10 @@ podman run -d --name vector-api --pod vectorpod -e DB_HOST=127.0.0.1 -e DB_PORT=
 
 Der Datenbankcontainer und sein Volume bleiben dabei erhalten.
 
-Der Import-Integrationstest ruft `import3.process_file` mit echter Keyword-Anreicherung und echten Embeddings auf. Er verwendet die Vector-API im isolierten Test-Pod, einen eindeutigen Variantenfilter und entfernt seine Chunks auch bei Fehlern. Voraussetzung: Host-Ollama (`OLLAMA_HOST_URL`, Standard `http://localhost:11434`) mit `gemma3:4b` und `snowflake-arctic-embed2`; kein RAG-Container erforderlich. Modelle vorher mit `ollama pull gemma3:4b` und `ollama pull snowflake-arctic-embed2` bereitstellen.
+Der Import-Integrationstest verwendet die Importpipeline mit echter Keyword-Anreicherung und echten Embeddings. Er verwendet die Vector-API im isolierten Test-Pod, einen eindeutigen Variantenfilter und entfernt seine Chunks auch bei Fehlern. Voraussetzung: Host-Ollama (`OLLAMA_HOST_URL`, Standard `http://localhost:11434`) mit `gemma3:4b` und `snowflake-arctic-embed2`; kein RAG-Container erforderlich. Modelle vorher mit `ollama pull gemma3:4b` und `ollama pull snowflake-arctic-embed2` bereitstellen.
 
 ```powershell
-python -m pytest -c tests/pytest.ini tests/podman/test_import3_integration.py --include-ollama
+python -m pytest -c tests/pytest.ini tests/podman/test_import_pipeline_integration.py --include-ollama
 ```
 
 ## HTTP-Fehlervertrag (TS-03)
@@ -260,7 +260,7 @@ RAG-, Vector- und Reranker-API liefern Fehler als RFC-9457-Problemobjekte direkt
 
 Vor Dienstzugriffen werden JSON-Objekte, nichtleere Textfelder, Set-Kennungen, Metriken (`euclidean`, `cosine`) und Trefferzahlen (ganze Zahl 1 bis 100, keine Booleans oder Zahlenstrings) validiert. Reranker-Dokumente sind nichtleere Strings; eine leere Liste bleibt erlaubt. Das Eingabefeld `vector` erwartet eine JSON-Zahlenliste mit genau 1024 endlichen Zahlen. Ein Listenstring ergibt HTTP 400. Cosine verbietet Nullvektoren. `POST /vectors` verlangt einen String in `chunktext` mit mindestens einem Zeichen außerhalb von Leerzeichen, LF und CR. PostgreSQL erzwingt dieselbe Regel. Ungueltige Eingaben liefern 400 vor Modell-/DB-Arbeit, fehlende Chunks 404, nicht verfuegbare Datenbanken oder Rerankermodelle 503 und unerwartete Fehler neutrale 500-Antworten. HTTP-Fehler wie 405 behalten erforderliche Header.
 
-Die API-Images werden mit `scripts/build_image.py` aus einem temporaeren Build-Kontext gebaut (siehe Befehle oben). Das Skript kopiert ausschliesslich die pro Dienst aufgelisteten Quelldateien und das gemeinsame Paket `rag_common`; es durchsucht weder Tests noch historische Verzeichnisse. Dies umgeht den Windows-Podman-Fehler beim Lesen gesperrter Verzeichnisse trotz Ignore-Regeln. Der temporaere Kontext wird auch bei Buildfehlern entfernt. Neue Laufzeitdateien muessen in der Eingabeliste des Skripts ergaenzt werden. Nach Codeaenderungen Images neu bauen und Container neu erstellen. Weitergehende Adapterklassifikation, Retrybudgets, Importabschluss und Readiness sind noch Zielkonzept: [Kapitel 8.3](docs/8-3-error-handling.md).
+Die API-Images werden mit `scripts/build_image.py` aus einem temporaeren Build-Kontext gebaut (siehe Befehle oben). Das Skript kopiert ausschliesslich die pro Dienst aufgelisteten Quelldateien und das gemeinsame Paket `rag_common`; es durchsucht weder Tests noch historische Verzeichnisse. Dies umgeht den Windows-Podman-Fehler beim Lesen gesperrter Verzeichnisse trotz Ignore-Regeln. Der temporaere Kontext wird auch bei Buildfehlern entfernt. Neue Laufzeitdateien muessen in der Eingabeliste des Skripts ergaenzt werden. Nach Codeaenderungen Images neu bauen und Container neu erstellen. Weitergehende Adapterklassifikation, Importabschluss und Readiness sind noch Zielkonzept: [Kapitel 8.3](docs/8-3-error-handling.md).
 
 Auch bei pytest-Aufrufen aus tests, tests/unit und tests/podman greift die gemeinsame Temp-/Cache-Absicherung. Ein ausdrücklich aktivierter Cache-Provider wird vor seiner Initialisierung in den externen Tempbereich (rag-pytest-cache) umgeleitet, selbst bei überschriebenem addopts/cache_dir. Grenzen (insbesondere --noconftest/--confcutdir) siehe [Testkonzept](docs/8-1-testkonzept.md); historische Prüfnachweise stehen im [Changelog](changelog.md).
 
@@ -278,19 +278,17 @@ Die CLI sendet metric=cosine, num_results=5, top_k=6 und das Rerankermodell expl
 
 Der API-Container benoetigt bei Reranking `RERANKER_URL` (Standard `http://host.containers.internal:5000/rerank`), optional `RERANK_MODEL`; bei gemeinsamen Pods kann die URL auf `http://127.0.0.1:5000/rerank` zeigen. Fuer das laufende System muss das RAG-Image nach dem Umbau neu gebaut und der Container neu erstellt werden. API-Clients muessen zusaetzliche Antwortfelder tolerieren.
 
-Transportkonfiguration: `RAG_CONNECT_TIMEOUT=5`, `RAG_EMBEDDING_TIMEOUT=300`, `RAG_RETRIEVAL_TIMEOUT=60`, `RAG_RERANKING_TIMEOUT=600`, `RAG_GENERATION_TIMEOUT=600`, `RAG_TOTAL_TIMEOUT=1800` (Sekunden). Restbudget begrenzt jeden Folgeaufruf; nach Ablauf wird keine erfolgreiche Pipelineantwort geliefert. Requests-Zeitlimits sind Socket-Zeitlimits; ein blockierender Aufruf kann nicht aktiv abgebrochen werden. Embedding, Retrieval und Reranking werden bei Timeout/Verbindungsfehler hoechstens einmal wiederholt, Generierung und Writes nie. HTTP-Fehler werden nicht wiederholt. X-Request-ID wird weitergegeben. Die CLI hat `RAG_CLI_TIMEOUT=1800` als eigenes Antwortzeitlimit. Fehlende Metriken werden als nicht verfuegbar angezeigt.
-
-Import3 verwendet `IMPORT_CONNECT_TIMEOUT=5`, `IMPORT_EMBED_TIMEOUT=300` und `IMPORT_STORE_TIMEOUT=60` ohne automatische Schreibwiederholung.
+Die Konfiguration der Zeitlimits und die Wiederholungsregeln für RAG-API, CLI und Importpipeline stehen im [Fehlerkonzept](docs/8-3-error-handling.md#834-timeouts-und-wiederholungen). Die RAG-API gibt die Request-ID als `X-Request-ID` an aufgerufene Dienste weiter.
 
 CLI-Validierung: --metric erlaubt ausschließlich cosine und euclidean (euklidische/L2-Distanz). L2 ist kein akzeptierter Parameterwert. Ungültige Optionen werden einzeln mit Parametername und erlaubten Werten beziehungsweise Grenzen gemeldet; Exitcode 2, ohne Dienstaufruf.
 
 CLI-Validierungsfehler werden auf Deutsch ausgegeben, einschließlich fehlender Pflichtparameter/Werte, unbekannter Optionen und ungültiger Ganzzahlen. Beispiel: Parameter --metric: 'L2' ist ungültig; erlaubt sind cosine und euclidean (L2-Distanz). Parameterabkürzungen sind deaktiviert, damit Tippfehler nicht unbemerkt als andere Option interpretiert werden. Exitcode bleibt 2.
 
-Die Vector-API schreibt atomar auf dem Schl?ssel `(chunk_id, embedding_set_id)` und erh?lt dabei die interne ID. Ihr threadsicherer Pool umfasst maximal zehn Verbindungen; bei Ersch?pfung antwortet sie mit HTTP 503. Alle Datenbankzugriffe schlie?en ihre Transaktion ab oder rollen sie bei Fehlern zur?ck. Schreibzugriffe werden nicht automatisch wiederholt.
+Die Vector-API schreibt atomar auf dem Schl?ssel `(chunk_id, embedding_set_id)` und erh?lt dabei die interne ID. Ihr threadsicherer Pool umfasst maximal zehn Verbindungen; bei Ersch?pfung antwortet sie mit HTTP 503. Alle Datenbankzugriffe schlie?en ihre Transaktion ab oder rollen sie bei Fehlern zur?ck.
 
 Pytest verwendet `--import-mode=importlib`, damit gleichnamige Unit- und Integrationstestmodule im gemeinsamen Lauf getrennt geladen werden. Die Testverzeichnisse sind fuer bestehende Helper-Imports im Python-Suchpfad eingetragen (`tests/pytest.ini`).
 
-Die Vector-API bietet `GET /health/live` (200, `status: alive`, ohne Datenbankzugriff) und `GET /health/ready` (200, `status: ready`, nach erfolgreichem Schema-Zugriff). Fehlende Bereitschaft ergibt 503 mit Problem Details. Der Pool wird bei der ersten gueltigen Anfrage initialisiert; nach fehlgeschlagenem Start versucht eine spaetere Anfrage es erneut. Parallele Anfragen warten nicht auf eine laufende Initialisierung. Verbindungsaufbau sowie SQL- und Lock-Wartezeiten sind jeweils auf drei Sekunden begrenzt; dies ist kein gemeinsames Request-Gesamtbudget. Readiness nach einem Datenbankausfall kann zunaechst eine veraltete Verbindung verwerfen und erholt sich mit spaeteren Probes ohne API-Neustart. Es gibt keine automatische Wiederholung von Schreiboperationen.
+Die Vector-API bietet `GET /health/live` (200, `status: alive`, ohne Datenbankzugriff) und `GET /health/ready` (200, `status: ready`, nach erfolgreichem Schema-Zugriff). Fehlende Bereitschaft ergibt 503 mit Problem Details. Readiness nach einem Datenbankausfall kann zunaechst eine veraltete Verbindung verwerfen und erholt sich mit spaeteren Probes ohne API-Neustart. [Zeitlimits und Wiederholungsregeln der Vector-API](docs/8-3-error-handling.md#834-timeouts-und-wiederholungen)
 
 Antwortmodell pro CLI-Aufruf: `python interact.py --query "Was ist Rom?" --answer-model phi3:mini`. Ohne Option gilt `ANSWER_MODEL` aus der Umgebung, sonst `gemma4:e4b`. Direkter API-Aufruf: `POST /process` mit `{"query":"Was ist Rom?","answer_model":"phi3:mini"}`. Das gewaehlte Modell muss in Ollama installiert sein; fuer den Standard `ollama pull gemma4:e4b` verwenden. Die E2E-Tests waehlen weiterhin explizit phi3:mini.
 
@@ -308,7 +306,7 @@ An den Evaluationsendpunkten kann `analyze.py` Distanzdiagnostik abrufen und aus
 python analyze.py --query "Was ist Rom?" --metric cosine --compare-gold
 ```
 
-Die RAG-API bietet drei POST-Endpunkte fuer spaetere Qualitaetsmessungen. Sie verwenden dieselben Providerfunktionen, Validierung, Zeitlimits, Retries und Modelle wie `/process`, fuehren aber nur den jeweiligen Schritt aus. Gold-Antworten und Qualitaetsscores werden noch nicht berechnet. Die historische ConfigMap dient nur als fachliche Referenz; deren SQL-Zugriffe und Feldnamen werden nicht uebernommen.
+Die RAG-API bietet drei POST-Endpunkte fuer spaetere Qualitaetsmessungen. Sie verwenden dieselben Providerfunktionen, Validierung und Modelle wie `/process`, fuehren aber nur den jeweiligen Schritt aus. Gold-Antworten und Qualitaetsscores werden noch nicht berechnet. Die historische ConfigMap dient nur als fachliche Referenz; deren SQL-Zugriffe und Feldnamen werden nicht uebernommen.
 
 | Endpunkt | Eingabe | Ausgabe und Weiterverwendung |
 |---|---|---|
@@ -347,7 +345,7 @@ Reranking behaelt Distanzen und sonstige Trefferfelder bei. original_index bezie
 
 Eigene user_prompt-Vorlagen erlauben ausschliesslich `{context}` und `{question}` als Platzhalter, ohne Formatierung oder Attributzugriff; literale Klammern muessen verdoppelt werden. Ohne Vorlagen gelten dieselben Prompts wie bei `/process`. Die drei Endpunkte verwenden query/results/reranker/answer_model/system_prompt/user_prompt; die historischen Felder question/chunks/modelname/systemprompt/userprompt der ConfigMap sind keine API-Aliase. Vor Live-Nutzung RAG-Image neu bauen und Container ersetzen.
 
-Import3 bildet Chunk-IDs aus `Path(file_path).stem` und der Chunknummer ab 1: `rom.band1.txt` ergibt `rom.band1-1`, eine Datei `rom` ergibt `rom-1`. Logdateien verwenden denselben Stamm. Der Stamm muss innerhalb eines Embedding-Sets eindeutig sein; etwa `rom.txt` und `rom.md` kollidieren weiterhin (akzeptiertes Risiko R-02). Gegenueber alten Imports mehrteiliger Dateinamen entstehen andere IDs. Vor deren Wiederholungsimport den Altbestand pruefen und Bereinigung planen; alte Schluessel werden nicht automatisch entfernt oder migriert.
+Die Importpipeline bildet Chunk-IDs aus dem Dateistamm und der Chunknummer ab 1. Aus `rom.band1.txt` entsteht `rom.band1-1`, aus `rom` entsteht `rom-1`. Der Stamm muss innerhalb eines Embedding-Sets eindeutig sein; etwa `rom.txt` und `rom.md` kollidieren weiterhin (akzeptiertes Risiko R-02). Gegenueber alten Imports mehrteiliger Dateinamen entstehen andere IDs. Vor deren Wiederholungsimport den Altbestand pruefen und Bereinigung planen; alte Schluessel werden nicht automatisch entfernt oder migriert.
 
 ## Dokumentimport
 

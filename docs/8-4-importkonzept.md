@@ -171,7 +171,7 @@ Bei früheren Erste-Punkt-IDs kann beispielsweise `rom-1` zu `rom.band1.txt`, `r
 
 Die Pipeline gibt beim Abbruch die nächste unbestätigte Chunknummer und das passende `--start` aus. Mit derselben Eingabe, Konfiguration und API-Adresse lässt sich der Import an dieser Stelle fortsetzen. Bei einer verlorenen Speicherantwort schreibt der nächste Lauf diesen Chunk erneut. Bei einem Bereinigungsfehler führt die ausgegebene Nummer ausschließlich zur Bereinigung. `--start` kann auch nach einem erfolgreichen Import einen bestehenden Präfix überspringen. Die [Importanleitung](../Ingest/README.md) zeigt Aufrufe und Exitcodes.
 
-Provideranfragen haben Zeitlimits. Der Import bricht beim ersten Fehler ab und gibt Fehlerphase, Chunknummer und Fehlerklasse aus. Fehlerlogs geben keine Providerantworten aus.
+Der Import bricht beim ersten Fehler ab und gibt Fehlerphase, Chunknummer und Fehlerklasse aus. Fehlerlogs geben keine Providerantworten aus. [Zeitlimits und Wiederholungsregeln](8-3-error-handling.md#834-timeouts-und-wiederholungen)
 
 Anreicherungsartefakte enthalten die gemessenen Anfragedauern sowie verfügbare Provider-Ladezeiten und Tokenzahlen. Anzahl und Größen der Chunks, Overlapparameter und Umfang der Anreicherung sind Versuchsdaten.
 

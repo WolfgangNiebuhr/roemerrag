@@ -46,7 +46,7 @@ flowchart LR
 
 | Baustein | Verantwortung | Maßgebliche Implementierung |
 |---|---|---|
-| Dokumentimport | Chunking, optionale Keywords, normalisierte Embeddings und Speicherung | [pipeline.py](../Ingest/pipeline.py), [chunking.py](../Ingest/utils/chunking.py), [keywords.py](../Ingest/utils/keywords.py), [gateway.py](../Ingest/utils/gateway.py) |
+| Dokumentimport | Chunking, optionale Keywords, normalisierte Embeddings und Speicherung | [pipeline.py](../Ingest/pipeline.py), [chunking.py](../Ingest/utils/chunking.py), [keywords.py](../Ingest/utils/keywords.py) |
 | RAG-API | Embedding, Retrieval, optionales Reranking, Kontext und Generierung orchestrieren | [app.py](../rag/app.py), [ollama_endpoint.py](../rag/ollama_endpoint.py), [Dockerfile](../rag/Dockerfile) |
 | Vector-API | CRUD und Ähnlichkeitssuche über PostgreSQL | [app.py](../Vector/app.py), [Dockerfile.api](../Vector/Dockerfile.api) |
 | Vektorspeicher | Chunks, Varianten und Vektoren persistent speichern | [init.sql](../Vector/init.sql), [Dockerfile](../Vector/Dockerfile) |
@@ -78,11 +78,11 @@ Die Antwort enthält `response`, `chunks`, `metrics` sowie getrennte `retrieved_
 
 Die Evaluationsendpunkte `POST /evaluate/retrieve`, `POST /evaluate/rerank` und `POST /evaluate/generate` verwenden dieselben Providerfunktionen. `next_request` verbindet die Schritte über serialisierbare Eingaben. Trefferidentität und Trefferfelder bleiben erhalten. `/evaluate/retrieve` fordert Treffervektoren nur für `include_distances: true` an und liefert daraus berechnete Diagnosen. Der Fragevektor ist mit `include_query_vector: true` abrufbar. Trefferausgabe und Folgeaufrufe aus Retrieve enthalten keine Vektoren. Die Endpunkte speichern weder Vektoren noch Sitzungszustand.
 
-`interact.py` validiert CLI-Argumente, ruft `/process` auf und übernimmt Ausgabe und lokalen Export. `analyze.py` ruft `/evaluate/retrieve` mit Distanzdiagnostik auf und übergibt `next_request` an `/evaluate/generate`. RAG berechnet Cosinus-Ähnlichkeit und euklidischen Abstand für die Treffer und optional für den vom Analysewerkzeug übergebenen Gold-Chunk. Die Transportadapter begrenzen Zeitlimits und Wiederholungen für sicher wiederholbare Aufrufe. Generierung und Writes werden nicht automatisch wiederholt. Die [Laufzeitsicht](6-laufzeitsicht.md) beschreibt Aufrufreihenfolge, Netzwerk und Retry-Verhalten.
+`interact.py` validiert CLI-Argumente, ruft `/process` auf und übernimmt Ausgabe und lokalen Export. `analyze.py` ruft `/evaluate/retrieve` mit Distanzdiagnostik auf und übergibt `next_request` an `/evaluate/generate`. RAG berechnet Cosinus-Ähnlichkeit und euklidischen Abstand für die Treffer und optional für den vom Analysewerkzeug übergebenen Gold-Chunk. Die [Laufzeitsicht](6-laufzeitsicht.md) beschreibt Aufrufreihenfolge und Netzwerk. [Zeitlimits und Wiederholungsregeln](8-3-error-handling.md#834-timeouts-und-wiederholungen)
 
 ### 5.3.3 Vector-API und Datenhaltung
 
-Die Vector-API initialisiert den `ThreadedConnectionPool` erst nach der Eingabevalidierung. Er umfasst eine bis zehn Verbindungen. Fehlgeschlagene Initialisierungen werden bei späteren Anfragen erneut versucht. Gleichzeitige Anfragen warten nicht auf den Initialisierungslock. Verbindungs-, Statement- und Lock-Wartezeit sind jeweils auf drei Sekunden begrenzt. Der Transaktionskontext führt Commit oder Rollback aus und verwirft defekte Verbindungen. Einstellungen sind `POSTGRES_DB`, `DB_HOST`, `DB_PORT`, `DB_USER` und `DB_PASSWORD`.
+Die Vector-API initialisiert den `ThreadedConnectionPool` erst nach der Eingabevalidierung. Er umfasst eine bis zehn Verbindungen. Der Transaktionskontext führt Commit oder Rollback aus und verwirft defekte Verbindungen. Einstellungen sind `POSTGRES_DB`, `DB_HOST`, `DB_PORT`, `DB_USER` und `DB_PASSWORD`. [Zeitlimits und Initialisierungsversuche](8-3-error-handling.md#834-timeouts-und-wiederholungen)
 
 `GET /health/live` prüft nur den Prozess. `GET /health/ready` prüft Datenbankzugriff und Schema. Fehlende Bereitschaft und Poolerschöpfung ergeben HTTP 503. Nach einem Datenbankwiederanlauf kann sich die API ohne Neustart erholen.
 

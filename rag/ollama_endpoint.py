@@ -1,6 +1,7 @@
 """Resolve Windows Ollama from a WSL container without storing a gateway IP."""
 
 import functools
+from http.client import HTTPException
 import json
 import os
 from pathlib import Path
@@ -9,6 +10,10 @@ import urllib.request
 
 
 DEFAULT_URL = "http://host.containers.internal:11434"
+
+
+class OllamaResolutionError(RuntimeError):
+    """Automatic discovery found no usable Ollama endpoint."""
 
 
 def wsl_gateways():
@@ -31,7 +36,7 @@ def resolve_ollama_base_url():
     candidates = [DEFAULT_URL]
     try:
         candidates.extend(f"http://{address}:11434" for address in wsl_gateways())
-    except (OSError, ValueError):
+    except (OSError, ValueError, OverflowError):
         pass
     errors = []
     # These are local connections; do not send gateway probes to an HTTP proxy.
@@ -43,7 +48,9 @@ def resolve_ollama_base_url():
             if not isinstance(payload, dict) or not isinstance(payload.get("models"), list):
                 raise ValueError("response is not an Ollama model list")
             return base_url
-        except (OSError, ValueError) as exc:
+        except (OSError, ValueError, HTTPException) as exc:
             errors.append(f"{base_url}: {exc}")
     # Exceptions are not cached, so a later request retries after Ollama starts.
-    raise RuntimeError("Ollama is unreachable. Set OLLAMA_BASE_URL explicitly if needed. " + "; ".join(errors))
+    raise OllamaResolutionError(
+        "Ollama is unreachable. Set OLLAMA_BASE_URL explicitly if needed. " + "; ".join(errors)
+    )

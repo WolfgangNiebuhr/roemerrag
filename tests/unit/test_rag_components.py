@@ -8,9 +8,12 @@ import pytest
 from rag import app as rag_app
 
 
+TEST_OLLAMA_URL = "http://ollama.test:12345"
+
+
 @pytest.fixture(autouse=True)
 def fixed_ollama_endpoint(monkeypatch):
-    monkeypatch.setattr("rag.app.resolve_ollama_base_url", lambda: rag_app.OLLAMA_BASE_URL)
+    monkeypatch.setattr("rag.app.resolve_ollama_base_url", lambda: TEST_OLLAMA_URL)
 
 
 def test_rag_api_success_with_mocked_dependencies():
@@ -50,7 +53,7 @@ def test_rag_api_success_with_mocked_dependencies():
 
     assert post.call_count == 3
     embedding_call, vector_call, answer_call = post.call_args_list
-    assert embedding_call.args[0] == rag_app.OLLAMA_EMBEDDING_URL
+    assert embedding_call.args[0] == f"{TEST_OLLAMA_URL}/api/embeddings"
     assert embedding_call.kwargs["json"] == {"model": rag_app.EMBEDDING_MODEL_NAME, "prompt": query}
     assert vector_call.args[0] == rag_app.VECTOR_API_URL
     vector_payload = vector_call.kwargs["json"]
@@ -58,7 +61,8 @@ def test_rag_api_success_with_mocked_dependencies():
     assert "include_vector" not in vector_payload
     assert vector_payload["embedding_set_id"] == rag_app.EMBEDDING_SET_ID
     assert vector_payload["metric"] == "cosine" and vector_payload["num_results"] == 2
-    assert answer_call.args[0] == rag_app.OLLAMA_ANSWER_URL
+    assert answer_call.args[0] == f"{TEST_OLLAMA_URL}/api/generate"
+    assert answer_call.kwargs["timeout"] == (rag_app.CONNECT_TIMEOUT, rag_app.READ_TIMEOUTS["generation"])
     answer_payload = answer_call.kwargs["json"]
     assert answer_payload["model"] == rag_app.ANSWER_MODEL_NAME
     assert "Rom kontrollierte große Teile" in answer_payload["prompt"]
@@ -76,7 +80,7 @@ def test_generate_embedding_normalizes_vector(monkeypatch):
 
     assert result.tolist() == pytest.approx([0.6, 0.8] + [0.0] * 1022)
     post.assert_called_once_with(
-        rag_app.OLLAMA_EMBEDDING_URL,
+        f"{TEST_OLLAMA_URL}/api/embeddings",
         json={"model": rag_app.EMBEDDING_MODEL_NAME, "prompt": "test query"},
         timeout=(5, 300), headers={},
     )
@@ -134,7 +138,7 @@ def test_generate_answer_converts_metrics_and_reports_http_error(monkeypatch):
         "prompt_eval_duration": 0.25, "eval_duration": 1.0,
         "prompt_tokens": 12, "answer_tokens": 8, "answer_rate": 8.0,
     }
-    assert post.call_args.args[0] == rag_app.OLLAMA_ANSWER_URL
+    assert post.call_args.args[0] == f"{TEST_OLLAMA_URL}/api/generate"
     assert post.call_args.kwargs["json"]["prompt"] == "Kontext:\ncontext\n\nFrage: question"
 
     post.return_value = Mock(status_code=500, text="generation failed")
@@ -226,6 +230,28 @@ def test_unavailable_retrieval_does_not_become_no_context(monkeypatch):
     assert response.json['type'] == 'urn:rag:problem:dependency-unavailable'
     assert response.json['stage'] == 'retrieval'
     generate.assert_not_called()
+
+
+@pytest.mark.parametrize("path,payload,stage", [
+    ("/evaluate/retrieve", {"query": "q"}, "embedding"),
+    ("/evaluate/generate", {"query": "q", "results": [{"chunk_id": "c", "chunktext": "text"}]}, "generation"),
+])
+def test_ollama_resolution_failure_returns_safe_problem(monkeypatch, path, payload, stage):
+    error = rag_app.OllamaResolutionError("http://private-ollama.test:11434: private upstream body")
+    monkeypatch.setattr(rag_app, "resolve_ollama_base_url", Mock(side_effect=error))
+    post = Mock()
+    monkeypatch.setattr("requests.post", post)
+
+    response = rag_app.app.test_client().post(path, json=payload)
+
+    assert response.status_code == response.json["status"] == 503
+    assert response.mimetype == "application/problem+json"
+    assert response.json["type"] == "urn:rag:problem:dependency-unavailable"
+    assert response.json["stage"] == stage
+    assert response.json["detail"] == "Ollama ist nicht erreichbar."
+    assert "private-ollama.test" not in response.text
+    assert "private upstream body" not in response.text
+    post.assert_not_called()
 
 
 def test_metrics_zero_tokens_and_invalid_counts():
@@ -321,16 +347,6 @@ def test_transport_retries_are_bounded(monkeypatch, stage, attempts):
     with pytest.raises(rag_app.ProviderUnavailable):
         rag_app.upstream_post('url', {}, stage)
     assert post.call_count == attempts
-
-
-def test_expired_budget_prevents_upstream_request(monkeypatch):
-    post = Mock()
-    monkeypatch.setattr("requests.post", post)
-    with rag_app.app.test_request_context('/process'):
-        rag_app.g.deadline = 0
-        with pytest.raises(rag_app.ProviderUnavailable):
-            rag_app.upstream_post('url', {}, 'retrieval')
-    post.assert_not_called()
 
 
 def test_cli_and_http_equivalent_configuration(monkeypatch):
