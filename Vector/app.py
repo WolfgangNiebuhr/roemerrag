@@ -5,6 +5,7 @@ from rag_common.http_errors import (
     Problem, boolean_field, install, invalid_request, json_object, problem_response, text_field, validating_request,
 )
 from rag_common.vector_contract import VectorInputError, parse_search_options, parse_vector
+from rag_common.health import install_actuator
 from flask import Flask, request, jsonify
 import os
 from threading import Lock
@@ -56,29 +57,28 @@ def ensure_db_pool():
         pool_init_lock.release()
 
 
-
-
-@app.get("/health/live")
-def liveness():
-    """Process-only probe: never initialize or acquire a database connection."""
-    return jsonify({"status": "alive"})
-
-
-@app.get("/health/ready")
-def readiness():
-    check_database_ready()
-    return jsonify({"status": "ready"})
-
-
 def check_database_ready():
+    with transaction() as conn:
+        with conn.cursor() as cur:
+            cur.execute("SELECT chunk_id, embedding_set_id, vector, chunktext FROM vectors LIMIT 0")
+    return True
+
+
+def database_info():
     try:
         with transaction() as conn:
             with conn.cursor() as cur:
-                cur.execute("SELECT chunk_id, embedding_set_id, vector, chunktext FROM vectors LIMIT 0")
-    except DatabaseUnavailable:
-        raise
-    except Exception as exc:
-        raise DatabaseUnavailable("Database readiness check failed.") from exc
+                cur.execute("SELECT DISTINCT embedding_set_id FROM vectors ORDER BY embedding_set_id")
+                embedding_set_ids = [row[0] for row in cur.fetchall()]
+    except OperationalError as exc:
+        raise DatabaseUnavailable("Could not read embedding set IDs.") from exc
+    return {
+        "database": {"poolInitialized": db_pool is not None},
+        "embeddingSetIds": embedding_set_ids,
+    }
+
+
+install_actuator(app, check=check_database_ready, info=database_info)
 
 
 @contextmanager

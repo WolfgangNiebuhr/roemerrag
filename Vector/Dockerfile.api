@@ -17,5 +17,7 @@ RUN pip install --no-cache-dir -r /app/requirements.txt
 COPY Vector/app.py /app/app.py
 
 COPY rag_common /rag_common
+ARG RAG_BUILD_TIME
+ENV RAG_BUILD_TIME=${RAG_BUILD_TIME}
 EXPOSE 5500
 CMD ["python", "/app/app.py"]

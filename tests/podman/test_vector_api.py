@@ -190,15 +190,17 @@ def test_database_recovery_preserves_data_after_container_recreation(podman_stac
         port = run("port", infra, "5500/tcp").splitlines()[0].rsplit(":", 1)[1]
         base = "http://127.0.0.1:" + port
         api_id = run("inspect", api, "--format", "{{.Id}}")
-        wait_status("/health/live", 200)
-        status, problem, media = wait_status("/health/ready", 503)
-        assert media == "application/problem+json"
-        assert problem["type"] == "urn:rag:problem:dependency-unavailable"
-        assert problem["status"] == 503
+        _, health, media = wait_status("/actuator/health", 503)
+        assert media == "application/json"
+        assert health["status"] == "DOWN"
+        assert health["build"]["time"]
+        unavailable = request(base, "/actuator/info", expected=503)
+        assert unavailable["type"] == "urn:rag:problem:dependency-unavailable"
         wait_status("/chunks", 503)
         db_id = start_database()
-        wait_status("/health/ready", 200)
+        wait_status("/actuator/health", 200)
         wait_status("/chunks", 200)
+        assert request(base, "/actuator/info")["embeddingSetIds"] == []
         chunk = {
             "chunk_id": "persistence-1", "embedding_set_id": f"persistence-{suffix}",
             "chunktext": "Dieser Chunk bleibt im Testvolume erhalten.",
@@ -212,10 +214,9 @@ def test_database_recovery_preserves_data_after_container_recreation(podman_stac
 
         run("stop", db)
         run("rm", db)
-        wait_status("/health/ready", 503)
-        wait_status("/health/live", 200)
+        wait_status("/actuator/health", 503)
         assert start_database() != db_id
-        wait_status("/health/ready", 200)
+        wait_status("/actuator/health", 200)
         assert request(base, chunk_path) == stored
         hits = request(base, "/search", "POST", {
             "vector": chunk["vector"], "embedding_set_id": chunk["embedding_set_id"],
@@ -223,6 +224,13 @@ def test_database_recovery_preserves_data_after_container_recreation(podman_stac
         })
         assert [hit["chunk_id"] for hit in hits] == [chunk["chunk_id"]]
         assert hits[0]["distance"] == pytest.approx(0)
+        request(base, "/vectors", "POST", {**chunk, "chunk_id": "second-chunk"}, expected=201)
+        other_set = "another-set"
+        request(base, "/vectors", "POST", {**chunk, "embedding_set_id": other_set}, expected=201)
+        assert request(base, "/actuator/info") == {
+            "database": {"poolInitialized": True},
+            "embeddingSetIds": [other_set, chunk["embedding_set_id"]],
+        }
         assert run("inspect", api, "--format", "{{.Id}}") == api_id
         assert run("inspect", api, "--format", "{{.RestartCount}}") == "0"
     finally:

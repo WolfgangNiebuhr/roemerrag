@@ -156,9 +156,9 @@ Einzelabruf, Text- und Vektorsuche verlangen eine Set-ID. Fehlt sie, melden dies
 
 Eine erfolglose automatische Ollama-Suche wird bei Embedding und Generierung als `dependency-unavailable` (HTTP 503) mit neutralem Fehlertext ausgegeben. Die Zuordnung steht im [Fehlerkonzept](8-3-error-handling.md#833-problemtypregister-und-statuszuordnung).
 
-### TS-13 – Widersprüchlicher Modelllade- und Health-Lebenszyklus
+### TS-13 – Uneinheitlicher Health-Vertrag und Modelllade-Lebenszyklus
 
-**Status** · offen
+**Status** · behoben
 
 **Schweregrad** · P2
 
@@ -168,7 +168,7 @@ Der Reranker kann über `/health` das Defaultmodell laden oder auf laufende Mode
 
 **Lösungsvorschlag**
 
-Liveness ohne Modellinitialisierung und zeitlich begrenzte Readiness einführen. Fehlende Bereitschaft als HTTP 503 mit Problem Details melden. Laden, laufende Inferenz und Neustart prüfen.
+RAG-API, Vector-API und Reranker verwenden den gemeinsamen [Actuator-Health-Vertrag](8-3-error-handling.md#gemeinsamer-health-vertrag-ts-13) mit `/actuator/health` für Status und Buildstand sowie `/actuator/info` für Laufzeitinformationen. Der Reranker lädt das Defaultmodell beim Dienststart und veröffentlicht das aktive Modell unabhängig von der Inferenzsperre.
 
 ### TS-14 – Fehlerhafte Analyse und unklare Alt-Einstiegspunkte
 
@@ -238,15 +238,15 @@ Deterministische Vertragstests und echte Modelltests getrennt halten. Goldkorpus
 
 **Problembeschreibung**
 
-Die APIs starten Flask-Entwicklungsserver; Authentifizierung fehlt, Beispiel-DB-Zugangsdaten sind fest vorbelegt. Ein einheitliches Readiness-Konzept fehlt. Siehe [Startanleitung](../README.md), [Vector](../Vector/app.py), [RAG](../rag/app.py) und [Reranker](../reranker/app.py). Der dokumentierte lokale Experimentbetrieb ist nicht ohne weitere Maßnahmen auf Mehrbenutzer- oder exponierten Dauerbetrieb übertragbar.
+Die APIs starten Flask-Entwicklungsserver; Authentifizierung fehlt, Beispiel-DB-Zugangsdaten sind fest vorbelegt. Siehe [Startanleitung](../README.md), [Vector](../Vector/app.py), [RAG](../rag/app.py) und [Reranker](../reranker/app.py). Der dokumentierte lokale Experimentbetrieb ist nicht ohne weitere Maßnahmen auf Mehrbenutzer- oder exponierten Dauerbetrieb übertragbar.
 
 #### Noch offen
 
-RAG-Readiness und den Reranker-Health-Vertrag ergänzen. Für Mehrbenutzer- oder exponierten Betrieb fehlen geeigneter Serverbetrieb, Zugangskontrolle und externe Geheimniskonfiguration.
+Für Mehrbenutzer- oder exponierten Betrieb fehlen geeigneter Serverbetrieb, Zugangskontrolle und externe Geheimniskonfiguration.
 
 **Lösungsvorschlag**
 
-Serverbetrieb, Zugangskontrolle und externe Geheimnisse vor einer Exposition umsetzen und prüfen. Lokale Health-Arbeiten begleiten TS-13 unabhängig davon.
+Serverbetrieb, Zugangskontrolle und externe Geheimnisse vor einer Exposition umsetzen und prüfen.
 
 ### TS-19 – Stiller Trefferverlust beim Reranking
 

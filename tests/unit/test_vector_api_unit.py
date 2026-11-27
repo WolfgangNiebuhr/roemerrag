@@ -216,33 +216,49 @@ def test_read_commits(database):
     conn.rollback.assert_not_called()
 
 
-def test_liveness_does_not_initialize_pool(vector_module, monkeypatch):
-    initialize = MagicMock()
-    monkeypatch.setitem(vars(vector_module), "ensure_db_pool", initialize)
-    assert vector_module.app.test_client().get("/health/live").get_json() == {"status": "alive"}
-    initialize.assert_not_called()
+def test_info_lists_embedding_sets(database):
+    module, _, conn, cursor = database
+    cursor.fetchall.return_value = [("embed-a",), ("embed-b",)]
+
+    response = module.app.test_client().get("/actuator/info")
+
+    assert response.status_code == 200
+    assert response.json == {
+        "database": {"poolInitialized": True},
+        "embeddingSetIds": ["embed-a", "embed-b"],
+    }
+    cursor.execute.assert_called_once_with(
+        "SELECT DISTINCT embedding_set_id FROM vectors ORDER BY embedding_set_id"
+    )
+    conn.commit.assert_called_once()
+
+
+def test_info_reports_database_unavailability(vector_module):
+    response = vector_module.app.test_client().get("/actuator/info")
+
+    assert response.status_code == 503
+    assert response.json["type"] == "urn:rag:problem:dependency-unavailable"
 
 
 def test_readiness_uses_transaction(database):
     module, pool, conn, cursor = database
-    assert module.app.test_client().get("/health/ready").status_code == 200
+    assert module.app.test_client().get("/actuator/health").status_code == 200
     conn.commit.assert_called_once()
 
 
 def test_readiness_translates_schema_failure(database):
     module, _, conn, cursor = database
     cursor.execute.side_effect = RuntimeError("private database error")
-    response = module.app.test_client().get("/health/ready")
+    response = module.app.test_client().get("/actuator/health")
     assert response.status_code == 503
-    assert response.json["type"] == "urn:rag:problem:dependency-unavailable"
-    assert response.json["stage"] == "storage"
-    assert response.json["detail"] == "Database is unavailable."
+    assert response.mimetype == "application/json"
+    assert response.json["status"] == "DOWN"
     conn.rollback.assert_called_once()
 
 
 def test_initializing_request_does_not_wait_for_lock(vector_module):
     vector_module.pool_init_lock.acquire()
     try:
-        assert vector_module.app.test_client().get("/health/ready").status_code == 503
+        assert vector_module.app.test_client().get("/actuator/health").status_code == 503
     finally:
         vector_module.pool_init_lock.release()

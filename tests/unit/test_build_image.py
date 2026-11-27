@@ -16,6 +16,7 @@ def test_build_uses_only_declared_files(service, monkeypatch):
         files = {p.relative_to(context).as_posix() for p in context.rglob('*') if p.is_file()}
         assert files == set(build_image.INPUTS[service]) | set(build_image.COMMON)
         assert command[command.index('-f') + 1] == build_image.INPUTS[service][0]
+        assert command[command.index('--build-arg') + 1].startswith('RAG_BUILD_TIME=')
         assert kwargs['check'] is True
     monkeypatch.setattr(build_image.subprocess, 'run', run)
     build_image.build_image(service, 'localhost/unit-test:local')

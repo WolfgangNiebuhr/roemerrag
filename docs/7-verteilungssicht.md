@@ -66,7 +66,7 @@ Der Standardaufbau benötigt keine GPU. Der optionale Reranker läuft separat. B
 | Ollama | Installierte Windows-App | Außerhalb von WSL/Containern; persistente Benutzervariable `OLLAMA_HOST=0.0.0.0:11434`. |
 | Import und Analyse | Python-Dateien im Repository | Auf Windows; direkte HTTP-Aufrufe zu Ollama und Vector-API. |
 
-Anwendungscode und Python-Abhängigkeiten liegen in den Images. Eine Codeänderung erfordert einen Image-Neubau und die Neuerstellung des betreffenden Containers. Die im README verwendeten Startbefehle konfigurieren keinen automatischen Wiederanlauf der Podman-Container nach einem Host-Neustart; eine laufende Podman-Machine allein startet diese Dienste nicht garantiert. Vorhandene Container können über `podman start` beziehungsweise einen Pod über `podman pod start` wieder gestartet werden; Die Vector-API kann vor PostgreSQL starten. `GET /health/live` prüft den Prozess, `GET /health/ready` meldet bis zur Datenbankbereitschaft HTTP 503. Nach dem Start oder Wiederanlauf der Datenbank verbindet sich die API bei späteren Anfragen erneut.
+Anwendungscode und Python-Abhängigkeiten liegen in den Images. Eine Codeänderung erfordert einen Image-Neubau und die Neuerstellung des betreffenden Containers. Die im README verwendeten Startbefehle konfigurieren keinen automatischen Wiederanlauf der Podman-Container nach einem Host-Neustart; eine laufende Podman-Machine allein startet diese Dienste nicht garantiert. Vorhandene Container können über `podman start` beziehungsweise einen Pod über `podman pod start` wieder gestartet werden; Die Vector-API kann vor PostgreSQL starten. `GET /actuator/health` meldet bis zur Datenbankbereitschaft HTTP 503. Nach dem Start oder Wiederanlauf der Datenbank verbindet sich die API bei späteren Anfragen erneut.
 
 ## 7.3 Ports und Netzwerkgrenzen
 
@@ -77,7 +77,7 @@ Die Tabelle beschreibt den gemeinsamen Aufbau; „Hostport“ ist der vom Window
 | PostgreSQL | 5432/TCP | 5432, am Pod veröffentlicht | Windows-Clients verbinden sich über `127.0.0.1:5432` auf dem Host. Die Vector-API verwendet dieselbe Adresse innerhalb des Pods. |
 | Vector-API | 5500/TCP | 5500, am Pod veröffentlicht | Import und Analyse vom Host; RAG im selben Pod nutzt intern Port 5500. |
 | RAG-API | 5600/TCP | 5600, am Pod veröffentlicht | `POST http://127.0.0.1:5600/process` vom Host. |
-| Reranker | 5000/TCP | 5000, am separaten Container veröffentlicht | Optional `/health` und `/rerank`. RAG verwendet standardmäßig `http://host.containers.internal:5000/rerank`. |
+| Reranker | 5000/TCP | 5000, am separaten Container veröffentlicht | Optionaler Dienst mit `/actuator/health`, `/actuator/info` und `/rerank`. RAG verwendet standardmäßig `http://host.containers.internal:5000/rerank`. |
 | Windows-Ollama | 11434/TCP | Kein Podman-Mapping | Windows-Aufrufe über `localhost`; Container über erreichbare Windows-Adresse. |
 
 Die README-Portmappings ohne spezielle Bindungsadresse sind nicht auf Windows-Loopback beschränkt. Ebenso nimmt `OLLAMA_HOST=0.0.0.0:11434` Verbindungen auf allen IPv4-Schnittstellen an. Den Zugriff über die Firewall auf die benötigte Umgebung begrenzen.

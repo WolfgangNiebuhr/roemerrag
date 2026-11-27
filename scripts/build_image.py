@@ -1,5 +1,6 @@
 ﻿"""Build API images from explicit inputs without traversing the workspace."""
 import argparse
+from datetime import datetime, timezone
 from pathlib import Path
 import shutil
 import subprocess
@@ -13,7 +14,8 @@ INPUTS = {
                 'rag_common/vector_contract.py'),
     'reranker': ('reranker/Dockerfile', 'reranker/app.py'),
 }
-COMMON = ('rag_common/__init__.py', 'rag_common/http_errors.py', 'rag_common/rag_results.py')
+COMMON = ('rag_common/__init__.py', 'rag_common/http_errors.py', 'rag_common/rag_results.py',
+          'rag_common/health.py')
 
 
 def build_image(service, image):
@@ -24,7 +26,9 @@ def build_image(service, image):
             destination = Path(staging) / relative
             destination.parent.mkdir(parents=True, exist_ok=True)
             shutil.copyfile(ROOT / relative, destination)
-        subprocess.run(['podman', 'build', '-t', image, '-f', inputs[0], staging],
+        built_at = datetime.now(timezone.utc).isoformat(timespec='seconds')
+        subprocess.run(['podman', 'build', '-t', image, '-f', inputs[0],
+                        '--build-arg', f'RAG_BUILD_TIME={built_at}', staging],
                        cwd=ROOT, check=True)
 
 

@@ -140,10 +140,10 @@ Die Ollama-Ermittlung prüft zuerst `host.containers.internal:11434`. Unter WSL 
 
 ```powershell
 podman run -d --name reranker -p 5000:5000 localhost/reranker:local
-Invoke-RestMethod http://127.0.0.1:5000/health
+Invoke-RestMethod http://127.0.0.1:5000/actuator/health
 ```
 
-Der erste Health-Aufruf lädt das Modell in den Prozess und kann dauern. Das Image lädt `cross-encoder/ms-marco-MiniLM-L6-v2` bereits beim Build herunter. Der Standardstart reicht keine GPU durch; Hinweise für einen optionalen GPU-Start stehen unten.
+Der Reranker lädt das Defaultmodell beim Start im Hintergrund. Der Health-Endpunkt meldet bis zum erfolgreichen Laden HTTP 503. Das Image lädt `cross-encoder/ms-marco-MiniLM-L6-v2` bereits beim Build herunter. Der Standardstart reicht keine GPU durch; Hinweise für einen optionalen GPU-Start stehen unten.
 
 Das Rerankermodell lässt sich pro Anfrage ohne erneuten Containerstart auswählen:
 
@@ -154,9 +154,13 @@ python interact.py --query "Was ist Rom?" --reranker cross-encoder/ms-marco-Tiny
 
 `model` ist optional; ohne Angabe gilt das beim Start konfigurierte `RERANK_MODEL`. Ein expliziter Wert ändert diesen Default nicht. Die Antwort nennt das ausgewählte Modell als `model`; die CLI zeigt es an. Erwartet wird ein CrossEncoder mit einem skalaren Score pro Frage-Dokument-Paar. Modelle, die eigenen Remote-Code benötigen, sind nicht unterstützt. Siehe den [CrossEncoder-Vertrag](https://www.sbert.net/docs/package_reference/cross_encoder/model.html).
 
-Der Dienst hält ein Modell aktiv. Gleiche Auswahl verwendet es erneut, ein Wechsel lädt ein anderes Modell; ein Rückwechsel lädt die Modellinstanz erneut aus dem lokalen Cache. Noch nicht vorhandene Gewichte benötigen beim ersten Aufruf einen Download. Laden und Inferenz laufen nacheinander unter einer gemeinsamen Sperre. Der Wechsel kann daher dauern und vorübergehend Speicher für beide Modelle benötigen. Ladefehler liefern HTTP 503 mit der angefragten Modellkennung, ohne auf ein anderes Modell auszuweichen; das vorher aktive Modell bleibt verfügbar. Ungültige Modellparameter liefern HTTP 400. Leere Dokumentlisten liefern eine leere Ergebnisliste mit der ausgewählten Kennung, ohne ein Modell zu laden. `/health` zeigt das aktive Modell und lädt nur bei noch ungeladenem Dienst den Default.
+Der Dienst hält ein Modell aktiv. Gleiche Auswahl verwendet es erneut, ein Wechsel lädt ein anderes Modell; ein Rückwechsel lädt die Modellinstanz erneut aus dem lokalen Cache. Noch nicht vorhandene Gewichte benötigen beim ersten Aufruf einen Download. Laden und Inferenz laufen nacheinander unter einer gemeinsamen Sperre. Der Wechsel kann daher dauern und vorübergehend Speicher für beide Modelle benötigen. Ladefehler liefern HTTP 503 mit der angefragten Modellkennung, ohne auf ein anderes Modell auszuweichen; das vorher aktive Modell bleibt verfügbar. Ungültige Modellparameter liefern HTTP 400. Leere Dokumentlisten liefern eine leere Ergebnisliste mit der ausgewählten Kennung, ohne ein Modell zu laden.
 
 Modellwechsel erfordern weder einen Image-Build noch einen Neustart. Der isolierte Integrationstest `python -m pytest -c tests/pytest.ini tests/podman/test_reranker.py --include-reranker` prüft zwei echte Modelle und den Rückwechsel; dafür muss der Download des zusätzlichen Testmodells möglich sein.
+
+### Health-Endpunkte der APIs
+
+Alle drei APIs liefern unter `GET /actuator/health` den Status und den UTC-Buildzeitpunkt (`build.time`). `UP` ergibt HTTP 200. Ein Dienst, der noch initialisiert oder dessen Prüfung fehlschlägt, meldet HTTP 503. `GET /actuator/info` liefert Laufzeitinformationen wie das tatsächlich aktive Reranker-Modell. Die Vector-API liefert `embeddingSetIds` als sortierte Liste der in der Datenbank vorhandenen Set-Kennungen. [Health-Vertrag](docs/8-3-error-handling.md#gemeinsamer-health-vertrag-ts-13)
 
 ### Einzelne Dienste und Details
 
@@ -256,11 +260,11 @@ python -m pytest -c tests/pytest.ini tests/podman/test_import_pipeline_integrati
 
 ## HTTP-Fehlervertrag (TS-03)
 
-RAG-, Vector- und Reranker-API liefern Fehler als RFC-9457-Problemobjekte direkt im Body mit `Content-Type: application/problem+json`. Das bisherige Feld `error` entfaellt. Clients verwenden `type` und den HTTP-Status; `detail` dient der Anzeige. Unbekannte Erweiterungen ignorieren. `instance` identifiziert das Fehlerereignis, `request_id` korreliert Aufrufe und entspricht dem Antwortheader `X-Request-ID`. Eigene Kennungen sind auf 1 bis 128 Zeichen aus Buchstaben, Zahlen, Punkt, Unterstrich und Bindestrich begrenzt. Interne Exceptiontexte werden nicht ausgegeben.
+RAG-, Vector- und Reranker-API liefern fachliche API-Fehler als RFC-9457-Problemobjekte direkt im Body mit `Content-Type: application/problem+json`. Das bisherige Feld `error` entfaellt. Clients verwenden `type` und den HTTP-Status; `detail` dient der Anzeige. Unbekannte Erweiterungen ignorieren. `instance` identifiziert das Fehlerereignis, `request_id` korreliert Aufrufe und entspricht dem Antwortheader `X-Request-ID`. Eigene Kennungen sind auf 1 bis 128 Zeichen aus Buchstaben, Zahlen, Punkt, Unterstrich und Bindestrich begrenzt. Interne Exceptiontexte werden nicht ausgegeben.
 
 Vor Dienstzugriffen werden JSON-Objekte, nichtleere Textfelder, Set-Kennungen, Metriken (`euclidean`, `cosine`) und Trefferzahlen (ganze Zahl 1 bis 100, keine Booleans oder Zahlenstrings) validiert. Reranker-Dokumente sind nichtleere Strings; eine leere Liste bleibt erlaubt. Das Eingabefeld `vector` erwartet eine JSON-Zahlenliste mit genau 1024 endlichen Zahlen. Ein Listenstring ergibt HTTP 400. Cosine verbietet Nullvektoren. `POST /vectors` verlangt einen String in `chunktext` mit mindestens einem Zeichen außerhalb von Leerzeichen, LF und CR. PostgreSQL erzwingt dieselbe Regel. Ungueltige Eingaben liefern 400 vor Modell-/DB-Arbeit, fehlende Chunks 404, nicht verfuegbare Datenbanken oder Rerankermodelle 503 und unerwartete Fehler neutrale 500-Antworten. HTTP-Fehler wie 405 behalten erforderliche Header.
 
-Die API-Images werden mit `scripts/build_image.py` aus einem temporaeren Build-Kontext gebaut (siehe Befehle oben). Das Skript kopiert ausschliesslich die pro Dienst aufgelisteten Quelldateien und das gemeinsame Paket `rag_common`; es durchsucht weder Tests noch historische Verzeichnisse. Dies umgeht den Windows-Podman-Fehler beim Lesen gesperrter Verzeichnisse trotz Ignore-Regeln. Der temporaere Kontext wird auch bei Buildfehlern entfernt. Neue Laufzeitdateien muessen in der Eingabeliste des Skripts ergaenzt werden. Nach Codeaenderungen Images neu bauen und Container neu erstellen. Weitergehende Adapterklassifikation, Importabschluss und Readiness sind noch Zielkonzept: [Kapitel 8.3](docs/8-3-error-handling.md).
+Die API-Images werden mit `scripts/build_image.py` aus einem temporaeren Build-Kontext gebaut (siehe Befehle oben). Das Skript kopiert ausschliesslich die pro Dienst aufgelisteten Quelldateien und das gemeinsame Paket `rag_common`; es durchsucht weder Tests noch historische Verzeichnisse. Dies umgeht den Windows-Podman-Fehler beim Lesen gesperrter Verzeichnisse trotz Ignore-Regeln. Der temporaere Kontext wird auch bei Buildfehlern entfernt. Neue Laufzeitdateien muessen in der Eingabeliste des Skripts ergaenzt werden. Nach Codeaenderungen Images neu bauen und Container neu erstellen. Weitergehende Adapterklassifikation und Importabschluss sind noch Zielkonzept: [Kapitel 8.3](docs/8-3-error-handling.md).
 
 Auch bei pytest-Aufrufen aus tests, tests/unit und tests/podman greift die gemeinsame Temp-/Cache-Absicherung. Ein ausdrücklich aktivierter Cache-Provider wird vor seiner Initialisierung in den externen Tempbereich (rag-pytest-cache) umgeleitet, selbst bei überschriebenem addopts/cache_dir. Grenzen (insbesondere --noconftest/--confcutdir) siehe [Testkonzept](docs/8-1-testkonzept.md); historische Prüfnachweise stehen im [Changelog](changelog.md).
 
@@ -287,8 +291,6 @@ CLI-Validierungsfehler werden auf Deutsch ausgegeben, einschließlich fehlender 
 Die Vector-API schreibt atomar auf dem Schl?ssel `(chunk_id, embedding_set_id)` und erh?lt dabei die interne ID. Ihr threadsicherer Pool umfasst maximal zehn Verbindungen; bei Ersch?pfung antwortet sie mit HTTP 503. Alle Datenbankzugriffe schlie?en ihre Transaktion ab oder rollen sie bei Fehlern zur?ck.
 
 Pytest verwendet `--import-mode=importlib`, damit gleichnamige Unit- und Integrationstestmodule im gemeinsamen Lauf getrennt geladen werden. Die Testverzeichnisse sind fuer bestehende Helper-Imports im Python-Suchpfad eingetragen (`tests/pytest.ini`).
-
-Die Vector-API bietet `GET /health/live` (200, `status: alive`, ohne Datenbankzugriff) und `GET /health/ready` (200, `status: ready`, nach erfolgreichem Schema-Zugriff). Fehlende Bereitschaft ergibt 503 mit Problem Details. Readiness nach einem Datenbankausfall kann zunaechst eine veraltete Verbindung verwerfen und erholt sich mit spaeteren Probes ohne API-Neustart. [Zeitlimits und Wiederholungsregeln der Vector-API](docs/8-3-error-handling.md#834-timeouts-und-wiederholungen)
 
 Antwortmodell pro CLI-Aufruf: `python interact.py --query "Was ist Rom?" --answer-model phi3:mini`. Ohne Option gilt `ANSWER_MODEL` aus der Umgebung, sonst `gemma4:e4b`. Direkter API-Aufruf: `POST /process` mit `{"query":"Was ist Rom?","answer_model":"phi3:mini"}`. Das gewaehlte Modell muss in Ollama installiert sein; fuer den Standard `ollama pull gemma4:e4b` verwenden. Die E2E-Tests waehlen weiterhin explizit phi3:mini.
 

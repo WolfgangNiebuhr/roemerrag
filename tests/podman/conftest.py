@@ -3,7 +3,6 @@
 import os
 import json
 import shutil
-import socket
 import subprocess
 import time
 import uuid
@@ -26,49 +25,24 @@ def _run(*args, cwd=ROOT, capture=False):
     )
 
 
-def _wait_tcp(port, timeout=120):
-    deadline = time.monotonic() + timeout
-    while time.monotonic() < deadline:
-        try:
-            with socket.create_connection(("127.0.0.1", port), timeout=1):
-                return
-        except OSError:
-            time.sleep(2)
-    raise RuntimeError(f"Timed out waiting for 127.0.0.1:{port}")
-
-
-def _wait_rag_ready(base_url, timeout=120):
-    url = base_url + "/process"
-    deadline = time.monotonic() + timeout
-    while time.monotonic() < deadline:
-        try:
-            with urllib.request.urlopen(url, timeout=2):
-                pass
-        except urllib.error.HTTPError as exc:
-            with exc:
-                if exc.code == 405:
-                    return
-        except OSError:
-            pass
-        time.sleep(1)
-    raise RuntimeError(f"Timed out waiting for the RAG API at {url}")
-
-
-def _wait_reranker_ready(base_url, timeout=600):
-    url = base_url + "/health"
+def _wait_health_ready(base_url, timeout=120):
+    url = base_url + "/actuator/health"
     deadline = time.monotonic() + timeout
     last_error = "no response yet"
     while time.monotonic() < deadline:
         try:
             with urllib.request.urlopen(url, timeout=5) as response:
                 health = json.loads(response.read())
-            if health.get("status") == "ok" and health.get("model_loaded") is True:
+            if health.get("status") == "UP" and health["build"]["time"]:
                 return
-            last_error = f"model not ready: {health}"
-        except (OSError, urllib.error.URLError, json.JSONDecodeError) as exc:
+            last_error = f"service not ready: {health}"
+        except urllib.error.HTTPError as exc:
+            with exc:
+                last_error = f"{exc.code}: {exc.read().decode(errors='replace')}"
+        except (OSError, json.JSONDecodeError) as exc:
             last_error = str(exc)
-        time.sleep(3)
-    raise RuntimeError(f"Reranker did not become ready within {timeout}s: {last_error}")
+        time.sleep(1)
+    raise RuntimeError(f"{url} did not become ready within {timeout}s: {last_error}")
 
 
 @pytest.fixture(scope="session")
@@ -164,17 +138,18 @@ def podman_stack(request):
             _run("run", "-d", "--name", name, "--pod", pod, reranker_image)
             containers.append(name)
 
-        _wait_tcp(vector_port)
+        _wait_health_ready(f"http://127.0.0.1:{vector_port}")
         if include_rag:
-            _wait_rag_ready(f"http://127.0.0.1:{rag_port}")
+            _wait_health_ready(f"http://127.0.0.1:{rag_port}")
         if include_reranker:
-            _wait_reranker_ready(f"http://127.0.0.1:{reranker_port}")
+            _wait_health_ready(f"http://127.0.0.1:{reranker_port}", timeout=600)
         yield {
             "id": test_id,
             "db_container": db,
             "rag_container": f"rag-test-app-{test_id}" if include_rag else None,
             "vector_url": f"http://127.0.0.1:{vector_port}",
             "rag_url": f"http://127.0.0.1:{rag_port}" if include_rag else None,
+            "reranker_container": f"rag-test-reranker-{test_id}" if include_reranker else None,
             "reranker_url": f"http://127.0.0.1:{reranker_port}" if include_reranker else None,
         }
     except Exception:
@@ -252,6 +227,15 @@ def rag_url(podman_stack):
 @pytest.fixture(scope="session")
 def reranker_url(podman_stack):
     return podman_stack["reranker_url"]
+
+
+@pytest.fixture
+def restart_reranker(podman_stack, reranker_url):
+    def restart():
+        _run("restart", podman_stack["reranker_container"])
+        _wait_health_ready(reranker_url, timeout=600)
+
+    return restart
 
 
 @pytest.fixture(scope="session")

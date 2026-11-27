@@ -17,6 +17,24 @@ Aus README und docs übernommene Änderungshistorie. Gleichdatierte Einträge fo
 
 ## 2026-11-27
 
+### Vector-API meldet vorhandene Embedding-Set-IDs
+
+`GET /actuator/info` liefert `embeddingSetIds` mit den eindeutigen Set-Kennungen aus PostgreSQL. Eine leere Tabelle ergibt `[]`. Bei einem Datenbankausfall meldet der Endpunkt HTTP 503 mit Problem Details.
+
+Prüfung: 322 Unit-Tests und 5 isolierte Vector-Podman-Tests bestanden. Der Integrationstest prüft leere, eindeutige und sortierte Ergebnisse sowie HTTP 503 bei fehlender Datenbank.
+
+### TS-13: Health und Laufzeitinformationen vereinfacht
+
+Die drei APIs liefern Status und UTC-Buildzeitpunkt unter `/actuator/health` sowie Laufzeitinformationen unter `/actuator/info`. Der Reranker meldet das tatsächlich aktive Modell. Die Liveness- und Readiness-Unterpfade sowie die RAG-Providerprüfung aus dem Gesamtstatus entfallen.
+
+Prüfung: 321 Unit-Tests und 7 isolierte Podman-Tests bestanden. Die Tests prüfen den Buildzeitpunkt in den gebauten Images, den Modellwechsel und Reranker-Neustart sowie den PostgreSQL-Wiederanlauf.
+
+### TS-13: Gemeinsamer Actuator-Health-Vertrag
+
+RAG-API, Vector-API und Reranker verwenden `/actuator/health`, `/actuator/health/liveness` und `/actuator/health/readiness`. Die bisherigen Health-Routen entfallen. Der Reranker initialisiert das Defaultmodell beim Prozessstart. Vector prüft Datenbank und Schema. RAG prüft die Provider für den Gesamtstatus, seine Readiness bleibt lokal. Das [Fehlerkonzept](docs/8-3-error-handling.md#gemeinsamer-health-vertrag-ts-13) beschreibt Statusformat, Komponentenausgabe und Zeitbudget.
+
+Prüfung: 321 Unit-Tests und 7 isolierte Podman-Tests bestanden. Die Podman-Prüfung umfasste den Reranker-Neustart, den PostgreSQL-Wiederanlauf, die Readiness aller drei APIs und den fachlichen HTTP-Fehlervertrag. Ollama- und vollständige RAG-Ende-zu-Ende-Tests wurden für diese Änderung nicht aktiviert.
+
 ### RAG-API mit TS-12 im laufenden System aktualisiert
 
 `rag-api` läuft mit Image `384928724033` im bisherigen eigenständigen `pasta`-Netzwerk auf Port 5600. Der lesende Retrieval-Aufruf lieferte wie vor dem Wechsel einen Treffer. Eine leere Anfrage wurde mit HTTP 400 abgewiesen. Der vorherige Container steht gestoppt als `rag-api-before-ts12-20261127-175802` für den Rückwechsel bereit.

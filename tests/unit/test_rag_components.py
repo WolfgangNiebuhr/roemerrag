@@ -621,3 +621,61 @@ def test_evaluate_prompt_template_validation(monkeypatch, template):
         'query':'q','results':[], 'user_prompt':template})
     assert response.status_code == 400
     post.assert_not_called()
+
+
+def test_rag_actuator_exposes_configured_models_without_provider_calls(monkeypatch):
+    get = Mock(side_effect=AssertionError("health and info must not call providers"))
+    monkeypatch.setattr(rag_app.requests, "get", get)
+    client = rag_app.app.test_client()
+
+    response = client.get("/actuator/health")
+    assert response.status_code == 200
+    assert set(response.json) == {"status", "build"}
+    assert response.json["status"] == "UP"
+    assert client.get("/actuator/info").json == {
+        "configuredModels": {
+            "embedding": rag_app.EMBEDDING_MODEL_NAME,
+            "answer": rag_app.ANSWER_MODEL_NAME,
+            "reranker": rag_app.RERANKER_MODEL,
+        },
+    }
+    assert client.get("/actuator/health/liveness").status_code == 404
+    assert client.get("/actuator/health/readiness").status_code == 404
+    get.assert_not_called()
+
+
+def test_health_bounds_wait_and_shares_running_check(monkeypatch):
+    from threading import Event
+
+    from flask import Flask
+
+    from rag_common.health import install_actuator
+
+    release = Event()
+    started = Event()
+    finished = Event()
+
+    def blocked_check():
+        started.set()
+        try:
+            return release.wait(5)
+        finally:
+            finished.set()
+
+    app = Flask(__name__)
+    check = Mock(side_effect=blocked_check)
+    monkeypatch.setenv("RAG_BUILD_TIME", "2026-11-27T14:20:00+00:00")
+    install_actuator(app, check=check, info=dict, timeout=0.05)
+
+    client = app.test_client()
+    try:
+        for _ in range(2):
+            response = client.get("/actuator/health")
+            assert response.status_code == 503
+            assert response.json == {"status": "DOWN", "build": {"time": "2026-11-27T14:20:00+00:00"}}
+            assert not finished.is_set()
+        assert started.wait(1)
+        check.assert_called_once()
+    finally:
+        release.set()
+        assert finished.wait(1)

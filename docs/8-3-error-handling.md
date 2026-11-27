@@ -10,7 +10,7 @@ agent_instructions:
 
 # 8.3 Übergreifendes Error-Handling
 
-Stand: 21.11.2026. Dieses Querschnittskonzept beschreibt den Zielzustand und den unten ausgewiesenen aktuellen Umsetzungsstand. Es gilt für RAG-API, Vector-API, Reranker sowie unterstützte Import- und Analysewerkzeuge. Die Umsetzung betrifft insbesondere TS-03, TS-05 bis TS-09, TS-13 und TS-17 aus [Kapitel 11.2](11-2-technische-schulden.md). Bausteine und Teststufen beschreiben die [Bausteinsicht](5-bausteinsicht.md) und das [Testkonzept](8-1-testkonzept.md).
+Stand: 27.11.2026. Dieses Querschnittskonzept beschreibt den Zielzustand und den unten ausgewiesenen aktuellen Umsetzungsstand. Es gilt für RAG-API, Vector-API, Reranker sowie unterstützte Import- und Analysewerkzeuge. Die Umsetzung betrifft insbesondere TS-03, TS-05 bis TS-09, TS-13 und TS-17 aus [Kapitel 11.2](11-2-technische-schulden.md). Bausteine und Teststufen beschreiben die [Bausteinsicht](5-bausteinsicht.md) und das [Testkonzept](8-1-testkonzept.md).
 
 ## 8.3.1 Ziele und Verantwortlichkeiten
 
@@ -26,7 +26,7 @@ Fehler werden an ihrer Ursache eingeordnet, mit ihrem Verarbeitungsschritt verse
 
 ## 8.3.2 HTTP-Fehlervertrag nach RFC 9457
 
-HTTP-Fehlerantworten verwenden [RFC 9457 – Problem Details for HTTP APIs](https://www.rfc-editor.org/rfc/rfc9457.html), insbesondere Abschnitte 3 bis 5. Das Problemobjekt steht direkt im Body, ohne umschließendes `error`-Objekt. Der Medientyp ist `application/problem+json`.
+HTTP-Fehlerantworten außerhalb der [Health-Statusmeldungen](#gemeinsamer-health-vertrag-ts-13) verwenden [RFC 9457 – Problem Details for HTTP APIs](https://www.rfc-editor.org/rfc/rfc9457.html), insbesondere Abschnitte 3 bis 5. Das Problemobjekt steht direkt im Body, ohne umschließendes `error`-Objekt. Der Medientyp ist `application/problem+json`.
 
 Das Projektprofil verlangt bei anwendungsspezifischen Fehlern folgende Felder; diese Vollständigkeit ist eine Projektentscheidung, keine generelle Pflicht des RFC:
 
@@ -138,15 +138,26 @@ Der HTTP-Eingang übernimmt eine in Format und Länge geprüfte `X-Request-ID` o
 
 Strukturierte Logs enthalten Dienst, Request-/Lauf-ID, Fehlerereignis, Verarbeitungsschritt, Problemtyp, Laufzeit und Retryversuch. Stacktraces und Ursachen werden an der verantwortlichen Grenze einmal protokolliert. Zugangsdaten, rohe Upstreamantworten, vollständige Fragen und Dokumenttexte gehören nicht in öffentliche Problemantworten und werden standardmäßig auch nicht geloggt.
 
-Liveness prüft nur, ob der Prozess lebt, und löst keine Modellinitialisierung aus. Readiness beschreibt, ob der Dienst seine Aufgaben ausführen kann; fehlende erforderliche Abhängigkeiten oder Modelle führen zu 503 mit Problem Details. Prüfungen sind zeitlich begrenzt und berücksichtigen die tatsächlich benötigten Abhängigkeiten.
+### Gemeinsamer Health-Vertrag (TS-13)
 
-Vector-API (TS-07): `/health/live` prueft nur den Prozess; `/health/ready` prueft eine Transaktion auf den benoetigten Spalten der Tabelle vectors. Fehlende Bereitschaft ergibt 503 Problem Details. Die Initialisierung erfolgt bedarfsgesteuert. Die [Zeitlimits und Initialisierungsversuche](#834-timeouts-und-wiederholungen) sind in Abschnitt 8.3.4 beschrieben. Defekte Poolverbindungen werden verworfen; spaetere Probes stellen die Bereitschaft nach Datenbankwiederanlauf wieder fest.
+RAG-API, Vector-API und Reranker bieten zwei GET-Endpunkte auf ihrem jeweiligen API-Port. Beide liefern `application/json`.
+
+- `/actuator/health` liefert `status` und den statischen Buildstand in `build.time`. Das Image-Buildskript setzt die UTC-Zeit im ISO-8601-Format. Bei einem Start ohne Buildmetadaten ist `build.time` null. `UP` ergibt HTTP 200. `OUT_OF_SERVICE` während der Initialisierung und `DOWN` bei fehlgeschlagener Prüfung ergeben HTTP 503 im selben Statusformat.
+- `/actuator/info` liefert HTTP 200 mit lokal verfügbaren Laufzeitinformationen. RAG-API und Reranker lesen dafür ausschließlich lokalen Prozesszustand. Die Vector-API liest die Set-Kennungen aus PostgreSQL.
+
+| Dienst | Status in `/actuator/health` | Laufzeitinformationen in `/actuator/info` |
+| --- | --- | --- |
+| Vector-API | Prüft per Transaktion den Zugriff auf die erforderlichen Spalten von `vectors`. Wiederholte Aufrufe können den Status nach einem Datenbankwiederanlauf ohne API-Neustart erneut feststellen. | `database.poolInitialized` zeigt, ob der lokale Pool eingerichtet wurde. `embeddingSetIds` enthält die eindeutigen, sortierten Set-Kennungen aus `vectors`. Eine leere Tabelle ergibt `[]`. Ist PostgreSQL nicht verfügbar, liefert der Endpunkt HTTP 503 mit `dependency-unavailable`. |
+| Reranker | Lädt beim Prozessstart das Defaultmodell im Hintergrund. Bis zum ersten erfolgreichen Laden meldet er `OUT_OF_SERVICE`, nach einem Ladefehler `DOWN` und bei aktivem Modell `UP`. Ein erfolgreicher Modellzustand bleibt während Inferenz und Modellwechsel erhalten. Eine spätere Rerank-Anfrage kann das Laden erneut versuchen. | `models.active` enthält die Kennung des tatsächlich geladenen Modells oder null. `models.default` enthält das konfigurierte Defaultmodell. |
+| RAG-API | Meldet `UP`, sobald die lokale API Anfragen annimmt. | `configuredModels` nennt die Standardmodelle für Embedding, Antwortgenerierung und Reranking. Diese Modelle werden in den jeweiligen Providern geladen. |
+
+Die Vector-API wartet höchstens zwei Sekunden auf das Prüfergebnis und wertet einen Timeout als `DOWN`. Es läuft höchstens eine Datenbankprüfung gleichzeitig. Die [Zeitlimits des Datenbankpools](#834-timeouts-und-wiederholungen) gelten weiterhin. Die beiden Endpunkte des Rerankers warten nicht auf die Inferenzsperre.
 
 ## 8.3.8 Umsetzung und Abnahmekriterien
 
 1. Gemeinsames Fehlerprofil und Typregister, frühe Validierung sowie zentrale Flask-Handler einführen. Die Umstellung vom bisherigen `{"error": ...}`-Format ist eine Schnittstellenänderung: unterstützte Clients, Tests und README gemeinsam aktualisieren.
 2. Adapterfehler, Zeitlimits und Grenzen für Wiederholungen sowie atomare Writes und sichere Poolbereinigung umsetzen.
-3. Fachliche Ergebniszustände, Importberichte und Exitcodes, Wiederaufnahme und Readiness ergänzen.
+3. Fachliche Ergebniszustände, Importberichte und Exitcodes sowie Wiederaufnahme ergänzen.
 
 Containerfreie Tests prüfen Medientyp, Top-Level-Problemobjekt, Typidentität, Feldtypen, Übereinstimmung von HTTP- und Bodystatus, Erhalt von HTTP-Fehlern und Headern, sichere Meldungen sowie Validierung vor Dienstzugriff. Weitere Tests prüfen Fehlerübersetzung, ungültige Upstreamantworten, Grenzen für Wiederholungen, Korrelationskennungen, leeren Kontext und Import-Teilfehler.
 
@@ -156,7 +167,7 @@ Historical change and verification records: [Changelog](../changelog.md).
 
 ## Aktueller Umsetzungsstand
 
-TS-03 und TS-08 sind implementiert. Frühe Validierung an den Endpunkten und gemeinsame RFC-9457-Problemantworten sichern den HTTP-Fehlervertrag. CLI und RAG-API verwenden dieselbe Flask-freie Ergebnisvalidierung aus `rag_common/rag_results.py`. RAG übersetzt Strukturfehler in HTTP 400 bei Evaluationseingaben und in HTTP 502 bei Providerantworten. Die CLI meldet den Strukturfehler auf stderr. Die RAG-API bereitet Metriken auf und generiert nur mit Kontext. Bei ausschließlich leeren Texten gilt ebenfalls `no_context`; leere Texte werden erst nach vollständiger Vertragsprüfung aus Kontext und Quellliste entfernt. Nicht verfügbare Einzelmetriken sind null, gemessene Nullwerte bleiben 0; Tokenzahlen erfordern nichtnegative Integer ohne Booleans. Die Garantie fachlicher Beantwortbarkeit bei nichtleerem Kontext ist weiterhin nicht gegeben.
+TS-03, TS-08 und der gemeinsame Health-Vertrag aus TS-13 sind implementiert. Frühe Validierung an den Endpunkten und gemeinsame RFC-9457-Problemantworten sichern den HTTP-Fehlervertrag. CLI und RAG-API verwenden dieselbe Flask-freie Ergebnisvalidierung aus `rag_common/rag_results.py`. RAG übersetzt Strukturfehler in HTTP 400 bei Evaluationseingaben und in HTTP 502 bei Providerantworten. Die CLI meldet den Strukturfehler auf stderr. Die RAG-API bereitet Metriken auf und generiert nur mit Kontext. Bei ausschließlich leeren Texten gilt ebenfalls `no_context`; leere Texte werden erst nach vollständiger Vertragsprüfung aus Kontext und Quellliste entfernt. Nicht verfügbare Einzelmetriken sind null, gemessene Nullwerte bleiben 0; Tokenzahlen erfordern nichtnegative Integer ohne Booleans. Die Garantie fachlicher Beantwortbarkeit bei nichtleerem Kontext ist weiterhin nicht gegeben.
 
 `interact.py` zeigt HTTP-Fehler mit Schritt, tatsächlichem Status, verständlichen Problemfeldern und vorhandener Request-ID auf stderr. Exitcode 0 steht für Erfolg einschließlich fehlendem Kontext, 1 für Verarbeitungs-/Exportabbruch und 2 für ungültige Argumente. Ohne Kontext entfallen Export, Reranking und Generierung. Ein leeres Rerankingergebnis unterbindet ebenfalls die Generierung. Argumentfehler werden auf Deutsch ausgegeben; Parameterabkürzungen sind deaktiviert.
 
@@ -164,7 +175,7 @@ Die interaktive CLI delegiert die Anfrage in einem Aufruf an die RAG-API. Die RA
 
 ## Abgrenzung von Implementierung und Zielkonzept
 
-Die Abschnitte 8.3.1 bis 8.3.8 enthalten weiterhin offene Zielregeln fuer andere Dienste. TS-09 konsolidiert CLI/HTTP-Verarbeitung und Analyse-Providerfunktionen. Die API gibt Request-IDs weiter und meldet Fehler mit Verarbeitungsschritt. Importabschluss und Readiness anderer Dienste bleiben separate Aufgaben.
+Die Abschnitte 8.3.1 bis 8.3.8 enthalten weiterhin offene Zielregeln fuer andere Dienste. TS-09 konsolidiert CLI/HTTP-Verarbeitung und Analyse-Providerfunktionen. Die API gibt Request-IDs weiter und meldet Fehler mit Verarbeitungsschritt.
 
 Nicht alle Adapterfehler sind bereits als spezifische Problemtypen klassifiziert: Nicht erfolgreiche Retrieval-HTTP-Antworten werden derzeit als dependency-unavailable (503) ausgegeben; ungültiges Retrieval-JSON beziehungsweise Trefferverträge als upstream-invalid-response (502). Unerwartete Fehler einschließlich weiterer nicht speziell übersetzter Netzwerk-/Modellfehler erreichen den neutralen 500-Handler. Der derzeitige Handler setzt retryable auf false. Request-IDs werden am API-Eingang geprüft und zurückgegeben, aber noch nicht durch sämtliche ausgehenden Dienstaufrufe weitergereicht. Die Importpipeline schreibt einzeln, bricht beim ersten Fehler ab und gibt beim Abbruch eine Startnummer für den nächsten Aufruf aus. Die Exitcodes und Fehlerausgabe beschreibt [Kapitel 8.4](8-4-importkonzept.md#848-fehler-wiederaufnahme-und-metriken).
 

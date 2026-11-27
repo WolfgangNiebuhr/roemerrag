@@ -58,7 +58,7 @@ Ollama ist ein externer, mit dem regulären Betrieb geteilter Host-Dienst. Der e
 
 `tests/unit/test_vector_api_unit.py` verwendet Testdoubles für PostgreSQL-Pool und Cursor und prüft SQL-Parameter, Commit, Rollback und Poolfehler. `tests/podman/test_vector_api.py` prüft HTTP-Schreiben und -Lesen, stabile IDs bei parallelen Upserts, Variantenisolation, setgebundene Suche mit L2 und Cosinus sowie `ILIKE` auf `chunktext`. Dieselbe Chunk-ID in zwei Sets sichert die Trennung bei Einzelabruf und Suche ab. Unit-Tests sichern HTTP 400 bei Listenstrings im Feld `vector` sowie bei fehlender verpflichtender Set-ID oder bei Verwendung von `embedding` als Set-Parameter vor dem Datenbankzugriff ab. Die Tests verwenden Vektoren mit 1024 Komponenten und prüfen beim Einzelabruf und bei der Suche, dass `include_vector` den Vektor als JSON-Zahlenliste liefert. `DELETE /chunks` wird mit gleichen Grenzen und einem inklusiven Bereich geprüft, der die Dezimalgrenze zwischen 9 und 10 überschreitet.
 
-Der Wiederanlauftest startet die API in einem zusätzlichen isolierten Pod vor PostgreSQL. Er prüft Liveness ohne Datenbank und Readiness mit HTTP 503. Nach dem Datenbankstart speichert er einen Chunk, erstellt den PostgreSQL-Container mit demselben eigenen Testvolume neu und prüft, dass der Chunk ohne Neustart der API abrufbar und per Vektorsuche auffindbar bleibt. Der Test räumt Pod und Volume auch bei Fehlern auf.
+Der Wiederanlauftest startet die API in einem zusätzlichen isolierten Pod vor PostgreSQL. Er prüft Laufzeitinformationen ohne Datenbank und den Health-Status HTTP 503. Nach dem Datenbankstart speichert er einen Chunk, erstellt den PostgreSQL-Container mit demselben eigenen Testvolume neu und prüft, dass der Chunk ohne Neustart der API abrufbar und per Vektorsuche auffindbar bleibt. Der Test räumt Pod und Volume auch bei Fehlern auf.
 
 `tests/podman/test_embedding_migration.py` prüft `001_embedding_set_id.sql` und `002_chunktext.sql` in eigenen Testdatenbanken. Es kontrolliert erhaltene Zeilen, Vektoren und Unique Constraints, wiederholbare Migrationen und die Wiederherstellung der gesicherten Struktur. Die API-Vertragstests prüfen die Set-Kennung `embedding_set_id` und das Antwortfeld `chunktext`.
 
@@ -81,6 +81,10 @@ Evaluations-Vertragstests prüfen direkt verkettbare `next_request`-Antworten, e
 ### Reranker
 
 `tests/unit/test_reranker_unit.py` prüft mit einem Fake-Modell Eingabevalidierung, leere Dokumentlisten, Rangfolge, Modellwahl und Default, Wiederverwendung, Wechsel, parallele Anfragen sowie Lade- und Inferenzfehler. `tests/podman/test_reranker.py` prüft Health und HTTP-Modellwechsel mit MiniLM-L6 und TinyBERT-L2 im selben Container. Das Standardmodell wird beim Image-Build geladen und beim ersten entsprechenden Zugriff in den Prozess geladen. Der Download des Zusatzmodells benötigt Netzwerkzugriff.
+
+### Gemeinsame Health-Schnittstelle
+
+Containerfreie Tests prüfen JSON-Status, HTTP-Zuordnung, Buildmetadaten und die Laufzeitinformationen bei Modellstart, Ladefehler und belegter Inferenzsperre. Die Podman-Fixture wartet bei allen drei APIs auf `UP` unter `/actuator/health`.
 
 ### Fehlervertrag und Image-Build
 

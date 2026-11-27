@@ -6,6 +6,7 @@ from rag_common.http_errors import (
 )
 from rag_common.rag_results import InvalidResults, generation_metrics, validate_results
 from rag_common.vector_contract import VectorInputError, embedding_norm, parse_search_options, parse_vector
+from rag_common.health import install_actuator
 from flask import Flask, jsonify, g, has_request_context
 import os
 import time
@@ -45,6 +46,13 @@ CONNECT_TIMEOUT = float(os.getenv("RAG_CONNECT_TIMEOUT", "5"))
 READ_TIMEOUTS = {name: float(os.getenv("RAG_" + name.upper() + "_TIMEOUT", str(default)))
                  for name, default in (("embedding", 300), ("retrieval", 60),
                                        ("reranking", 600), ("generation", 600))}
+
+
+install_actuator(app, info=lambda: {"configuredModels": {
+    "embedding": EMBEDDING_MODEL_NAME,
+    "answer": ANSWER_MODEL_NAME,
+    "reranker": RERANKER_MODEL,
+}})
 
 
 class ProviderUnavailable(RuntimeError):

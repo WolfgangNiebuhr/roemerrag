@@ -9,9 +9,10 @@ from common import request
 
 @pytest.mark.reranker
 @pytest.mark.podman
-def test_reranker(reranker_url):
-    health = request(reranker_url, "/health")
-    assert health["status"] == "ok" and health["model_loaded"] is True, health
+def test_reranker(reranker_url, restart_reranker):
+    health = request(reranker_url, "/actuator/health")
+    assert health["status"] == "UP"
+    assert health["build"]["time"]
     bad = request(reranker_url, "/rerank", "POST", {"query": "hello"}, 400)
     assert bad["type"] == "urn:rag:problem:invalid-request"
     result = request(reranker_url, "/rerank", "POST", {
@@ -29,13 +30,16 @@ def test_reranker(reranker_url):
     assert all(a["score"] >= b["score"] for a, b in zip(ranked, ranked[1:]))
     assert all(item["text"] for item in ranked)
 
-    assert result["model"] == health["model_name"]
+    assert result["model"] == "cross-encoder/ms-marco-MiniLM-L6-v2"
     alternative = "cross-encoder/ms-marco-TinyBERT-L2-v2"
-    for selected in [alternative, health["model_name"]]:
+    for selected in [alternative, result["model"]]:
         switched = request(reranker_url, "/rerank", "POST", {
             "model": selected, "query": "What is Rome?", "documents": ["Rome is a city.", "A fish swims."]
         }, timeout=600)
         assert switched["model"] == selected
         assert len(switched["ranked_documents"]) == 2
         assert all(math.isfinite(item["score"]) for item in switched["ranked_documents"])
-        assert request(reranker_url, "/health")["model_name"] == selected
+        assert request(reranker_url, "/actuator/info")["models"]["active"] == selected
+
+    restart_reranker()
+    assert request(reranker_url, "/actuator/info")["models"]["active"] == result["model"]
