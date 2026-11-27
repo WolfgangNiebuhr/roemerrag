@@ -34,6 +34,8 @@ if __name__ == "__main__":
     parser.add_argument("--user", default="admin")
     parser.add_argument("--database", default="vector_db")
     parser.add_argument("--backup-dir", default="backups")
-    parser.add_argument("--migration", choices=["001_embedding_set_id.sql", "002_chunktext.sql"], default="001_embedding_set_id.sql")
+    parser.add_argument("--migration", choices=[
+        "001_embedding_set_id.sql", "002_chunktext.sql", "003_required_chunktext.sql",
+    ], default="001_embedding_set_id.sql")
     args = parser.parse_args()
     migrate(args.container, args.user, args.database, args.backup_dir, args.migration)

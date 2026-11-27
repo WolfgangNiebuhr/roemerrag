@@ -6,7 +6,8 @@ CREATE TABLE IF NOT EXISTS vectors (
   chunk_id TEXT NOT NULL,
   embedding_set_id TEXT NOT NULL,
   vector VECTOR(1024),
-  chunktext TEXT,
+  chunktext TEXT NOT NULL,
+  CONSTRAINT vectors_chunktext_nonblank CHECK (length(btrim(chunktext, E' \n\r')) > 0),
   UNIQUE (chunk_id, embedding_set_id)
 );
 

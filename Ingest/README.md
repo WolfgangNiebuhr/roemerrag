@@ -2,6 +2,8 @@
 
 Die Pipeline liest eine UTF-8-Textdatei, zerlegt sie in Chunks, ergänzt optional Keywords und speichert Text und Embeddings über die Vector-API. Bei aktivierter Anreicherung wird derselbe Text eingebettet und gespeichert: Keywords, Zeilenumbruch und Originalchunk.
 
+Vor der Nummerierung entfernt die Pipeline `None`, leere Strings und Chunks, die ausschließlich aus Leerzeichen, LF oder CR bestehen. Die übrigen Chunks behalten ihren Text und ihre Reihenfolge. Bleibt kein Chunk übrig, bricht die Verarbeitung mit einem Eingabefehler ab.
+
 ## Voraussetzungen
 
 Alle Befehle aus dem Projektstamm ausführen. In der Python-Umgebung müssen `requests` und der von diesem Projekt verwendete LangChain-Textsplitter verfügbar sein. Für einen vollständigen Import müssen die Vector-API und Ollama mit den ausgewählten Modellen laufen. Die Einrichtung der Dienste steht im [Projekt-README](../README.md).

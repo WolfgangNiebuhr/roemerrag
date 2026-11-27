@@ -144,12 +144,17 @@ def resolve_config(config, *, chunk_only=False, enrichment_only=False):
             "embedding": embedding}
 
 
+def has_chunk_text(value):
+    return isinstance(value, str) and bool(value.strip(" \n\r"))
+
+
 # Zerlegt eine UTF-8-Quelle in Chunks und versieht sie mit stabilen IDs.
 def make_chunks(path, config):
     raw = path.read_bytes()
     source = raw.decode("utf-8").replace("\r\n", "\n").replace("\r", "\n")
     strategy = config["chunking"]
     chunks = CHUNKERS[strategy["strategy"]](source, **strategy["parameters"])
+    chunks = [chunk for chunk in chunks if has_chunk_text(chunk)]
     require(nonempty(path.stem) and bool(chunks), "Source has no document ID or text chunks")
     return {
         "format_version": 1, "stage": "chunks", "document_id": path.stem,
@@ -202,7 +207,7 @@ def validate_artifact(data, stage, config):
         require(data.get("enrichment") == config["enrichment"], "Incompatible enrichment")
     for index, row in enumerate(chunks, 1):
         require(isinstance(row, dict) and row.get("chunk_id") == f"{data['document_id']}-{index}"
-                and nonempty(row.get("source_text")), "Invalid artifact chunk")
+                and has_chunk_text(row.get("source_text")), "Invalid artifact chunk")
         if stage == "enriched":
             enrichment = row.get("enrichment")
             require(isinstance(enrichment, str)

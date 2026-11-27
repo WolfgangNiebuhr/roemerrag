@@ -106,7 +106,15 @@ Für eine Datenbank, deren Set-Spalte bereits `embedding_set_id` heißt, nach de
 python scripts/migrate_embedding_set_id.py --migration 002_chunktext.sql
 ```
 
-Auch dieser Schritt erstellt und prüft zuerst einen neuen vollständigen Dump unter `backups/`. Die Migration benennt ausschließlich `metadata` in `chunktext` um, ist transaktional und wiederholbar und berechnet keine Embeddings neu. Danach die API-Container aus den neuen Images neu erstellen. Rückweg bei gestoppten APIs: `ALTER TABLE vectors RENAME COLUMN chunktext TO metadata;`, dann die vorherigen API-Versionen starten. Bei älteren Datenbanken zuerst die nachfolgende Set-Migration und anschließend die Chunktext-Migration ausführen; beide vor dem Start der aktuellen APIs.
+Auch dieser Schritt erstellt und prüft zuerst einen neuen vollständigen Dump unter `backups/`. Die Migration benennt ausschließlich `metadata` in `chunktext` um, ist transaktional und wiederholbar und berechnet keine Embeddings neu. Rückweg bei gestoppten APIs: `ALTER TABLE vectors RENAME COLUMN chunktext TO metadata;`, dann die vorherigen API-Versionen starten. Bei älteren Datenbanken zuerst die nachfolgende Set-Migration und anschließend die Umbenennung ausführen.
+
+Vor dem Start der aktuellen APIs die Pflichtfeldregel auf bestehende Datenbanken anwenden:
+
+```powershell
+python scripts/migrate_embedding_set_id.py --migration 003_required_chunktext.sql
+```
+
+Die Migration erstellt und prüft zuerst einen Dump. Bei vorhandenen ungültigen Texten bricht sie ohne Datenänderung ab. Zur Prüfung dient `SELECT id, chunk_id, embedding_set_id FROM vectors WHERE chunktext IS NULL OR length(btrim(chunktext, E' \n\r')) = 0;`. Nach Korrektur der betroffenen Texte kann die Migration erneut ausgeführt werden. Neue Datenbanken erhalten die Regel bei der Initialisierung.
 
 Kein Neuimport und kein erneutes Embedding: Die Migration benennt nur `vectors.embedding` in `embedding_set_id` um. Kennungen, Vektoren, IDs, Metadaten, Constraints und Index bleiben erhalten. Änderungen an `init.sql` allein aktualisieren keine vorhandene Datenbank.
 
@@ -248,7 +256,7 @@ python -m pytest -c tests/pytest.ini tests/podman/test_import3_integration.py --
 
 RAG-, Vector- und Reranker-API liefern Fehler als RFC-9457-Problemobjekte direkt im Body mit `Content-Type: application/problem+json`. Das bisherige Feld `error` entfaellt. Clients verwenden `type` und den HTTP-Status; `detail` dient der Anzeige. Unbekannte Erweiterungen ignorieren. `instance` identifiziert das Fehlerereignis, `request_id` korreliert Aufrufe und entspricht dem Antwortheader `X-Request-ID`. Eigene Kennungen sind auf 1 bis 128 Zeichen aus Buchstaben, Zahlen, Punkt, Unterstrich und Bindestrich begrenzt. Interne Exceptiontexte werden nicht ausgegeben.
 
-Vor Dienstzugriffen werden JSON-Objekte, nichtleere Textfelder, Set-Aliase, Metriken (`euclidean`, `cosine`) und Trefferzahlen (ganze Zahl 1 bis 100, keine Booleans oder Zahlenstrings) validiert. Reranker-Dokumente sind nichtleere Strings; eine leere Liste bleibt erlaubt. Vector-Eingaben enthalten genau 1024 endliche Zahlen; JSON-Zahlenlisten und bestehende JSON-Listenstrings bleiben erlaubt. Cosine verbietet Nullvektoren. `chunktext` darf String oder null sein beziehungsweise fehlen. Ungueltige Eingaben liefern 400 vor Modell-/DB-Arbeit, fehlende Chunks 404, nicht verfuegbare Datenbanken oder Rerankermodelle 503 und unerwartete Fehler neutrale 500-Antworten. HTTP-Fehler wie 405 behalten erforderliche Header.
+Vor Dienstzugriffen werden JSON-Objekte, nichtleere Textfelder, Set-Aliase, Metriken (`euclidean`, `cosine`) und Trefferzahlen (ganze Zahl 1 bis 100, keine Booleans oder Zahlenstrings) validiert. Reranker-Dokumente sind nichtleere Strings; eine leere Liste bleibt erlaubt. Vector-Eingaben enthalten genau 1024 endliche Zahlen; JSON-Zahlenlisten und bestehende JSON-Listenstrings bleiben erlaubt. Cosine verbietet Nullvektoren. `POST /vectors` verlangt einen String in `chunktext` mit mindestens einem Zeichen außerhalb von Leerzeichen, LF und CR. PostgreSQL erzwingt dieselbe Regel. Ungueltige Eingaben liefern 400 vor Modell-/DB-Arbeit, fehlende Chunks 404, nicht verfuegbare Datenbanken oder Rerankermodelle 503 und unerwartete Fehler neutrale 500-Antworten. HTTP-Fehler wie 405 behalten erforderliche Header.
 
 Die API-Images werden mit `scripts/build_image.py` aus einem temporaeren Build-Kontext gebaut (siehe Befehle oben). Das Skript kopiert ausschliesslich die pro Dienst aufgelisteten Quelldateien und das gemeinsame Paket `rag_common`; es durchsucht weder Tests noch historische Verzeichnisse. Dies umgeht den Windows-Podman-Fehler beim Lesen gesperrter Verzeichnisse trotz Ignore-Regeln. Der temporaere Kontext wird auch bei Buildfehlern entfernt. Neue Laufzeitdateien muessen in der Eingabeliste des Skripts ergaenzt werden. Nach Codeaenderungen Images neu bauen und Container neu erstellen. Weitergehende Adapterklassifikation, Retrybudgets, Importabschluss und Readiness sind noch Zielkonzept: [Kapitel 8.3](docs/8-3-error-handling.md).
 

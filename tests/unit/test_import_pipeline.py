@@ -123,6 +123,25 @@ def test_invalid_configuration_stops_before_import(experiment, tmp_path, overrid
     assert not output.exists()
 
 
+def test_make_chunks_filters_empty_output_before_numbering(experiment, monkeypatch):
+    source, config_path = experiment
+    config = pipeline.resolve_config(pipeline.read_json(config_path))
+    chunks = [None, "", "  ", " \n\r ", " \r\nRom  ", "\t", "Karthago"]
+    monkeypatch.setitem(pipeline.CHUNKERS, "recursive", lambda source, **parameters: iter(chunks))
+
+    artifact = pipeline.make_chunks(source, config)
+
+    assert artifact["chunks"] == [
+        {"chunk_id": f"{source.stem}-{index}", "source_text": text}
+        for index, text in enumerate((" \r\nRom  ", "\t", "Karthago"), 1)
+    ]
+    pipeline.validate_artifact(artifact, "chunks", config)
+
+    del chunks[4:]
+    with pytest.raises(ValueError, match="Source has no document ID or text chunks"):
+        pipeline.make_chunks(source, config)
+
+
 def test_snowflake_arctic_embed_v1_matches_langchain_chunk_boundaries(tmp_path):
     ingest = Path(pipeline.__file__).parent
     config = pipeline.resolve_config(

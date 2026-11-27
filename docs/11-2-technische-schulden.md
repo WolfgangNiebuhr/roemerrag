@@ -279,7 +279,7 @@ Der [Reranker](../reranker/app.py) prüft Modellscores vor der Sortierung. Der g
 
 ### TS-20 – Widersprüchlicher Vertrag für fehlenden Chunktext
 
-**Status** · offen
+**Status** · behoben
 
 **Schweregrad** · P1
 
@@ -289,7 +289,7 @@ Die Vector-API akzeptiert fehlenden oder nullwertigen `chunktext` und kann `null
 
 **Lösungsvorschlag**
 
-Einen einheitlichen Vertrag für Schreiben, Suche und Kontextbildung festlegen, der vorhandene Datensätze berücksichtigt und gültige Nachbartreffer nutzbar hält. Gemischte Treffer und leeren Kontext gezielt testen.
+Die Vector-API verlangt beim Schreiben einen nichtleeren String. Die Datenbank erzwingt denselben Vertrag mit `NOT NULL` und einem Check-Constraint für leere Strings und reine Kombinationen aus Leerzeichen, LF und CR. Die [Migration für Bestandsdatenbanken](../README.md) prüft vorhandene Zeilen beim Anlegen der Constraints.
 
 ### TS-21 – Überschrittene Chunkgröße bei langen Passagen
 

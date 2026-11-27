@@ -203,8 +203,8 @@ def upsert_chunk():
         embedding_set_id = resolve_set_id(data, required=True)
         chunk_id = text_field(data, "chunk_id")
         chunktext = data.get("chunktext")
-        if chunktext is not None and not isinstance(chunktext, str):
-            invalid_request("chunktext muss ein String oder null sein.", "chunktext")
+        if not isinstance(chunktext, str) or not chunktext.strip(" \n\r"):
+            invalid_request("chunktext muss ein nichtleerer String sein.", "chunktext")
         vector = sql_vector(data.get("vector"), data.get("metric"))
 
     with transaction() as conn:

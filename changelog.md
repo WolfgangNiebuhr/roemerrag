@@ -17,6 +17,62 @@ Aus README und docs übernommene Änderungshistorie. Gleichdatierte Einträge fo
 
 ## 2026-11-27
 
+### Leere Chunker-Ausgaben vor der Nummerierung entfernt
+
+`make_chunks` filtert `None`, leere Strings und Texte aus ausschließlich Leerzeichen, LF oder CR. Gültige Chunks werden unverändert und lückenlos nummeriert. Bleibt kein Chunk übrig, bricht die Verarbeitung mit dem bestehenden Eingabefehler ab. Die Prüfung gespeicherter Chunk-Artefakte verwendet dieselbe Definition.
+
+303 Unit-Tests und im gemeinsamen Podman-Lauf 7 Integrationsprüfungen für Migrationen und Importpipeline einschließlich Ollama bestanden. Zwei frühere Läufe mit der Importpipeline als erstem Testmodul meldeten beim ersten Schreibzugriff einen Verbindungsfehler. RAG- und Reranker-Tests wurden für diese Importänderung nicht ausgeführt.
+
+### Gültigen Chunktext an der laufenden Vector-API geprüft
+
+`POST /vectors` lieferte HTTP 201. Das Zurücklesen per Chunk-ID und Set-Kennung bestätigte den exakten Text einschließlich Umlaut, Leerzeichen, LF und CR. `DELETE /chunks` meldete genau einen gelöschten Testeintrag. Der anschließende Abruf lieferte HTTP 404.
+
+### Vector-API mit Chunktext-Validierung ausgerollt
+
+Der Container `vector-api` läuft im bestehenden Pod mit Image `14c79543895a`. `GET /health/ready` lieferte HTTP 200. `POST /vectors` lieferte für fehlenden Chunktext, `null`, einen leeren String, reine Leerzeichen und eine Mischung aus Leerzeichen, LF und CR jeweils HTTP 400 mit Problem Details für `/chunktext`. Der vorherige Container bleibt gestoppt unter `vector-api-before-ts20-20261127-103748` verfügbar.
+
+### Migration 003 auf der laufenden Datenbank angewendet
+
+PostgreSQL hat Migration 003 auf `vectordb/vector_db` mit `COMMIT` abgeschlossen. `NOT NULL` und der validierte Check-Constraint `vectors_chunktext_nonblank` sind aktiv. Alle 11.243 Zeilen erfüllen die Regel. Direkte Inserts und Updates mit `NULL`, leerem String, reinen Leerzeichen und einer Kombination aus Leerzeichen, LF und CR wurden jeweils abgewiesen. Die Prüftransaktion wurde zurückgerollt.
+
+Backup vor der Migration: `backups/20261127-103511-000482.dump`. Nach einer Podman-Transportmeldung beim Migrationslauf wurde das Archiv erneut mit `pg_restore --list` geprüft. Es enthält den Tabellendateneintrag für `public.vectors`.
+
+### Pflichtregel für Chunktext implementiert
+
+TS-20. PostgreSQL weist bei Inserts und Updates `NULL`, leere Strings und reine Kombinationen aus Leerzeichen, LF und CR ab. Die Vector-API meldet ungültigen oder fehlenden Chunktext mit HTTP 400 vor dem Datenbankzugriff. Migration 003 prüft den Bestand transaktional und bricht bei ungültigen Werten ab. Die laufende Datenbank wurde für diese Änderung nicht migriert.
+
+302 Unit-Tests und 9 Standard-Podman-Integrationstests bestanden. Die Migrationstests prüften auch das Zurückrollen bei leeren Bestandswerten, das Ablehnen ungültiger Inserts und Updates sowie die Backup-Wiederherstellung. Die 12 optionalen Tests für RAG, Reranker und Ollama wurden für diese Schreibvalidierung nicht aktiviert.
+
+### Datenbestand auf leere Chunktexte geprüft
+
+Eine lesende PostgreSQL-Abfrage über alle 11.243 Zeilen in `vector_db.public.vectors` fand keine `NULL`-Werte, leeren Strings oder Texte, die ausschließlich aus Leerzeichen, LF oder CR bestehen.
+
+### Vector-API in der vollständigen Podman-Suite geprüft
+
+`python -B -m pytest -c tests/pytest.ini tests/podman --all -ra --tb=short` ergab 20 bestandene Tests ohne Überspringen in 284,81 Sekunden. Enthalten waren direkte Vector-API-Aufrufe, Migrationen, Import3 und Importpipeline, Ollama, die RAG-API und alle drei RAG-Ende-zu-Ende-Fälle. Der isolierte Teststack verwendete für die Vector-API dieselbe Image-ID `d69ad515b1424` wie der laufende Dienst und eigene Testdaten.
+
+### Aktuelle Vector-API im laufenden Podman-System gestartet
+
+Der ältere Container `vector-api-before-ts06` belegte im gemeinsamen Pod Port 5500. Nach seinem Stopp startete `vector-api` mit dem aktuellen lokalen Image `d69ad515b1424`. `/health/ready` meldete Bereitschaft. Die Hannibal-Anfrage lieferte über `/evaluate/retrieve` dieselben fünf Chunk-IDs in derselben Reihenfolge. Der alte Container bleibt gestoppt verfügbar.
+
+### Treffer der Hannibal-Anfrage geprüft
+
+Eine Wiederholung mit denselben Suchparametern lieferte fünf Treffer und dieselbe Reranking-Auswahl wie der vorherige Lauf. `pg3062-659` blieb auf Rang 1 und enthielt einen indirekten Hinweis auf den für Rom günstigen Friedensschluss. Die fünf Treffer enthielten weder die Entscheidungsschlacht noch die konkreten Friedensbedingungen. Die erste generierte Antwort ließ den im Kontext vorhandenen Hinweis auf den Friedensschluss aus, die Wiederholung griff ihn auf.
+
+### /process im laufenden Podman-System geprüft
+
+Die Frage „Welche Rolle spielte Hannibal im Zweiten Punischen Krieg, und wie endete der Krieg?“ ergab `status=ok`. Die Cosine-Suche lieferte fünf Treffer, der Reranker `cross-encoder/ms-marco-MiniLM-L6-v2` wählte drei Chunks für die Antwortgenerierung aus (`pg3062-659`, `pg3062-487`, `pg3062-505`). Die Pipeline dauerte 22,79 Sekunden, davon 0,11 Sekunden für Reranking und 20,36 Sekunden für Generierung. Die Antwort beschrieb Hannibals Rolle, beantwortete den Ausgang des Krieges jedoch nur unvollständig.
+
+### Score-Validierung im laufenden Podman-System ausgerollt
+
+RAG-API und Reranker laufen mit den Images `54509badc90a` und `0a163e95549a`. Beim Standardbuild des Rerankers blieb der Modell-Download hängen. Das ausgerollte Image übernimmt Modellgewichte und Abhängigkeiten aus dem bisherigen Image und enthält den aktuellen Anwendungscode. Ports, Netzwerk und GPU-Konfiguration wurden übernommen. Die vorherigen Container sind gestoppt und unter Namen mit dem Suffix `before-ts19-20261127-100919` für eine Rückkehr verfügbar.
+
+Der Reranker meldete über `/health` das geladene Standardmodell. Ein Aufruf von `/evaluate/rerank` auf der laufenden RAG-API bewertete zwei Passagen und lieferte bei `top_k=1` einen Treffer mit endlichem Score. Vector-API und Datenbank wurden bei der Umschaltung nicht angefasst.
+
+### Podman-Integration für RAG und Reranker nachgeholt
+
+Mit erweiterten Berechtigungen konnte Podman den lokalen Verbindungsschlüssel verwenden. Der isolierte Lauf mit `--include-rag --include-reranker` ergab 12 bestandene Tests und acht übersprungene Ollama-Fälle. Die drei RAG-Ende-zu-Ende-Fälle wurden mit zusätzlichem `--include-ollama` gezielt nachgeholt und bestanden. Die übrigen fünf Ollama-Fälle für Import und Embeddings waren außerhalb dieses Prüfumfangs.
+
 ### Score-Validierung beim Reranking umgesetzt
 
 Der Reranker prüft Modellscores vor der Sortierung. Beide RAG-Pfade prüfen die Scores aller zurückgegebenen Treffer vor `top_k` und melden ungültige Scores mit HTTP 502 im Schritt `reranking`. TS-19 ist behoben. Die akzeptierte Abweichung der Score-Anzahl nach R-04 gilt weiter.

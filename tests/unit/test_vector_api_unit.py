@@ -135,11 +135,26 @@ def test_conflicting_aliases_rejected_before_sql(database, path, method):
 @pytest.mark.parametrize("key", ["embedding", "embedding_set_id"])
 def test_set_aliases_write_same_database_column(database, key):
     module, _, connection, cursor = database
-    response = module.app.test_client().post("/vectors", json={"chunk_id": "c", key: "set", "vector": [1] * 1024})
+    chunktext = " \r\nRom\n "
+    response = module.app.test_client().post(
+        "/vectors", json={"chunk_id": "c", key: "set", "vector": [1] * 1024, "chunktext": chunktext},
+    )
     assert response.status_code == 201
     assert "embedding_set_id" in cursor.execute.call_args.args[0]
     assert cursor.execute.call_args.args[1][:2] == ("c", "set")
+    assert cursor.execute.call_args.args[1][3] == chunktext
     connection.commit.assert_called_once()
+
+
+@pytest.mark.parametrize("fields", [{}, {"chunktext": None}, {"chunktext": ""}, {"chunktext": "   "},
+                                    {"chunktext": " \n\r "}, {"chunktext": 1}])
+def test_invalid_chunktext_rejected_before_sql(database, fields):
+    module, pool, _, _ = database
+    response = module.app.test_client().post("/vectors", json={
+        "chunk_id": "c", "embedding_set_id": "set", "vector": [1] * 1024, **fields,
+    })
+    assert response.status_code == 400
+    pool.getconn.assert_not_called()
 
 
 @pytest.mark.parametrize("failure", ["sql", "commit", "rollback", "return"])
