@@ -42,7 +42,7 @@ python -m pytest -c tests/pytest.ini tests --no-podman
 python -m pytest -c tests/pytest.ini tests --all --keep-podman
 ```
 
-`--include-rag --include-ollama` aktiviert den RAG-Ende-zu-Ende-Test ohne Reranking. Für die E2E-Pfade mit Reranking ist zusätzlich `--include-reranker` erforderlich. E2E verwendet `snowflake-arctic-embed2` und `phi3:mini`; die Keyword-Importtests benötigen `gemma3:4b` und `snowflake-arctic-embed2`. `--all` aktiviert alle optionalen Gruppen. `--no-podman` überspringt Container-Tests. Ein gleichzeitig ausdrücklich aktivierter Host-Ollama-Test kann weiterhin laufen. Setup und Modellbereitstellung beschreibt das [README](../README.md).
+`--include-rag --include-ollama` aktiviert den RAG-Ende-zu-Ende-Test ohne Reranking. Für die E2E-Pfade mit Reranking ist zusätzlich `--include-reranker` erforderlich. E2E verwendet `snowflake-arctic-embed2` und `phi3:mini`. Für die Keyword-Anreicherung im Grundfall und in den Keyword-Importtests benötigt Host-Ollama zusätzlich `gemma3:4b`. `--all` aktiviert alle optionalen Gruppen. `--no-podman` überspringt Container-Tests. Ein gleichzeitig ausdrücklich aktivierter Host-Ollama-Test kann weiterhin laufen. Setup und Modellbereitstellung beschreibt das [README](../README.md).
 
 ## Isolierter Testbetrieb
 
@@ -58,7 +58,7 @@ Ollama ist ein externer, mit dem regulären Betrieb geteilter Host-Dienst. Der e
 
 `tests/unit/test_vector_api_unit.py` verwendet Testdoubles für PostgreSQL-Pool und Cursor und prüft SQL-Parameter, Commit, Rollback und Poolfehler. `tests/podman/test_vector_api.py` prüft HTTP-Schreiben und -Lesen, stabile IDs bei parallelen Upserts, Set-Aliase und Variantenisolation, gefilterte und ungefilterte Suche mit L2 und Cosinus sowie `ILIKE` auf `chunktext`. Die Tests verwenden Vektoren mit 1024 Komponenten. `DELETE /chunks` wird mit gleichen Grenzen und einem inklusiven Bereich geprüft, der die Dezimalgrenze zwischen 9 und 10 überschreitet.
 
-Der Wiederanlauftest startet die API in einem zusätzlichen isolierten Pod vor PostgreSQL. Er prüft Liveness ohne Datenbank, Readiness mit HTTP 503 sowie die Erholung nach Datenbankstart und erneutem Ausfall ohne API-Neustart. Der Test verwendet eine Datenbank auf tmpfs. Die Fixture entfernt den zusätzlichen Pod auch bei Fehlern.
+Der Wiederanlauftest startet die API in einem zusätzlichen isolierten Pod vor PostgreSQL. Er prüft Liveness ohne Datenbank und Readiness mit HTTP 503. Nach dem Datenbankstart speichert er einen Chunk, erstellt den PostgreSQL-Container mit demselben eigenen Testvolume neu und prüft, dass der Chunk ohne Neustart der API abrufbar und per Vektorsuche auffindbar bleibt. Der Test räumt Pod und Volume auch bei Fehlern auf.
 
 `tests/podman/test_embedding_migration.py` prüft `001_embedding_set_id.sql` und `002_chunktext.sql` in eigenen Testdatenbanken. Es kontrolliert erhaltene Zeilen, Vektoren und Unique Constraints, wiederholbare Migrationen und die Wiederherstellung der gesicherten Struktur. Die API-Vertragstests prüfen Set-Aliase, Konflikte und das Antwortfeld `chunktext`.
 
@@ -76,7 +76,7 @@ Die Standardintegration in `tests/podman/test_import_pipeline_integration.py` pr
 
 `tests/unit/test_interact.py` prüft die Delegation in einem API-Aufruf, Modell- und Reranking-Parameter, getrennte ursprüngliche und ausgewählte Treffer, Export und Anzeige, CLI-Fehler und Zeitlimits. `tests/podman/test_rag_api.py` prüft die Eingabevalidierung am HTTP-Endpunkt.
 
-`tests/podman/test_rag_e2e.py` verwendet `tests/podman/fixtures/early_rome.txt` und echte Ollama-Embeddings. Der Test prüft den erwarteten Quellabschnitt, Karthago als Antwortinhalt und die Laufzeit- und Generierungsmetriken. Eigene Sets isolieren die Testdaten. Ausgewählte E2E-Pfade nutzen den Reranker, während der Grundfall ohne ihn läuft.
+`tests/podman/test_rag_e2e.py` importiert im Grundfall `tests/podman/fixtures/early_rome.txt` über `Ingest.pipeline` mit Keyword-Anreicherung und echten Ollama-Embeddings. Der Test prüft den gespeicherten angereicherten Chunktext, den erwarteten Quellabschnitt, Karthago als Antwortinhalt und die Laufzeit- und Generierungsmetriken. Der Import schreibt über die Vector-API des Test-Pods in ein eigenes Embedding-Set. Ausgewählte E2E-Pfade nutzen den Reranker, während der Grundfall ohne ihn läuft.
 
 Evaluations-Vertragstests prüfen direkt verkettbare `next_request`-Antworten, erhaltene Trefferidentität, Distanzen und Scores, unabhängige Dienstaufrufe, übergebene Vektoren und frühe Eingabe- und Promptvalidierung. Tests für `analyze.py` prüfen seine beiden HTTP-Aufrufe, die Ausgabe, Fehler und die Übergabe des vollständigen Gold-Chunks. Ein Integrationstest vergleicht Distanzwerte für bekannte, in pgvector gespeicherte Vektoren. Der E2E-Test verkettet Retrieve, Rerank und Generate mit echten Modellen und prüft den optionalen Referenzvergleich.
 
@@ -100,4 +100,4 @@ Tests verwenden statische Paketimporte fuer normale Projektmodule. Reexportierte
 
 ## Offene Testziele
 
-Das [Schuldenregister](11-2-technische-schulden.md#1122-schuldenregister) führt offene Vertrags- und Testlücken. Dazu gehören eine nicht beantwortbare Frage bei vorhandenem Kontext, Goldantworten und referenzierte Retrievaltreffer, Prüfungen von Reranker-Health während Laden und Inferenz, die Prüfung des Schemas samt Index beim Neuaufbau, Datenpersistenz bei Neuaufsetzen mit demselben Testvolume sowie repräsentative Suchpläne und Lastprofile. GPU-Prüfungen benötigen passende Hardware und bilden eine eigene Testgruppe. Echte Modelle werden anhand fachlicher Kriterien geprüft, da Modellversion, Hardware und Sampling Antworten beeinflussen.
+Das [Schuldenregister](11-2-technische-schulden.md#1122-schuldenregister) führt offene Vertrags- und Testlücken. Dazu gehören eine nicht beantwortbare Frage bei vorhandenem Kontext, Goldantworten und referenzierte Retrievaltreffer, Prüfungen von Reranker-Health während Laden und Inferenz, die Prüfung des Schemas samt Index beim Neuaufbau sowie repräsentative Suchpläne und Lastprofile. GPU-Prüfungen benötigen passende Hardware und bilden eine eigene Testgruppe. Echte Modelle werden anhand fachlicher Kriterien geprüft, da Modellversion, Hardware und Sampling Antworten beeinflussen.

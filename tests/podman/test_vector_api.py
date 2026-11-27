@@ -130,7 +130,7 @@ app.db_pool.closeall()
 
 
 @pytest.mark.podman
-def test_delayed_database_start_and_recovery(podman_stack):
+def test_database_recovery_preserves_data_after_container_recreation(podman_stack):
     import subprocess
     import time
     import urllib.error
@@ -138,6 +138,10 @@ def test_delayed_database_start_and_recovery(podman_stack):
     import json
     suffix = podman_stack["id"]
     pod, api, db = ["rag-test-delayed-" + name + "-" + suffix for name in ("pod", "api", "db")]
+    volume = f"{db}-data"
+    volume_created = False
+    pod_created = False
+
     def run(*args):
         return subprocess.run(["podman", *args], check=True, capture_output=True,
                               text=True, timeout=60).stdout.strip()
@@ -160,9 +164,17 @@ def test_delayed_database_start_and_recovery(podman_stack):
                 pass
             time.sleep(0.5)
         raise AssertionError(f"{path} did not reach {expected}")
+    def start_database():
+        return run("run", "-d", "--name", db, "--pod", pod,
+                   "-v", f"{volume}:/var/lib/postgresql/data", "-e", "POSTGRES_USER=admin",
+                   "-e", "POSTGRES_PASSWORD=admin", "-e", "POSTGRES_DB=vector_db", db_image)
+
     try:
+        run("volume", "create", volume)
+        volume_created = True
         run("pod", "create", "--name", pod, "-p", "5500")
-        run("run", "-d", "--name", api, "--pod", pod, api_image)
+        pod_created = True
+        run("run", "-d", "--name", api, "--pod", pod, "-e", "DB_HOST=127.0.0.1", api_image)
         infra = run("pod", "inspect", "--format", "{{.InfraContainerID}}", pod)
         port = run("port", infra, "5500/tcp").splitlines()[0].rsplit(":", 1)[1]
         base = "http://127.0.0.1:" + port
@@ -173,18 +185,36 @@ def test_delayed_database_start_and_recovery(podman_stack):
         assert problem["type"] == "urn:rag:problem:dependency-unavailable"
         assert problem["status"] == 503
         wait_status("/chunks", 503)
-        run("run", "-d", "--name", db, "--pod", pod,
-            "--tmpfs", "/var/lib/postgresql/data", "-e", "POSTGRES_USER=admin",
-            "-e", "POSTGRES_PASSWORD=admin", "-e", "POSTGRES_DB=vector_db", db_image)
+        db_id = start_database()
         wait_status("/health/ready", 200)
         wait_status("/chunks", 200)
+        chunk = {
+            "chunk_id": "persistence-1", "embedding_set_id": f"persistence-{suffix}",
+            "chunktext": "Dieser Chunk bleibt im Testvolume erhalten.",
+            "vector": [1.0] + [0.0] * 1023,
+        }
+        chunk_path = f"/chunks/{chunk['chunk_id']}?embedding_set_id={chunk['embedding_set_id']}"
+        request(base, "/vectors", "POST", chunk, expected=201)
+        stored = request(base, chunk_path)
+        assert stored["chunktext"] == chunk["chunktext"]
+
         run("stop", db)
+        run("rm", db)
         wait_status("/health/ready", 503)
         wait_status("/health/live", 200)
-        run("start", db)
+        assert start_database() != db_id
         wait_status("/health/ready", 200)
-        wait_status("/chunks", 200)
+        assert request(base, chunk_path) == stored
+        hits = request(base, "/search", "POST", {
+            "vector": chunk["vector"], "embedding_set_id": chunk["embedding_set_id"],
+            "metric": "euclidean", "num_results": 1,
+        })
+        assert [hit["chunk_id"] for hit in hits] == [chunk["chunk_id"]]
+        assert hits[0]["distance"] == pytest.approx(0)
         assert run("inspect", api, "--format", "{{.Id}}") == api_id
         assert run("inspect", api, "--format", "{{.RestartCount}}") == "0"
     finally:
-        subprocess.run(["podman", "pod", "rm", "-f", pod], capture_output=True, timeout=60)
+        if pod_created:
+            subprocess.run(["podman", "pod", "rm", "-f", pod], capture_output=True, timeout=60)
+        if volume_created:
+            subprocess.run(["podman", "volume", "rm", volume], capture_output=True, timeout=60)

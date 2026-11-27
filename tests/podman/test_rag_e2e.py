@@ -6,48 +6,45 @@ from pathlib import Path
 import pytest
 
 from common import request
-from Ingest.utils.chunking import split_text_into_chunks
+from Ingest import pipeline
 
 
 @pytest.mark.podman
 @pytest.mark.rag
 @pytest.mark.ollama
-def test_early_rome_question_end_to_end(vector_url, rag_url, test_id, e2e_ollama_url):
-    # Match the models configured in rag/app.py, independently of the optional
-    # standalone embedding test's environment overrides.
-    model = "snowflake-arctic-embed2"
+def test_early_rome_question_end_to_end(
+    vector_url, rag_url, test_id, e2e_ollama_url, tmp_path, monkeypatch,
+):
+    models = request(e2e_ollama_url, "/api/tags")["models"]
+    assert "gemma3:4b" in {model["name"] for model in models}, "Run ollama pull gemma3:4b"
     variant = "rome-e2e-" + test_id
     corpus = Path(__file__).parent / "fixtures" / "early_rome.txt"
-    chunks = split_text_into_chunks(str(corpus), size=300, overlap=0)
-    assert len(chunks) == 3
-    chunk_ids = [f"{variant}-{index}" for index in range(1, len(chunks) + 1)]
+    monkeypatch.setenv("IMPORT_VECTOR_URL", vector_url + "/vectors")
+    monkeypatch.setenv("OLLAMA_HOST_URL", e2e_ollama_url)
+    config = tmp_path / "experiment.json"
+    output = tmp_path / "run"
+    pipeline.write_json(config, {
+        "format_version": 1, "name": "early-rome-e2e", "embedding_set_id": variant,
+        "chunking": {"strategy": "recursive", "parameters": {"size": 300, "overlap": 0}},
+        "enrichment": {"strategy": "keywords", "parameters": {"model": "gemma3:4b"}},
+        "embedding": {"model": "snowflake-arctic-embed2"},
+    })
 
     try:
-        for chunk_id, text in zip(chunk_ids, chunks):
-            result = request(
-                e2e_ollama_url, "/api/embeddings", "POST",
-                {"model": model, "prompt": text}, timeout=300,
-            )
-            vector = result.get("embedding")
-            assert isinstance(vector, list) and len(vector) == 1024, result
-            assert all(isinstance(value, (int, float)) and math.isfinite(value) for value in vector)
-            norm = math.sqrt(sum(value * value for value in vector))
-            assert norm > 0
-            request(vector_url, "/vectors", "POST", {
-                "chunk_id": chunk_id,
-                "embedding": variant,
-                "vector": [value / norm for value in vector],
-                "chunktext": text,
-            }, expected=201)
-
-        assert request(vector_url, "/chunks?embedding=" + variant)["chunks"] == len(chunks)
-        for chunk_id, text in zip(chunk_ids, chunks):
-            stored = request(vector_url, f"/chunks/{chunk_id}?embedding={variant}")
-            assert stored["chunktext"] == text
+        assert pipeline.main(["--file", str(corpus), "--config", str(config),
+                              "--output-dir", str(output)]) == 0
+        chunks = pipeline.read_json(output / "embeddings.json")["chunks"]
+        chunk_ids = [f"{corpus.stem}-{index}" for index in range(1, 4)]
+        assert [row["chunk_id"] for row in chunks] == chunk_ids
+        assert request(vector_url, f"/chunks?embedding_set_id={variant}")["chunks"] == len(chunks)
+        for row in chunks:
+            assert row["enrichment"].strip()
+            stored = request(vector_url, f"/chunks/{row['chunk_id']}?embedding_set_id={variant}")
+            assert stored["chunktext"] == row["enrichment"] + "\n" + row["source_text"]
 
         result = request(rag_url, "/process", "POST", {
             "query": "Wer beherrschte in der Frühzeit Roms das westliche Mittelmeer",
-            "filter": variant,
+            "embedding_set_id": variant,
             "metric": "euclidean",
             "num_results": 1,
             "top_k": 0,
@@ -75,7 +72,7 @@ def test_early_rome_question_end_to_end(vector_url, rag_url, test_id, e2e_ollama
         assert metrics["answer_tokens"] > 0, metrics
     finally:
         request(vector_url, "/chunks", "DELETE", {
-            "document_id": variant, "embedding": variant, "from": 1,
+            "document_id": corpus.stem, "embedding_set_id": variant, "from": 1,
         })
 
 

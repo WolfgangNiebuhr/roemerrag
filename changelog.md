@@ -17,6 +17,12 @@ Aus README und docs übernommene Änderungshistorie. Gleichdatierte Einträge fo
 
 ## 2026-11-27
 
+### RAG-Importpfad und Persistenz bei Container-Neuerstellung getestet
+
+Der RAG-Ende-zu-Ende-Test importiert den Korpus über `Ingest.pipeline` mit Keyword-Anreicherung. Der PostgreSQL-Wiederanlauftest erstellt den Datenbankcontainer mit demselben eigenen Testvolume neu und prüft Abruf und Suche des zuvor gespeicherten Chunks. Beide Tests verwenden isolierte Podman-Ressourcen. TS-17 und das Testkonzept führen die verbleibenden Testlücken.
+
+303 Unit-Tests und beide gezielt ausgeführten Podman-Integrationstests bestanden. Die übrigen Integrationsfälle wurden für diese beiden Teständerungen nicht erneut ausgeführt.
+
 ### Unterstützte Analyse- und Import-Einstiegspunkte festgelegt
 
 TS-14 ist behoben. `analyze.py` bleibt die unterstützte Analyse-CLI. `Ingest/import3.py` bleibt bis zum persönlichen Test der Pipeline durch den Projektverantwortlichen als Fallback verfügbar. Die lokale Reranker-Demo und die explorative Vektoranalyse wurden nach `archive/` verschoben. Die Bausteinsicht zeigt die unterstützten Aufrufpfade.

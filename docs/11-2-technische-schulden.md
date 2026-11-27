@@ -237,7 +237,7 @@ Der [E2E-Test](../tests/podman/test_rag_e2e.py) importiert selbst und umgeht Imp
 
 #### Noch offen
 
-Regressionstests zu den offenen Verträgen aus TS-10/11/12/13/14/15/19/20/21 ergänzen. Wiederverwendung desselben Testvolumes nach DB-Neuerstellung, repräsentative Last und Suchpläne sowie Goldantworten und erwartete Retrievaltreffer absichern.
+Regressionstests zu den offenen Verträgen aus TS-10/11/12/13/15/21 ergänzen. Repräsentative Last und Suchpläne prüfen sowie Goldantworten und erwartete Retrievaltreffer über einen breiteren Korpus absichern.
 
 **Lösungsvorschlag**
 
