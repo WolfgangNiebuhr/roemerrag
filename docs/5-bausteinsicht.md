@@ -27,7 +27,7 @@ Das System erschließt Texte zur römischen Geschichte und beantwortet Fragen an
 | Experimentierender | Fragen, Texte und Trefferlisten | Retrievaldiagnose, Modell- und Reranking-Ergebnisse |
 | Modell- und Paketquellen | Downloads beim Build bzw. Modellbereitstellen | Python-Pakete, pgvector-Quellcode und Modellgewichte |
 
-Die zentrale Außenschnittstelle ist `POST /process` der RAG-API auf Containerport 5600. Lokale Import- und Analysewerkzeuge greifen auch direkt auf Ollama und Vector-API zu. Ollama läuft im beschriebenen Windows-Betrieb als Hintergrund-App außerhalb der Linux-Container.
+Die zentrale Außenschnittstelle ist `POST /process` der RAG-API auf Containerport 5600. Der Dokumentimport greift direkt auf Ollama und Vector-API zu. Ollama läuft im beschriebenen Windows-Betrieb als Hintergrund-App außerhalb der Linux-Container.
 
 ## 5.2 Ebene 1 – Whitebox
 
@@ -39,11 +39,9 @@ flowchart LR
     ingest --> vector[Vector-API · 5500]
     rag --> ollama
     rag --> vector
-    rag --> rerank
+    rag --> rerank[Reranker · 5000]
     vector --> db[(PostgreSQL 17 + pgvector · 5432)]
-    tools[Lokale Analysewerkzeuge] --> ollama
-    tools --> vector
-    tools --> rerank[Reranker · 5000]
+    tools[Lokale Abfrage- und Analysewerkzeuge] --> rag
 ```
 
 | Baustein | Verantwortung | Maßgebliche Implementierung |
@@ -54,7 +52,7 @@ flowchart LR
 | Vektorspeicher | Chunks, Varianten und Vektoren persistent speichern | [init.sql](../Vector/init.sql), [Dockerfile](../Vector/Dockerfile) |
 | Ollama | Embedding-, Antwort- und Keyword-Modelle ausführen | Windows-Hintergrund-App; Bereitstellung gemäß README |
 | Reranker | Frage-Dokument-Paare bewerten und sortieren | [app.py](../reranker/app.py), [Dockerfile](../reranker/Dockerfile) |
-| Lokale Werkzeuge | Direkte RAG-Abfragen und Analysen | [interact.py](../interact.py), [analyze.py](../analyze.py), `Vector/analyze_data.py` |
+| Lokale Werkzeuge | Abfragen und Analysen über die RAG-API | [interact.py](../interact.py), [analyze.py](../analyze.py) |
 
 Die Endpunkte validieren und dekodieren ihre Eingaben vor Datenbank- oder Modellzugriffen. Die Vector-API und der RAG-Retrievalschritt verwenden gemeinsame Prüfungen für den [Vector-Suchvertrag](../rag_common/vector_contract.py). Die Ergebnisvalidierung und die Zugriffe auf Provider, Datenbank und Modelle melden Fehler über Python-Ausnahmen ihrer jeweiligen Schicht. Die Flask-Apps ordnen ihnen an der HTTP-Grenze Problemtypen zu. [rag_common/http_errors.py](../rag_common/http_errors.py) erzeugt daraus RFC-9457-Problemantworten mit stabiler Typ-URI und Request-ID. Die [Fehlerverträge](8-3-error-handling.md) beschreiben die Regeln im Detail.
 
@@ -64,7 +62,7 @@ Die Endpunkte validieren und dekodieren ihre Eingaben vor Datenbank- oder Modell
 
 `Ingest.pipeline` liest die Versuchskonfiguration und verwendet rekursives Chunking, optionale Keyword-Anreicherung und normalisierbare Embeddings. Versionierte Zwischenartefakte erlauben die Wiederverwendung bereits erzeugter Chunks oder Anreicherungen. Chunks haben IDs aus Dateistamm und Nummer ab 1. Die Pipeline schreibt jeden Chunk über `POST /vectors` und bereinigt nach erfolgreichem Abschluss überzählige Chunks mit `DELETE /chunks`. Bei Abbruch bleiben bestätigte Chunks abrufbar und die Pipeline gibt den Wert für `--start` aus. Dienstadressen werden über `OLLAMA_HOST_URL` und `IMPORT_VECTOR_URL` konfiguriert. Aufrufe und Artefakte beschreibt das [Importkonzept](8-4-importkonzept.md).
 
-Der separate Einstieg `import3.py` nutzt LangChains `RecursiveCharacterTextSplitter` mit 1000 Zeichen und 150 Zeichen Overlap sowie das Keyword-Gateway mit `gemma3:4b`. Er speichert normalisierte Embeddings und den angereicherten Text einzeln über `POST /vectors`, unterstützt `--start` und protokolliert Fehler pro Chunk. Er verwendet im Skript konfigurierte Dienstadressen und HTTP-Zeitlimits. Import3, CLI und RAG beziehen gemeinsame Modell- und Set-Defaults aus [embedding_config.py](../rag/embedding_config.py).
+Der separate Einstieg `import3.py` bleibt bis zum persönlichen Test der Pipeline durch den Projektverantwortlichen als Fallback verfügbar. Er nutzt LangChains `RecursiveCharacterTextSplitter` mit 1000 Zeichen und 150 Zeichen Overlap sowie das Keyword-Gateway mit `gemma3:4b`. Er speichert normalisierte Embeddings und den angereicherten Text einzeln über `POST /vectors`, unterstützt `--start` und protokolliert Fehler pro Chunk. Er verwendet im Skript konfigurierte Dienstadressen und HTTP-Zeitlimits. Import3, CLI und RAG beziehen gemeinsame Modell- und Set-Defaults aus [embedding_config.py](../rag/embedding_config.py).
 
 ### 5.3.2 RAG-API
 
@@ -107,7 +105,7 @@ Die Tabelle `vectors` enthält `id SERIAL PRIMARY KEY`, `chunk_id TEXT NOT NULL`
 
 Ollama benötigt `snowflake-arctic-embed2` für Embeddings und `gemma4:e4b` für RAG-Antworten. `import3.py` benötigt zusätzlich `gemma3:4b`. Die Modelle werden auf dem Windows-Host bereitgestellt; sie liegen nicht im RAG-Image oder im PostgreSQL-Volume.
 
-Das Reranker-Image installiert Flask, sentence-transformers und torch und laedt beim Build `cross-encoder/ms-marco-MiniLM-L6-v2` vor. `POST /rerank` akzeptiert optional `model`; ohne Angabe gilt `RERANK_MODEL`. Ein aktiver CrossEncoder wird bei gleicher Auswahl wiederverwendet und bei Modellwechsel ersetzt. Laden und Inferenz sind gemeinsam synchronisiert. Neue Gewichte werden bei Bedarf geladen; Modelle mit erforderlichem Remote-Code werden nicht unterstuetzt (`trust_remote_code=False`). Ladefehler liefern HTTP 503 ohne Fallback. Antworten enthalten das verwendete `model` und `ranked_documents` mit `original_index`, `score` und `text`, absteigend sortiert. Leere Dokumentlisten laden kein Modell. `/health` nennt das aktive Modell und laedt beim ersten Aufruf das Defaultmodell. Der alternative Standalone-Code `reranker-local.py` ist nicht der Einstiegspunkt des Podman-Images.
+Das Reranker-Image installiert Flask, sentence-transformers und torch und laedt beim Build `cross-encoder/ms-marco-MiniLM-L6-v2` vor. `POST /rerank` akzeptiert optional `model`; ohne Angabe gilt `RERANK_MODEL`. Ein aktiver CrossEncoder wird bei gleicher Auswahl wiederverwendet und bei Modellwechsel ersetzt. Laden und Inferenz sind gemeinsam synchronisiert. Neue Gewichte werden bei Bedarf geladen; Modelle mit erforderlichem Remote-Code werden nicht unterstuetzt (`trust_remote_code=False`). Ladefehler liefern HTTP 503 ohne Fallback. Antworten enthalten das verwendete `model` und `ranked_documents` mit `original_index`, `score` und `text`, absteigend sortiert. Leere Dokumentlisten laden kein Modell. `/health` nennt das aktive Modell und laedt beim ersten Aufruf das Defaultmodell.
 
 ## 5.4 Zuordnung zum Podman-Betrieb
 

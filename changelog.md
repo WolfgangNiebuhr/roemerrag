@@ -17,6 +17,12 @@ Aus README und docs übernommene Änderungshistorie. Gleichdatierte Einträge fo
 
 ## 2026-11-27
 
+### Unterstützte Analyse- und Import-Einstiegspunkte festgelegt
+
+TS-14 ist behoben. `analyze.py` bleibt die unterstützte Analyse-CLI. `Ingest/import3.py` bleibt bis zum persönlichen Test der Pipeline durch den Projektverantwortlichen als Fallback verfügbar. Die lokale Reranker-Demo und die explorative Vektoranalyse wurden nach `archive/` verschoben. Die Bausteinsicht zeigt die unterstützten Aufrufpfade.
+
+303 Unit-Tests bestanden. Podman- und Modellintegrationstests wurden ausgelassen, da die Verschiebung keine aktiven Dienst- oder Importpfade ändert.
+
 ### Chunk-ID-Format als Architekturentscheidung dokumentiert
 
 Kapitel 9.5 hält fest, warum Dateistamm und Chunknummer Teil der ID sind. TS-23 ist als abgelehnt vermerkt. Die Änderungen betreffen ausschließlich die Dokumentation.

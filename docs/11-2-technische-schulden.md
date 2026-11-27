@@ -185,21 +185,17 @@ Liveness ohne Modellinitialisierung und zeitlich begrenzte Readiness einführen.
 
 ### TS-14 – Fehlerhafte Analyse und unklare Alt-Einstiegspunkte
 
-**Status** · teilweise behoben
+**Status** · behoben
 
 **Schweregrad** · P1
 
 **Problembeschreibung**
 
-In [analyze.py](../analyze.py) umfasst `GOLDCHUNK` nur die Keyword-Zeile; die folgenden Stringliterale sind eigenständige Ausdrücke. Dies wurde per AST-Auswertung bestätigt. `Ingest/import.py` verwendet `np` ohne Import und übergibt ein nicht unterstütztes Argument `metadata` an die Speicherfunktion. Der [lokale Reranker](../reranker/reranker-local.py) dupliziert Serverlogik mit anderem Standardmodell. Irreführende Ähnlichkeitsmessungen und erst im Fehlerpfad sichtbare Defekte; unklarer Wartungsumfang.
+In [analyze.py](../analyze.py) umfasst `GOLDCHUNK` nur die Keyword-Zeile; die folgenden Stringliterale sind eigenständige Ausdrücke. Dies wurde per AST-Auswertung bestätigt. `Ingest/import.py` verwendet `np` ohne Import und übergibt ein nicht unterstütztes Argument `metadata` an die Speicherfunktion. Der [lokale Reranker](../archive/reranker-local.py) dupliziert Serverlogik mit anderem Standardmodell. Irreführende Ähnlichkeitsmessungen und erst im Fehlerpfad sichtbare Defekte; unklarer Wartungsumfang.
 
-#### Noch offen
+**Unterstützte Einstiegspunkte**
 
-Die verbleibenden Alt-Einstiegspunkte einschließlich des lokalen Rerankers nach Unterstützung einordnen.
-
-**Lösungsvorschlag**
-
-Unterstützte Einstiegspunkte festlegen und ihre Fehlerpfade testen. Andere Varianten archivieren oder entfernen.
+[`analyze.py`](../analyze.py) ist die unterstützte Analyse-CLI und übergibt den vollständigen Gold-Chunk an die RAG-API. [`import3.py`](../Ingest/import3.py) bleibt bis zum persönlichen Test von `Ingest.pipeline` durch den Projektverantwortlichen als Fallback verfügbar. Unit-Tests decken beide Einstiegspunkte ab. `Ingest/import.py` wurde entfernt. Die [lokale Reranker-Demo](../archive/reranker-local.py) und die [explorative Vektoranalyse](../archive/analyze_data.py) liegen als historische Referenzen im Archiv.
 
 ### TS-15 – Nicht reproduzierbare Builds und Testumgebungen
 
