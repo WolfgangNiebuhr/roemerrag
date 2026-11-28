@@ -198,7 +198,7 @@ Bewegliche Basisimage-Tags der API-Dienste, nicht fixierte Python-Abhängigkeite
 
 ### TS-16 – Indexstrategie passt nicht zu allen Suchmetriken
 
-**Status** · offen
+**Status** · behoben
 
 **Schweregrad** · P3
 
@@ -206,9 +206,9 @@ Bewegliche Basisimage-Tags der API-Dienste, nicht fixierte Python-Abhängigkeite
 
 Das Datenbankschema legt einen HNSW-Index für euklidische Distanz an, während die CLI standardmäßig Cosinus nutzt. Die Suchmetriken können dadurch unterschiedliche Zugriffspfade verwenden. Bei normierten Vektoren entspricht die exakte Rangfolge beider Metriken einander.
 
-**Lösungsvorschlag**
+**Entscheidung**
 
-Repräsentative Suchpläne für setgebundene Abfragen messen, Treffer gegen eine exakte Referenz abgleichen und daraus eine begründete Indexstrategie ableiten.
+Das [Initialisierungsschema](../Vector/init.sql) bildet die HNSW-Indizes für euklidische Distanz und Cosinus aus der laufenden Datenbank ab. PostgreSQL kann für beide Metriken je nach Abfrage einen exakten Suchpfad oder den jeweiligen HNSW-Index wählen. Die Messung für den aktuellen Bestand steht im [Changelog](../changelog.md#ts-16--cosinus-hnsw-gegen-exakte-top-k-suche-gemessen).
 
 ### TS-17 – Testabdeckung umgeht relevante Verarbeitungspfade
 

@@ -8,9 +8,9 @@ CREATE TABLE IF NOT EXISTS vectors (
   vector VECTOR(1024),
   chunktext TEXT NOT NULL,
   CONSTRAINT vectors_chunktext_nonblank CHECK (length(btrim(chunktext, E' \n\r')) > 0),
-  UNIQUE (chunk_id, embedding_set_id)
+  CONSTRAINT vectors_chunk_id_embedding_key UNIQUE (chunk_id, embedding_set_id)
 );
 
--- HNSW-Index (euklidische Distanz)
--- CREATE INDEX IF NOT EXISTS vectors_vector_idx ON vectors USING ivfflat (vector) WITH (lists = 100);
+-- HNSW-Indizes für euklidische Distanz und Cosinus-Distanz
 CREATE INDEX IF NOT EXISTS vectors_vector_idx ON vectors USING hnsw (vector vector_l2_ops);
+CREATE INDEX IF NOT EXISTS vectors_cosine_idx ON vectors USING hnsw (vector vector_cosine_ops);

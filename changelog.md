@@ -17,6 +17,35 @@ Aus README und docs übernommene Änderungshistorie. Gleichdatierte Einträge fo
 
 ## 2026-11-28
 
+### TS-16 · Schema des neuesten Backups abgeglichen
+
+Das Schema aus `backups/ts15-20261128-085240.dump` wurde mit `pg_restore --schema-only --exit-on-error` in einer isolierten Testdatenbank wiederhergestellt. Die drei Schema-Dumps aus dem Backup-Restore, der laufenden Datenbank und der frischen Initialisierung mit `Vector/init.sql` waren bytegleich (PostgreSQL 17.6, pgvector 0.8.0). Der Testcontainer und sein temporäres Volume wurden entfernt. Die Prüfung umfasste das Schema. Tabellendaten wurden nicht wiederhergestellt, und die Anwendungstests wurden für diesen Vergleich nicht wiederholt.
+
+### TS-16 · Initialisierungsschema an laufende Datenbank angeglichen
+
+`Vector/init.sql` legt den vorhandenen HNSW-Index `vectors_cosine_idx` mit `vector_cosine_ops` an und verwendet für den bestehenden Unique-Constraint auf `(chunk_id, embedding_set_id)` den Namen `vectors_chunk_id_embedding_key`. Der Schema-Dump einer mit dieser Datei neu initialisierten Testdatenbank war bytegleich mit dem Schema-Dump der laufenden Datenbank (PostgreSQL 17.6, pgvector 0.8.0). Die laufende Datenbank wurde nur lesend geprüft. Der Testcontainer und sein temporäres Volume wurden entfernt.
+
+Die Standard-Podman-Integration bestand mit 7 Tests einschließlich Backup-Restore. Die 10 optionalen Tests für RAG, Reranker und Ollama sowie die Unit-Tests wurden für den Schemaabgleich nicht ausgeführt.
+
+### TS-16 · Cosinus-HNSW gegen exakte Top-k-Suche gemessen
+
+In einer isolierten Kopie der 11.243 Vektoren liefen 24 Fragen zur römischen Geschichte mit normierten Ollama-Embeddings (`snowflake-arctic-embed2`) über alle vier Sets. PostgreSQL 17.6 mit pgvector 0.8.0 führte jede Kombination aus Set, Frage, Metrik und `k` (5, 20, 100) je Messvariante dreimal mit `EXPLAIN (ANALYZE, BUFFERS, TIMING OFF)` aus. Die exakte Referenz wurde ohne HNSW-Indexscans berechnet. Die Übereinstimmung erlaubt Treffer mit gleicher Distanz an der Top-k-Grenze. In den beiden kleinen Sets wurde dasselbe Modell als Quelle für die Suchvektoren verwendet. Ihre Vektornormen liegen bei etwa 18 bis 19, die beiden Snowflake-Sets sind auf Norm 1 normalisiert.
+
+Bei Standard-Planereinstellungen verwendete keine der gemessenen Abfragen einen HNSW-Index. In allen Sets und für beide Metriken entsprach die Treffermenge der exakten Referenz. Auch `hnsw.iterative_scan = strict_order` änderte die Planauswahl nicht. Der zusätzliche Cosinus-Index belegte 86 MB.
+
+| Embedding-Set | Zeilen | Cosinus p50 ohne / mit Cosinus-Index (ms) | Euklidisch p50 ohne / mit Cosinus-Index (ms) |
+| --- | ---: | ---: | ---: |
+| `embedding1` | 3 | 0,203 / 0,203 | 0,200 / 0,200 |
+| `embedding2` | 2 | 0,203 / 0,198 | 0,195 / 0,200 |
+| `snowflake-arctic-embed-v1` | 865 | 2,423 / 2,187 | 2,339 / 2,310 |
+| `snowflake-arctic-embed2-v2` | 10.373 | 22,264 / 22,519 | 21,775 / 22,176 |
+
+Die Tabelle zeigt `k = 5`. Die Vergleichsbasis enthält den euklidischen HNSW-Index aus `Vector/init.sql`.
+
+In einer zweiten Testkopie bevorzugte der Planer HNSW mittels `enable_seqscan = off` und `enable_sort = off`. Im größten Set lagen bei `k = 5` Cosinus bei 0,52 ms und 97,5 % mittlerer Top-k-Übereinstimmung, L2 bei 0,47 ms und 96,7 %. Im schlechtesten Fall erreichten beide 60 %. Bei `k = 100` lieferten beide mit `hnsw.ef_search = 40` nur 31 bis 40 Treffer. Iterative Scans lieferten alle 100 Treffer bei 93,6 % mittlerer Übereinstimmung für Cosinus und 93,4 % für L2. Im Set mit 865 Vektoren lieferten beide nichtiterativen HNSW-Pfade bei `k = 5` in 21 von 24 Abfragen zu wenige Treffer. In den beiden kleinsten Sets lieferten beide null Treffer. Iterative Scans stellten dort die Trefferzahl wieder her, benötigten aber rund 23 ms im Median gegenüber rund 0,2 ms bei exakter Suche.
+
+Cosinus-HNSW lohnt sich für das Initialisierungsschema beim gemessenen Bestand und Standardplaner nicht. Die laufende Datenbank enthält bereits `vectors_cosine_idx` und wurde für beide Kopien nur lesend angesprochen. Beide Testcontainer samt temporären Volumes wurden entfernt. Anwendungstests wurden wegen des reinen Mess- und Dokumentationsumfangs nicht erneut ausgeführt.
+
 ### TS-15 · Abgeschlossen und frühere SQL-Migrationen entfernt
 
 Das vorhandene Volume und das aktuelle Backup verwenden das gültige Schema. TS-15 ist behoben. Die automatische Versionserkennung und Migrationsreihenfolge entfallen als offene Arbeiten. Die früheren SQL-Migrationsdateien, das zugehörige Skript und die Aufrufanleitungen wurden entfernt. Der Ersatztest stellt einen Dump des aktuellen Schemas in einer separaten Testdatenbank wieder her und prüft Daten und Constraints.
