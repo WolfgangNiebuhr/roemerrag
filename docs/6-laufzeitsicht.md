@@ -136,7 +136,7 @@ Die beiden Netzwerkwege getrennt prüfen, aus dem Projektstamm:
 # 1. Windows erreicht Ollama lokal.
 Invoke-RestMethod http://localhost:11434/api/tags
 # 2. Der RAG-Container ermittelt und erreicht einen Ollama-Endpunkt.
-podman exec rag-api python -c "from ollama_endpoint import resolve_ollama_base_url; import urllib.request; u=resolve_ollama_base_url(); print(u); print(urllib.request.urlopen(u+'/api/tags',timeout=10).status)"
+podman exec rag-api python -c "from rag.ollama_endpoint import resolve_ollama_base_url; import urllib.request; u=resolve_ollama_base_url(); print(u); print(urllib.request.urlopen(u+'/api/tags',timeout=10).status)"
 ```
 
 Der zweite Befehl soll eine Basisadresse und Status `200` ausgeben. Er startet einen eigenen Prüfprozess; die laufende RAG-API speichert ihre Auswahl unabhängig davon.

@@ -1,69 +1,34 @@
-import sys
-from pathlib import Path
-sys.path.insert(0, str(Path(__file__).resolve().parents[1]))
+import time
+
+if not __package__:
+    import sys
+    from pathlib import Path
+
+    sys.path.insert(0, str(Path(__file__).resolve().parents[1]))
+
+from flask import Flask, g, jsonify
+
+from rag import embedding, generation, reranking, retrieval, transport
+from rag.embedding_config import EMBEDDING_SET_ID
+from rag.ollama_endpoint import OllamaResolutionError
+from rag_common.health import install_actuator
 from rag_common.http_errors import (
     boolean_field, install, invalid_request, json_object, problem_response, text_field, validating_request,
 )
-from rag_common.rag_results import InvalidResults, generation_metrics, validate_results
-from rag_common.vector_contract import VectorInputError, embedding_norm, parse_search_options, parse_vector
-from rag_common.health import install_actuator
-from flask import Flask, jsonify, g, has_request_context
-import os
-import time
-import random
-import math
-from string import Formatter
-import requests
-import numpy as np
-if __package__:
-    from .ollama_endpoint import OllamaResolutionError, resolve_ollama_base_url
-else:
-    from ollama_endpoint import OllamaResolutionError, resolve_ollama_base_url
+from rag_common.rag_results import InvalidResults, validate_results
+from rag_common.vector_contract import VectorInputError, parse_search_options, parse_vector
 
 app = Flask(__name__)
 install(app, default_stage="processing")
 
-# Konfiguration
-
-## Embedding
-if __package__:
-    from .embedding_config import EMBEDDING_MODEL, EMBEDDING_SET_ID, ANSWER_MODEL
-else:
-    from embedding_config import EMBEDDING_MODEL, EMBEDDING_SET_ID, ANSWER_MODEL
-EMBEDDING_MODEL_NAME = EMBEDDING_MODEL
-
-## Retrieval
-VECTOR_API_URL = os.environ.get("VECTOR_API_URL", "http://host.containers.internal:5500/search")
-NUM_RESULTS = 5
-
-## Generation
-ANSWER_MODEL_NAME = ANSWER_MODEL
-RERANKER_URL = os.getenv("RERANKER_URL", "http://host.containers.internal:5000/rerank")
-RERANKER_MODEL = os.getenv("RERANK_MODEL", "cross-encoder/ms-marco-MiniLM-L6-v2")
-
-# All adapters share bounded transport settings; generation is never retried.
-CONNECT_TIMEOUT = float(os.getenv("RAG_CONNECT_TIMEOUT", "5"))
-READ_TIMEOUTS = {name: float(os.getenv("RAG_" + name.upper() + "_TIMEOUT", str(default)))
-                 for name, default in (("embedding", 300), ("retrieval", 60),
-                                       ("reranking", 600), ("generation", 600))}
-
-
 install_actuator(app, info=lambda: {"configuredModels": {
-    "embedding": EMBEDDING_MODEL_NAME,
-    "answer": ANSWER_MODEL_NAME,
-    "reranker": RERANKER_MODEL,
+    "embedding": embedding.EMBEDDING_MODEL_NAME,
+    "answer": generation.ANSWER_MODEL_NAME,
+    "reranker": reranking.RERANKER_MODEL,
 }})
 
 
-class ProviderUnavailable(RuntimeError):
-    """A provider call could not complete successfully."""
-
-
-class InvalidProviderResponse(ValueError):
-    """A provider returned data that does not meet its response contract."""
-
-
-@app.errorhandler(ProviderUnavailable)
+@app.errorhandler(transport.ProviderUnavailable)
 def provider_unavailable(error):
     return problem_response("dependency-unavailable", str(error))
 
@@ -75,136 +40,13 @@ def ollama_resolution_failed(error):
 
 
 @app.errorhandler(InvalidResults)
-@app.errorhandler(InvalidProviderResponse)
+@app.errorhandler(transport.InvalidProviderResponse)
 def invalid_upstream_response(error):
     return problem_response("upstream-invalid-response", str(error))
 
 
 def upstream_post(url, payload, stage):
-    attempts = 1 if stage == "generation" else 2
-    for attempt in range(attempts):
-        try:
-            response = requests.post(url, json=payload,
-                timeout=(CONNECT_TIMEOUT, READ_TIMEOUTS[stage]),
-                headers={"X-Request-ID": g.request_id} if has_request_context() else {})
-            return response
-        except (requests.Timeout, requests.ConnectionError) as exc:
-            if attempt + 1 == attempts:
-                raise ProviderUnavailable(stage + " is unavailable.") from exc
-            delay = 0.1 * (2 ** attempt) + random.uniform(0, 0.1)
-            app.logger.warning("upstream_retry stage=%s attempt=%s", stage, attempt + 1)
-            time.sleep(delay)
-
-
-def generate_embedding(query, with_metrics=False):
-    """Erzeugt ein Embedding für die vordefinierte Frage über die Ollama-API."""
-    payload = {
-        "model": EMBEDDING_MODEL_NAME,
-        "prompt": query
-    }
-    response = upstream_post(resolve_ollama_base_url() + "/api/embeddings", payload, "embedding")
-    if response.status_code == 200:
-        try:
-            body = response.json()
-            vector = body.get("embedding") if isinstance(body, dict) else None
-            norm = embedding_norm(vector)
-            normalized = np.array(vector, dtype=float) / norm
-            if with_metrics:
-                available = generation_metrics(body)
-                return normalized, {"total_duration": available["generation_duration"],
-                                    "load_duration": available["load_duration"],
-                                    "prompt_eval_duration": available["prompt_eval_duration"],
-                                    "prompt_tokens": available["prompt_tokens"]}
-            return normalized
-        except (ValueError, TypeError, AttributeError, OverflowError) as exc:
-            raise InvalidProviderResponse("Embedding returned an invalid vector.") from exc
-    raise ProviderUnavailable("Embedding is unavailable.")
-
-
-def search_vectors(embedding, embedding_set_id, metric, num_results, *, include_vector=False):
-    """Führt eine Suche über die Vektor-API aus und gibt die besten Treffer zurück."""
-    payload = {
-        "vector": embedding.tolist(),
-        "embedding_set_id": embedding_set_id,
-        "num_results": num_results,
-        "metric": metric
-    }
-    if include_vector:
-        payload["include_vector"] = True
-    response = upstream_post(VECTOR_API_URL, payload, "retrieval")
-    if response.status_code == 200:
-        try:
-            results = response.json()
-        except ValueError as error:
-            raise InvalidProviderResponse("Retrieval returned invalid JSON.") from error
-        results = validate_results(results)
-        if not include_vector:
-            for row in results:
-                row.pop("vector", None)
-        return results
-    else:
-        raise ProviderUnavailable("Retrieval is unavailable.")
-
-
-def generate_answer(context, question, model=None, system_prompt=None, user_prompt=None):
-    system_prompt = system_prompt or (
-        "Du bist ein Experte für römische Geschichte. Beantworte Fragen nur basierend auf den "
-        "als Kontext übergebenen Dokumenten. Wenn die Frage nicht beantwortet werden kann, "
-        "antworte mit 'Die Frage kann basierend auf dem gegebenen Kontext nicht beantwortet werden.'"
-    )
-    payload = {
-        "model": model or ANSWER_MODEL_NAME,
-        "stream": False,
-        "system": system_prompt,
-        "prompt": (user_prompt or "Kontext:\n{context}\n\nFrage: {question}").format(context=context, question=question)
-    }
-    response = upstream_post(resolve_ollama_base_url() + "/api/generate", payload, "generation")
-    if response.status_code != 200:
-        raise ProviderUnavailable("Generation is unavailable.")
-
-    try:
-        data = response.json()
-    except ValueError as exc:
-        raise InvalidProviderResponse("Generation returned invalid JSON.") from exc
-    if not isinstance(data, dict) or not isinstance(data.get("response"), str):
-        raise InvalidProviderResponse("Generation returned an invalid answer.")
-    answer = data["response"]
-    metrics = generation_metrics(data)
-    return answer, metrics
-
-def rerank_results(query, results, model, top_k, with_scores=False):
-    response = upstream_post(RERANKER_URL, {
-        "model": model, "query": query,
-        "documents": [row["chunktext"] for row in results]}, "reranking")
-    if response.status_code == 502:
-        raise InvalidProviderResponse("Reranker rejected an invalid upstream response.")
-    if response.status_code != 200:
-        raise ProviderUnavailable("Reranking is unavailable.")
-    try:
-        body = response.json()
-        ranked = body["ranked_documents"]
-        if not isinstance(ranked, list):
-            raise ValueError()
-        seen = set()
-        for row in ranked:
-            index = row["original_index"]
-            if type(index) is not int or not 0 <= index < len(results) or index in seen:
-                raise ValueError()
-            seen.add(index)
-            score = row["score"]
-            if type(score) not in (int, float) or not math.isfinite(score):
-                raise InvalidProviderResponse("Reranking returned an invalid score.")
-        selected = []
-        for row in ranked[:top_k]:
-            result = dict(results[row["original_index"]])
-            if with_scores:
-                result.update(rerank_score=row["score"], original_index=row["original_index"])
-            selected.append(result)
-        return selected
-    except InvalidProviderResponse:
-        raise
-    except (ValueError, TypeError, KeyError, OverflowError) as exc:
-        raise InvalidProviderResponse("Reranking returned an invalid document mapping.") from exc
+    return transport.upstream_post(url, payload, stage, request_id=g.request_id)
 
 
 def read_rag_request():
@@ -218,7 +60,7 @@ def parse_rag_options(data, *, default_top_k):
         invalid_request("Verwende embedding_set_id als Set-Kennung.", "filter")
     embedding_set = text_field(data, "embedding_set_id", required=False) or EMBEDDING_SET_ID
     try:
-        metric, count = parse_search_options(data, default_count=NUM_RESULTS)
+        metric, count = parse_search_options(data, default_count=retrieval.NUM_RESULTS)
     except VectorInputError as error:
         invalid_request(str(error), error.field)
     text_field(data, "reranker", required=False)
@@ -239,95 +81,17 @@ def validate_evaluation_results(data):
 def validate_evaluation_prompts(data):
     text_field(data, "system_prompt", required=False)
     template = text_field(data, "user_prompt", required=False)
-    if template is None:
-        return
-    try:
-        allowed = all(
-            field is None or (field in ("context", "question") and not spec and not conversion)
-            for _, field, spec, conversion in Formatter().parse(template)
-        )
-    except ValueError:
-        allowed = False
-    if not allowed:
+    if template is not None and not generation.valid_user_prompt(template):
         invalid_request("user_prompt erlaubt nur {context} und {question}.", "user_prompt")
 
 
 def generation_input(data, results):
     payload = {"query": data["query"], "results": results,
-               "answer_model": data.get("answer_model", ANSWER_MODEL_NAME)}
+               "answer_model": data.get("answer_model", generation.ANSWER_MODEL_NAME)}
     for key in ("system_prompt", "user_prompt"):
         if key in data:
             payload[key] = data[key]
     return payload
-
-
-def compare_embeddings(query_vector, other_vector):
-    if len(query_vector) != len(other_vector):
-        raise InvalidProviderResponse("Cannot compare embeddings with different dimensions.")
-    query_norm = math.hypot(*query_vector)
-    other_norm = math.hypot(*other_vector)
-    cosine = None
-    if 0 < query_norm < math.inf and 0 < other_norm < math.inf:
-        cosine = math.fsum((a / query_norm) * (b / other_norm) for a, b in zip(query_vector, other_vector))
-        cosine = max(-1.0, min(1.0, cosine))
-    euclidean = math.dist(query_vector, other_vector)
-    return {"cosine_similarity": cosine, "euclidean_distance": euclidean if math.isfinite(euclidean) else None}
-
-
-def retrieval_distances(embedding, results):
-    distances = []
-    for row in results:
-        try:
-            vector = parse_vector(row.get("vector"), None)
-        except VectorInputError as error:
-            raise InvalidProviderResponse("Retrieval returned an invalid stored vector.") from error
-        distances.append({
-            "chunk_id": row["chunk_id"],
-            "distance": row.get("distance"),
-            **compare_embeddings(embedding, vector),
-        })
-    return distances
-
-
-def embed_query(query, *, supplied_vector=None, with_metrics=False):
-    if supplied_vector is not None:
-        return np.array(supplied_vector, dtype=float), None
-    if with_metrics:
-        return generate_embedding(query, with_metrics=True)
-    return generate_embedding(query), None
-
-
-def retrieve_hits(embedding, embedding_set, metric, count, *, include_distances=False):
-    return validate_results(search_vectors(
-        embedding, embedding_set, metric, count, include_vector=include_distances,
-    ))
-
-
-def usable_hits(results):
-    return [row for row in results if row["chunktext"].strip()]
-
-
-def select_hits(query, results, model, top_k):
-    candidates = usable_hits(results)
-    if not candidates or top_k == 0:
-        return candidates, candidates, None
-    started = time.monotonic()
-    selected = rerank_results(query, candidates, model, top_k, with_scores=True)
-    return candidates, selected, {"model": model, "duration": time.monotonic() - started}
-
-
-def generate_from_hits(query, results, model, **prompts):
-    selected = usable_hits(results)
-    context = "\n".join(row["chunktext"] for row in selected)
-    if selected:
-        answer, metrics = generate_answer(context, query, model, **prompts)
-    else:
-        answer = "Die Frage kann basierend auf dem gegebenen Kontext nicht beantwortet werden."
-        metrics = None
-    return {
-        "results": selected, "context": context, "status": "ok" if selected else "no_context",
-        "response": answer, "metrics": metrics, "chunks": [row["chunk_id"] for row in selected],
-    }
 
 
 def process_hit_fields(results):
@@ -354,37 +118,37 @@ def evaluate_retrieve():
     started = time.monotonic()
     g.stage = "embedding"
     embedding_started = time.monotonic()
-    embedding, embedding_metrics = embed_query(
-        data["query"], supplied_vector=supplied_vector, with_metrics=True,
+    query_vector, embedding_metrics = embedding.embed_query(
+        data["query"], supplied_vector=supplied_vector, with_metrics=True, post=upstream_post,
     )
     embedding_duration = time.monotonic() - embedding_started if supplied_vector is None else None
     g.stage = "retrieval"
     retrieval_started = time.monotonic()
     embedding_set = data["embedding_set_id"]
     metric = data["metric"]
-    results = retrieve_hits(
-        embedding, embedding_set, metric, data["num_results"], include_distances=include_distances,
+    results = retrieval.retrieve_hits(
+        query_vector, embedding_set, metric, data["num_results"], include_vector=include_distances, post=upstream_post,
     )
     retrieval_duration = time.monotonic() - retrieval_started
     diagnostics = {}
     if include_distances:
-        diagnostics["hits"] = retrieval_distances(embedding, results)
+        diagnostics["hits"] = retrieval.retrieval_distances(query_vector, results)
         results = [{key: value for key, value in row.items() if key != "vector"} for row in results]
     if reference_text is not None:
         g.stage = "embedding"
-        reference_vector, _ = embed_query(reference_text)
-        diagnostics["reference"] = compare_embeddings(embedding, reference_vector)
+        reference_vector, _ = embedding.embed_query(reference_text, post=upstream_post)
+        diagnostics["reference"] = embedding.compare_embeddings(query_vector, reference_vector)
     next_request = generation_input(data, results)
-    next_request.update(top_k=data["top_k"], reranker=data.get("reranker", RERANKER_MODEL))
+    next_request.update(top_k=data["top_k"], reranker=data.get("reranker", reranking.RERANKER_MODEL))
     return jsonify(query=data["query"], results=results,
-                   embedding_model=EMBEDDING_MODEL_NAME if supplied_vector is None else None,
+                   embedding_model=embedding.EMBEDDING_MODEL_NAME if supplied_vector is None else None,
                    embedding_set_id=embedding_set, metric=metric,
                    metrics={"retrieved_count": len(results), "embedding": embedding_metrics},
                    timings={"embedding_duration": embedding_duration,
                             "retrieval_duration": retrieval_duration,
                             "evaluation_duration": time.monotonic() - started},
                    next_request=next_request,
-                   **({"vector": embedding.tolist()} if include_query_vector else {}),
+                   **({"vector": query_vector.tolist()} if include_query_vector else {}),
                    **({"diagnostics": diagnostics} if diagnostics else {}))
 
 
@@ -397,9 +161,9 @@ def evaluate_rerank():
         data = parse_rag_options(data, default_top_k=5)
     started = time.monotonic()
     g.stage = "reranking"
-    model = data.get("reranker", RERANKER_MODEL)
+    model = data.get("reranker", reranking.RERANKER_MODEL)
     top_k = data["top_k"]
-    _, selected, _ = select_hits(data["query"], data["results"], model, top_k)
+    _, selected, _ = reranking.select_hits(data["query"], data["results"], model, top_k, post=upstream_post)
     return jsonify(query=data["query"], results=selected, reranker=model, top_k=top_k,
                    status="ok" if selected else "no_context",
                    metrics={"input_count": len(data["results"]), "selected_count": len(selected)},
@@ -416,10 +180,10 @@ def evaluate_generate():
         data = parse_rag_options(data, default_top_k=5)
     started = time.monotonic()
     g.stage = "generation"
-    model = data.get("answer_model", ANSWER_MODEL_NAME)
-    generated = generate_from_hits(
+    model = data.get("answer_model", generation.ANSWER_MODEL_NAME)
+    generated = generation.generate_from_hits(
         data["query"], data["results"], model,
-        system_prompt=data.get("system_prompt"), user_prompt=data.get("user_prompt"),
+        system_prompt=data.get("system_prompt"), user_prompt=data.get("user_prompt"), post=upstream_post,
     )
     return jsonify(**generated, query=data["query"], answer_model=model,
                    timings={"generation_request_duration": time.monotonic() - started},
@@ -436,22 +200,26 @@ def process_request():
     embedding_set = data["embedding_set_id"]
     g.stage = "embedding"
     started = time.monotonic()
-    embedding, _ = embed_query(query)
+    query_vector, _ = embedding.embed_query(query, post=upstream_post)
     timings["embedding_duration"] = time.monotonic() - started
     g.stage = "retrieval"
     started = time.monotonic()
-    results = retrieve_hits(embedding, embedding_set, data["metric"], data["num_results"])
+    results = retrieval.retrieve_hits(
+        query_vector, embedding_set, data["metric"], data["num_results"], post=upstream_post,
+    )
     timings["retrieval_duration"] = time.monotonic() - started
     g.stage = "reranking"
-    retrieved, selected, reranking = select_hits(
-        query, results, data.get("reranker", RERANKER_MODEL), data["top_k"],
+    retrieved, selected, reranking_info = reranking.select_hits(
+        query, results, data.get("reranker", reranking.RERANKER_MODEL), data["top_k"], post=upstream_post,
     )
     g.stage = "generation"
-    generated = generate_from_hits(query, selected, data.get("answer_model", ANSWER_MODEL_NAME))
+    generated = generation.generate_from_hits(
+        query, selected, data.get("answer_model", generation.ANSWER_MODEL_NAME), post=upstream_post,
+    )
     timings["pipeline_duration"] = time.monotonic() - pipeline_started
     return jsonify(retrieved_results=process_hit_fields(retrieved),
                    selected_results=process_hit_fields(generated["results"]),
-                   reranking=reranking, timings=timings, chunks=generated["chunks"],
+                   reranking=reranking_info, timings=timings, chunks=generated["chunks"],
                    status=generated["status"], response=generated["response"], metrics=generated["metrics"])
 
 

@@ -67,13 +67,13 @@ Die Endpunkte validieren und dekodieren ihre Eingaben vor Datenbank- oder Modell
 
 | Teil | Verantwortung / Konfiguration |
 |---|---|
-| HTTP-Einstieg | `POST /process` liest `query`, `embedding_set_id`, `metric`, `num_results` und optionale Modell- und Reranking-Parameter. Der Set-Default ist über `EMBEDDING_SET_ID` konfigurierbar und steht auf `snowflake-arctic-embed2-v2`. Standard sind Metrik `euclidean` und fünf Treffer. |
+| [HTTP-Einstieg](../rag/app.py) | `POST /process` liest `query`, `embedding_set_id`, `metric`, `num_results` und optionale Modell- und Reranking-Parameter. Der Set-Default ist über `EMBEDDING_SET_ID` konfigurierbar und steht auf `snowflake-arctic-embed2-v2`. Standard sind Metrik `euclidean` und fünf Treffer. |
 | Ollama-Resolver | `OLLAMA_BASE_URL` hat Vorrang. Sonst Prüfung des Podman-Hostnamens und unter WSL der sichtbaren IPv4-Default-Gateways über `/api/tags`. Erfolgreiche Auswahl wird pro Prozess gespeichert. |
-| Embeddingadapter | `/api/embeddings`, Modell über `EMBEDDING_MODEL` (Standard `snowflake-arctic-embed2`), Normalisierung des Fragevektors. |
-| Retrievaladapter | Ruft `POST /search` der Vector-API auf. `VECTOR_API_URL` konfiguriert die Zieladresse und verwendet standardmäßig `http://host.containers.internal:5500/search`. |
-| Reranking | Ruft bei vorhandenen Treffern und `top_k > 0` den über `RERANKER_URL` konfigurierten Dienst auf. Standardmäßig ist Reranking für `/process` deaktiviert. |
-| Kontextbildung | Validiert `chunk_id` und `chunktext` und verknüpft die nicht leeren Texte der ausgewählten Treffer. |
-| Generierungsadapter | `/api/generate` liefert Antwort und Laufzeit- und Tokenmetriken ohne Streaming. Das Antwortmodell lässt sich je Anfrage wählen. `ANSWER_MODEL` konfiguriert den Standard (`gemma4:e4b`). |
+| [Embedding](../rag/embedding.py) | Ruft `/api/embeddings` mit dem über `EMBEDDING_MODEL` konfigurierten Modell (Standard `snowflake-arctic-embed2`) auf, normalisiert den Fragevektor und bietet den Vergleich von Embeddings an. |
+| [Retrieval](../rag/retrieval.py) | Ruft `POST /search` der Vector-API auf, validiert Treffer und berechnet bei Bedarf Distanzdiagnosen. `VECTOR_API_URL` verwendet standardmäßig `http://host.containers.internal:5500/search`. |
+| [Reranking](../rag/reranking.py) | Filtert leere Treffertexte und ruft bei nutzbaren Treffern und `top_k > 0` den über `RERANKER_URL` konfigurierten Dienst auf. Standardmäßig ist Reranking für `/process` deaktiviert. |
+| [Generierung](../rag/generation.py) | Bildet den Kontext und ruft `/api/generate` für Antwort, Laufzeit- und Tokenmetriken ohne Streaming auf. Das Antwortmodell lässt sich je Anfrage wählen. `ANSWER_MODEL` konfiguriert den Standard (`gemma4:e4b`). |
+| [Providertransport](../rag/transport.py) | Führt ausgehende HTTP-Aufrufe mit Zeitlimits und schrittabhängigen Wiederholungen aus. Die Flask-Grenze übergibt die Request-ID. |
 
 Die Antwort enthält `response`, `chunks`, `metrics` sowie getrennte `retrieved_results` und `selected_results`. Leerer Kontext führt zu HTTP 200 mit `status: no_context`, leeren `chunks` und `metrics: null`. Ungültige Retrievalantworten ergeben HTTP 502. Die Serverzeiten `embedding_duration`, `retrieval_duration` und `pipeline_duration` stehen in `timings`, auch bei `no_context`. Generierungsmetriken verwenden `generation_duration` mit `total_duration` als Alias. Ungültige optionale Metriken werden als `null` ausgegeben. Der Prompt begrenzt die Antwort auf den Kontext. Ein erfolgreicher API-Aufruf garantiert keine Faktentreue.
 

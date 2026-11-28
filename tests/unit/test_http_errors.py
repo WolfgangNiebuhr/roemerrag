@@ -5,7 +5,7 @@ from uuid import UUID
 
 import pytest
 from flask import Flask
-from rag import app as rag
+from rag import app as rag, embedding, generation, reranking, retrieval
 from reranker import app as reranker
 from rag_common.http_errors import install
 from test_vector_api_unit import vector_module, database
@@ -32,8 +32,8 @@ def test_vector_list_strings_are_rejected_before_io(vector_module, monkeypatch, 
     embed = Mock()
     search = Mock()
     monkeypatch.setattr(vector_module, "ensure_db_pool", initialize)
-    monkeypatch.setattr(rag, "generate_embedding", embed)
-    monkeypatch.setattr(rag, "search_vectors", search)
+    monkeypatch.setattr(embedding, "generate_embedding", embed)
+    monkeypatch.setattr(retrieval, "retrieve_hits", search)
     service = rag if path == "/evaluate/retrieve" else vector_module
     response = service.app.test_client().post(path, json={
         "query": "q", "embedding_set_id": "set", "chunk_id": "c", "chunktext": "Text",
@@ -52,7 +52,7 @@ def test_vector_list_strings_are_rejected_before_io(vector_module, monkeypatch, 
     {'query': 'q', 'embedding_set_id': None}, {'query': 'q', 'embedding_set_id': ' '}])
 def test_rag_validation_precedes_embedding(monkeypatch, payload):
     embed = Mock()
-    monkeypatch.setattr(rag, 'generate_embedding', embed)
+    monkeypatch.setattr(embedding, 'generate_embedding', embed)
     response = rag.app.test_client().post('/process', json=payload)
     assert problem(response, 400, 'urn:rag:problem:invalid-request')['stage'] == 'validation'
     embed.assert_not_called()
@@ -65,10 +65,10 @@ def test_rag_rejects_removed_set_alias_before_provider_call(monkeypatch, path, f
     search = Mock()
     rerank = Mock()
     generate = Mock()
-    monkeypatch.setattr(rag, 'generate_embedding', embed)
-    monkeypatch.setattr(rag, 'search_vectors', search)
-    monkeypatch.setattr(rag, 'rerank_results', rerank)
-    monkeypatch.setattr(rag, 'generate_answer', generate)
+    monkeypatch.setattr(embedding, 'generate_embedding', embed)
+    monkeypatch.setattr(retrieval, 'retrieve_hits', search)
+    monkeypatch.setattr(reranking, 'rerank_results', rerank)
+    monkeypatch.setattr(generation, 'generate_answer', generate)
     response = rag.app.test_client().post(path, json={
         'query': 'q', 'results': [{'chunk_id': 'c', 'chunktext': 'Text'}], **fields,
     })
@@ -183,7 +183,7 @@ def test_malformed_json_and_http_errors(module, path):
 
 
 def test_internal_error_is_safe_and_correlated(monkeypatch, caplog):
-    monkeypatch.setattr(rag, 'generate_embedding', Mock(side_effect=RuntimeError('secret-password')))
+    monkeypatch.setattr(embedding, 'generate_embedding', Mock(side_effect=RuntimeError('secret-password')))
     client = rag.app.test_client()
     first = client.post('/process', json={'query': 'q'}, headers={'X-Request-ID': 'test-123'})
     second = client.post('/process', json={'query': 'q'}, headers={'X-Request-ID': 'bad value'})

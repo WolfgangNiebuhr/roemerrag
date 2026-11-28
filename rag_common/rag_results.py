@@ -16,6 +16,10 @@ def validate_results(results):
     return results
 
 
+def usable_hits(results):
+    return [row for row in results if row["chunktext"].strip()]
+
+
 def generation_metrics(data):
     def number(key, count=False):
         value = data.get(key)

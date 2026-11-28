@@ -192,7 +192,7 @@ def e2e_ollama_url(podman_stack):
 
     script = (
         "import json, urllib.request; "
-        "from ollama_endpoint import resolve_ollama_base_url; "
+        "from rag.ollama_endpoint import resolve_ollama_base_url; "
         "url = resolve_ollama_base_url(); print('Ollama endpoint:', url, flush=True); "
         "r = urllib.request.urlopen(url + '/api/tags', timeout=10); "
         "models = {m['name'] for m in json.load(r)['models']}; "

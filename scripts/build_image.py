@@ -11,6 +11,8 @@ INPUTS = {
     'vectorapi': ('Vector/Dockerfile.api', 'Vector/app.py', 'Vector/requirements.txt',
                   'rag_common/vector_contract.py'),
     'rag-api': ('rag/Dockerfile', 'rag/app.py', 'rag/embedding_config.py', 'rag/ollama_endpoint.py',
+                'rag/embedding.py', 'rag/retrieval.py', 'rag/reranking.py', 'rag/generation.py',
+                'rag/transport.py',
                 'rag_common/vector_contract.py'),
     'reranker': ('reranker/Dockerfile', 'reranker/app.py'),
 }

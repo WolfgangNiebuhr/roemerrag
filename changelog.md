@@ -17,6 +17,18 @@ Aus README und docs übernommene Änderungshistorie. Gleichdatierte Einträge fo
 
 ## 2026-11-28
 
+### Gemeinsamen Retrieval-Schritt vereinfacht
+
+`/process` und `/evaluate/retrieve` rufen `retrieve_hits` direkt auf. Die Funktion führt die Vektorsuche aus und prüft die Providerantwort einmal. Die HTTP-Grenze gibt die Request-ID an den Providertransport weiter und validiert separat eingereichte Treffer weiterhin als Requestdaten.
+
+327 Unit-Tests und fünf gezielte Podman-Integrationstests bestanden. Die Unit-Tests prüfen die Parität der Abläufe und HTTP 502 bei ungültigen Providerantworten über beide Retrieval-Einstiege. Die übrigen Podman-Tests lagen außerhalb des Änderungsumfangs.
+
+### RAG-Schritte in eigene Module verschoben
+
+Die Flask-Grenze in `rag/app.py` orchestriert dieselben Fachfunktionen für `/process` und `/evaluate/*`. Embedding, Retrieval, Reranking und Generierung liegen mit ihren Hilfsfunktionen in eigenen Modulen. Der gemeinsame Providertransport erhält die Request-ID aus der Flask-Grenze. Das RAG-Image startet den Paket-Einstieg `python -m rag.app`.
+
+321 Unit-Tests und fünf Podman-Integrationstests mit frisch gebautem RAG-Image bestanden. Sie decken unter anderem die Parität zwischen `/process` und der Evaluationskette, die Weitergabe der Request-ID und die Ende-zu-Ende-Abläufe mit Ollama und Reranker ab. Die übrigen Podman-Tests wurden wegen des auf die RAG-API begrenzten Änderungsumfangs nicht ausgeführt.
+
 ### TS-24 · Gemeinsame Business-Funktionen für RAG und Evaluation
 
 `/process` und die Evaluationsendpunkte verwenden dieselben Funktionen für Frageembedding, Retrieval, Trefferauswahl und Generierung. Die HTTP-Verträge bleiben erhalten. Der Paritätstest prüft die Aufrufreihenfolge, die Übergaben an Reranker und Generator sowie die Ergebnisse mit aktivem und deaktiviertem Reranking und bei fehlendem Kontext.
