@@ -16,17 +16,11 @@ agent_instructions:
 
 CLI und RAG lesen Modell und Set aus `rag/embedding_config.py`. Beide Einstellungen sind unabhängig über Umgebungsvariablen überschreibbar. Der Standard verweist auf das bestehende Set `snowflake-arctic-embed2-v2`; das Modell bleibt `snowflake-arctic-embed2`.
 
-Die Datenbankspalte wird transaktional umbenannt; Kennungen und Vektoren bleiben unverändert. Vor jeder Bestandsmigration erzeugt das Werkzeug ein vollständiges Backup und prüft dessen Inhaltsverzeichnis. Es gibt keine automatische Migration beim API-Start. Damit sind Backup und Umstellungszeitpunkt explizite Betriebsschritte.
-
 Vector-API und RAG-API verwenden für die Set-Kennung ausschließlich `embedding_set_id`. Die CLI verwendet `--embedding-set-id`. Nur die Zeilenzählung kann ohne Set-ID alle Sets umfassen. Die RAG-API verwendet ohne Angabe das konfigurierte Standard-Set.
-
-Migration und neue API-Version müssen gemeinsam ausgerollt werden; alte API-Versionen erwarten den alten Spaltennamen. Rückweg und Restore sind im README dokumentiert.
 
 ## 9.2 Chunktext explizit benennen (21.11.2026)
 
-Die Spalte `metadata` enthält den zur Kontextbildung verwendeten Text und heißt künftig `chunktext`. Der Name gilt durchgängig in SQL, Vector-API, Import, Retrieval, Reranking und Analyse. Es gibt keinen Kompatibilitätsalias; externe API-Clients müssen gleichzeitig aktualisiert werden. `/find` durchsucht `chunktext` weiterhin mit `ILIKE`.
-
-`002_chunktext.sql` benennt nur die Spalte um. Inhalte einschließlich NULL, Vektoren, Schlüssel und Index bleiben erhalten. Der vorhandene Backup-Migrationsmechanismus führt die Migration mit `--migration 002_chunktext.sql` erst nach einem geprüften vollständigen Dump aus. Migration und API-Aktualisierung erfolgen bei gestoppten APIs. Ein erneutes Embedding ist nicht erforderlich.
+Die Spalte `chunktext` enthält den zur Kontextbildung verwendeten Text. Der Name gilt durchgängig in SQL, Vector-API, Import, Retrieval, Reranking und Analyse. Es gibt keinen Kompatibilitätsalias; externe API-Clients müssen gleichzeitig aktualisiert werden. `/find` durchsucht `chunktext` weiterhin mit `ILIKE`.
 
 ## 9.3 Set-Konfiguration manuell dokumentieren (21.11.2026)
 

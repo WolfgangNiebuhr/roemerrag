@@ -56,6 +56,23 @@ python scripts/build_image.py rag-api --tag rag-api:local
 python scripts/build_image.py reranker --tag reranker:local
 ```
 
+### Laufende API-Images aktualisieren
+
+```powershell
+.\scripts\update-api-images.ps1
+```
+
+Das Skript erwartet eine laufende `vector-api` und aktualisiert auch `rag-api` und `reranker`, wenn Container unter diesen Namen laufen. Es ruft aktuelle Basisimages ab, baut die Zielimages neu und testet sie in einem separaten Pod mit eigener Datenbank. Läuft die RAG-API, benötigt der Testlauf die unten beschriebenen Ollama-Modelle. Bei erfolgreichen Tests setzt das Skript dieselben Images mit den bisherigen Startoptionen ein. Während des Wechsels sind die betroffenen APIs kurzzeitig nicht erreichbar. Die bisherigen Container bleiben für einen Rückwechsel erhalten. Mit `-TestOnly` endet der Lauf nach den Integrationstests. PostgreSQL und sein Bestandsvolume sind vom Rollout ausgenommen.
+
+Jeder erfolgreiche Testlauf speichert die vollständigen Image-IDs unter `artifacts/tested-api-images/` und gibt eine Freigabe-ID aus. Für einen späteren Rollout den ausgegebenen Aufruf verwenden.
+
+```powershell
+.\scripts\update-api-images.ps1 -TestOnly
+.\scripts\update-api-images.ps1 -DeployTested $freigabeId
+```
+
+`-DeployTested` verwendet die lokal vorhandenen Images der Freigabe ohne Neubau oder erneuten Integrationstest. Die Freigabe muss dieselben API-Dienste umfassen, die beim Rollout laufen. Beide Rollout-Wege prüfen den Dienststatus, die Chunk-Anzahl und Embedding-Sets sowie bei laufenden Diensten Reranking und eine RAG-Anfrage mit `phi3:mini` gegen `snowflake-arctic-embed2-v2`. Die Prüfungen verwenden die Standardports 5500, 5600 und 5000. Bei einem Fehler stellt das Skript die bisherigen API-Container wieder her.
+
 ### Vector-Datenbank und API starten
 
 ```powershell
@@ -98,43 +115,13 @@ Die Vector-API verwendet `embedding_set_id` in Anfragen und Antworten. Der früh
 
 Gespeicherte Vektoren liefert die Vector-API ebenso wie den RAG-Fragevektor auf Anfrage als JSON-Zahlenlisten. Beim Einzelabruf `include_vector=true` in der URL setzen, etwa `GET /chunks/pg3060-1?embedding_set_id=snowflake-arctic-embed2-v2&include_vector=true`. Bei `POST /search` den booleschen Wert `include_vector: true` im JSON-Body setzen. Ohne Opt-in fehlt `vector` in diesen Antworten.
 
-### Bestehende Datenbank migrieren
-
-Der Quelltext eines Chunks heißt in Datenbank und API `chunktext` (bei ?lteren Datenbanken `metadata`). Importer, Retrieval, Reranking, Analyse und `/find` verwenden den neuen Namen. Es gibt keinen Alias für `metadata`; externe Clients müssen gleichzeitig aktualisiert werden.
-
-Für eine Datenbank, deren Set-Spalte bereits `embedding_set_id` heißt, nach dem Bauen der neuen API-Images und Stoppen beider APIs ausführen:
-
-```powershell
-python scripts/migrate_embedding_set_id.py --migration 002_chunktext.sql
-```
-
-Auch dieser Schritt erstellt und prüft zuerst einen neuen vollständigen Dump unter `backups/`. Die Migration benennt ausschließlich `metadata` in `chunktext` um, ist transaktional und wiederholbar und berechnet keine Embeddings neu. Rückweg bei gestoppten APIs: `ALTER TABLE vectors RENAME COLUMN chunktext TO metadata;`, dann die vorherigen API-Versionen starten. Bei älteren Datenbanken zuerst die nachfolgende Set-Migration und anschließend die Umbenennung ausführen.
-
-Vor dem Start der aktuellen APIs die Pflichtfeldregel auf bestehende Datenbanken anwenden:
-
-```powershell
-python scripts/migrate_embedding_set_id.py --migration 003_required_chunktext.sql
-```
-
-Die Migration erstellt und prüft zuerst einen Dump. Bei vorhandenen ungültigen Texten bricht sie ohne Datenänderung ab. Zur Prüfung dient `SELECT id, chunk_id, embedding_set_id FROM vectors WHERE chunktext IS NULL OR length(btrim(chunktext, E' \n\r')) = 0;`. Nach Korrektur der betroffenen Texte kann die Migration erneut ausgeführt werden. Neue Datenbanken erhalten die Regel bei der Initialisierung.
-
-Kein Neuimport und kein erneutes Embedding: Die Migration benennt nur `vectors.embedding` in `embedding_set_id` um. Kennungen, Vektoren, IDs, Metadaten, Constraints und Index bleiben erhalten. Änderungen an `init.sql` allein aktualisieren keine vorhandene Datenbank.
-
-Zuerst neue API-Images bauen, externe schreibende Clients anhalten und beide APIs stoppen:
-
-```powershell
-python scripts/build_image.py vectorapi --tag vectorapi:local
-python scripts/build_image.py rag-api --tag rag-api:local
-podman stop rag-api vector-api
-python scripts/migrate_embedding_set_id.py
-# Nur nach Erfolg: API-Container mit den Startbefehlen oben neu erstellen.
-```
-
-Das Werkzeug erstellt einen vollständigen binären `pg_dump -Fc` unter `backups/` (nicht versioniert) und prüft ihn mit `pg_restore --list`, bevor es `Vector/migrations/001_embedding_set_id.sql` ausführt. Bei Backupfehlern wird nicht migriert. Optionen: `--container`, `--user`, `--database`, `--backup-dir`. Die SQL-Migration ist transaktional und wiederholbar. Die Inhaltsverzeichnisprüfung ersetzt keinen Restore-Test; die Podman-Integration prüft zusätzlich die tatsächliche Wiederherstellung in eine eigene Datenbank.
-
-Rückweg: APIs stoppen, `ALTER TABLE vectors RENAME COLUMN embedding_set_id TO embedding;` ausführen und alte API-Versionen starten. Für eine vollständige Wiederherstellung das Dump mit `podman cp` in den DB-Container kopieren und dort `pg_restore -U admin -d <leere-zieldatenbank> <dump-pfad>` ausführen. Bestehende Volumes nicht löschen.
-
 Die Ollama-Ermittlung prüft zuerst `host.containers.internal:11434`. Unter WSL werden anschließend die IPv4-Default-Gateways aus `/proc/net/route` geprüft. Nur ein erreichbarer Endpunkt mit einer Ollama-Modellliste wird übernommen und für die Prozesslaufzeit gespeichert. Bei Nichterreichbarkeit versucht der nächste Request die Ermittlung erneut. Nach einem WSL-Neustart startet der Containerprozess mit einer neuen Ermittlung. Bei einer eigenen Bridge kann deren Gateway statt des Windows-Gateways sichtbar sein; dafür oder für entfernte Modellserver lässt sich `OLLAMA_BASE_URL` beim Containerstart ausdrücklich setzen. Diese Einstellung hat Vorrang vor der Automatik. Ollama muss weiterhin aus der WSL-Umgebung erreichbar sein.
+
+### Datenbankschema und Wiederherstellung
+
+[Vector/init.sql](Vector/init.sql) definiert das aktuelle Schema und wird beim ersten Start mit einem leeren Datenverzeichnis ausgeführt. Eine vorhandene Datenbank behält ihr Schema beim Containerwechsel.
+
+Für eine vollständige Wiederherstellung ein aktuelles Backup im PostgreSQL-Custom-Format (`pg_dump -Fc`) mit `podman cp` in den Datenbankcontainer kopieren und dort `pg_restore --exit-on-error -U admin -d <leere-zieldatenbank> <dump-pfad>` ausführen. Die Zieldatenbank muss leer sein, damit der Dump Schema und Daten gemeinsam wiederherstellen kann. Das Bestandsvolume erhalten.
 
 ### Optionalen Reranker starten
 
@@ -169,7 +156,7 @@ Die Vector-spezifischen Hinweise stehen in [Vector/README.txt](Vector/README.txt
 ### Automatisierte Tests: Unit und Podman-Integration
 
 Die Testarten sind getrennt: containerfreie Unit-Tests liegen in `tests/unit`; Podman- und externe Dienst-Integrationstests liegen in `tests/podman`. `tests/conftest.py` stellt gemeinsame pytest-Optionen bereit. `tests/podman/conftest.py` baut den isolierten Containerstack auf und räumt ihn anschließend ab.
-Die pytest-Konfiguration deaktiviert den Cache-Provider (`-p no:cacheprovider`), damit kein Zugriff auf `.pytest_cache` erforderlich ist. Die Chunking-Tests legen eindeutige UTF-8-Testdateien direkt in `tests/unit` an und löschen sie selbst. Diese Chunking-Tests benötigen keine temporären Verzeichnisse. Pytest-Tempverzeichnisse (`tmp_path`/`tmpdir`) liegen durch `tests/conftest.py` immer außerhalb des Checkouts in einem eindeutigen Unterverzeichnis des System-/Benutzer-Tempbereichs. Ein explizites `--basetemp` innerhalb des Projekts wird vor Testbeginn zurückgewiesen; auch ein Tempbereich aus Umgebungsvariablen darf nicht im Projekt liegen. `PYTEST_DEBUG_TEMPROOT` kann die Fixture-Verzeichnisse nicht ins Projekt umleiten. Migrationstests verwenden ebenfalls externe Tempverzeichnisse. Private Windows-ACLs solcher Verzeichnisse bleiben damit außerhalb des Projekts.
+Die pytest-Konfiguration deaktiviert den Cache-Provider (`-p no:cacheprovider`), damit kein Zugriff auf `.pytest_cache` erforderlich ist. Die Chunking-Tests legen eindeutige UTF-8-Testdateien direkt in `tests/unit` an und löschen sie selbst. Diese Chunking-Tests benötigen keine temporären Verzeichnisse. Pytest-Tempverzeichnisse (`tmp_path`/`tmpdir`) liegen durch `tests/conftest.py` immer außerhalb des Checkouts in einem eindeutigen Unterverzeichnis des System-/Benutzer-Tempbereichs. Ein explizites `--basetemp` innerhalb des Projekts wird vor Testbeginn zurückgewiesen; auch ein Tempbereich aus Umgebungsvariablen darf nicht im Projekt liegen. `PYTEST_DEBUG_TEMPROOT` kann die Fixture-Verzeichnisse nicht ins Projekt umleiten. Private Windows-ACLs solcher Verzeichnisse bleiben damit außerhalb des Projekts.
 
 Voraussetzungen für Unit-Tests sind Python und die Testabhängigkeiten. Podman-Integration benötigt zusätzlich eine gestartete Podman-Machine. Ollama-Tests setzen eine Host-Instanz auf `localhost:11434` und das Modell `snowflake-arctic-embed2` voraus.
 Bei Exitcode 125 zuerst `podman info` aus derselben Ausfuehrungsumgebung pruefen. Meldet Podman beim Lesen seiner SSH-Identitaet unter `%USERPROFILE%\.local\share\containers\podman\machine` einen Zugriffsfehler, benoetigt der Testprozess Zugriff auf diese Datei. In einer eingeschraenkten Agent-Sandbox die isolierten Tests mit genehmigtem Zugriff ausserhalb der Sandbox ausfuehren; Schluessel und Dateirechte unveraendert lassen.

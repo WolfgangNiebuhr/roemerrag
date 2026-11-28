@@ -18,7 +18,7 @@ COMMON = ('rag_common/__init__.py', 'rag_common/http_errors.py', 'rag_common/rag
           'rag_common/health.py')
 
 
-def build_image(service, image):
+def build_image(service, image, *, refresh=False):
     """Copy only declared source files; never enumerate tests or historical trees."""
     inputs = INPUTS[service]
     with tempfile.TemporaryDirectory(prefix='rag-build-') as staging:
@@ -27,7 +27,8 @@ def build_image(service, image):
             destination.parent.mkdir(parents=True, exist_ok=True)
             shutil.copyfile(ROOT / relative, destination)
         built_at = datetime.now(timezone.utc).isoformat(timespec='seconds')
-        subprocess.run(['podman', 'build', '-t', image, '-f', inputs[0],
+        build_options = ['--pull=always', '--no-cache'] if refresh else []
+        subprocess.run(['podman', 'build', *build_options, '-t', image, '-f', inputs[0],
                         '--build-arg', f'RAG_BUILD_TIME={built_at}', staging],
                        cwd=ROOT, check=True)
 
@@ -36,5 +37,6 @@ if __name__ == '__main__':
     parser = argparse.ArgumentParser(description=__doc__)
     parser.add_argument('service', choices=INPUTS)
     parser.add_argument('--tag', required=True)
+    parser.add_argument('--refresh', action='store_true')
     args = parser.parse_args()
-    build_image(args.service, args.tag)
+    build_image(args.service, args.tag, refresh=args.refresh)

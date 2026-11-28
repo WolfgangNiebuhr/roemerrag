@@ -186,7 +186,7 @@ In [analyze.py](../analyze.py) umfasst `GOLDCHUNK` nur die Keyword-Zeile; die fo
 
 ### TS-15 – Nicht reproduzierbare Builds und Testumgebungen
 
-**Status** · teilweise behoben
+**Status** · behoben
 
 **Schweregrad** · P2
 
@@ -194,9 +194,7 @@ In [analyze.py](../analyze.py) umfasst `GOLDCHUNK` nur die Keyword-Zeile; die fo
 
 Die Dockerfiles für [Vector](../Vector/Dockerfile), [RAG](../rag/Dockerfile) und [Reranker](../reranker/Dockerfile) fixieren Abhängigkeiten nicht vollständig. pgvector wird vom aktuellen Repositorystand gebaut. Modellrevisionen werden nicht durchgängig erfasst. `init.sql` wirkt nur bei leerem Datenverzeichnis; ein versionierter Migrationspfad fehlt. Gleicher Projektcode erzeugt unterschiedliche Laufzeitstände; bestehende Volumes bleiben bei Schemaänderungen zurück.
 
-#### Noch offen
-
-Python-Abhängigkeiten, die Basisimages der API-Dienste und die Modellrevisionen fixieren. Die dokumentierte Testinstallation in einer frischen Umgebung prüfen. Bei weiteren Migrationen Versionserkennung und Reihenfolge absichern.
+Bewegliche Basisimage-Tags der API-Dienste, nicht fixierte Python-Abhängigkeiten und Änderungen der Modellrevisionen sind als [R-05](11-1-risiken.md#r-05--veränderliche-basisimages-python-abhängigkeiten-und-modellrevisionen) akzeptiert. Das vorhandene Volume und das aktuelle Backup verwenden das gültige Schema aus [`init.sql`](../Vector/init.sql). Für den Betrieb mit diesem Stand ist keine automatische Versionserkennung oder Migrationsreihenfolge erforderlich.
 
 ### TS-16 – Indexstrategie passt nicht zu allen Suchmetriken
 
@@ -272,7 +270,7 @@ Die Vector-API akzeptiert fehlenden oder nullwertigen `chunktext` und kann `null
 
 **Lösungsvorschlag**
 
-Die Vector-API verlangt beim Schreiben einen nichtleeren String. Die Datenbank erzwingt denselben Vertrag mit `NOT NULL` und einem Check-Constraint für leere Strings und reine Kombinationen aus Leerzeichen, LF und CR. Die [Migration für Bestandsdatenbanken](../README.md) prüft vorhandene Zeilen beim Anlegen der Constraints.
+Die Vector-API verlangt beim Schreiben einen nichtleeren String. Die Datenbank erzwingt denselben Vertrag mit `NOT NULL` und einem Check-Constraint für leere Strings und reine Kombinationen aus Leerzeichen, LF und CR. Das [Initialisierungsschema](../Vector/init.sql) enthält beide Constraints.
 
 ### TS-21 – Überschrittene Chunkgröße bei langen Passagen
 

@@ -48,10 +48,6 @@ podman exec -it vectordb psql -U admin -d vector_db
 
 # Aktuelles Schema: vectors(id, chunk_id, embedding_set_id, vector, chunktext).
 # Quelltext steht in chunktext; metadata wird nicht mehr unterstützt.
-# Bestehende DB nach API-Build und API-Stopp aus dem Projektstamm migrieren:
-# python scripts/migrate_embedding_set_id.py --migration 002_chunktext.sql
-# Erstellt und prüft vorab ein Backup. Danach neue API-Container erstellen.
-# Vollständiger Ablauf, vorherige Set-Migration und Rückweg: ../README.md.
 
 # Vector-Api container neu starten
 podman restart vector-api

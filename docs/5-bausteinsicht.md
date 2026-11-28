@@ -115,7 +115,7 @@ Die Dockerfiles installieren Pakete und kopieren Anwendungscode beim Image-Build
 
 Im README-Neuaufbau teilen PostgreSQL, Vector-API und RAG-API den Pod `vectorpod`. PostgreSQL speichert Daten im Named Volume `pgvector-data`; `init.sql` wird nur bei Initialisierung eines leeren Datenverzeichnisses ausgeführt. Ein Image-Neubau migriert keine vorhandene Datenbank. Der optionale Reranker läuft separat auf Port 5000. Ollama läuft als Windows-Hintergrund-App auf Port 11434.
 
-Die RAG-API kann auch separat auf Port 5600 laufen und die Vector-API über deren veröffentlichten Port erreichen. Bestehende Datenbanken werden bei Schemaänderungen mit dem Backup- und Migrationsverfahren aus dem README aktualisiert.
+Die RAG-API kann auch separat auf Port 5600 laufen und die Vector-API über deren veröffentlichten Port erreichen. `Vector/init.sql` definiert das Schema für neue Datenbanken. Ein DB-Containerwechsel mit vorhandenem Volume übernimmt dessen Schema und Daten.
 
 Die Testfixture baut einen eigenen Pod mit eindeutigen Container-/Image-Namen und eigenem Volume auf. API-Hostports vergibt Podman dynamisch, PostgreSQL wird nicht am Host veröffentlicht. Die Test-RAG-API sucht innerhalb des Test-Pods. Nur Ollama wird mit dem Host geteilt. Details stehen im [Testkonzept](8-1-testkonzept.md).
 

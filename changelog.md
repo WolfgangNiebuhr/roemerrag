@@ -17,6 +17,46 @@ Aus README und docs übernommene Änderungshistorie. Gleichdatierte Einträge fo
 
 ## 2026-11-28
 
+### TS-15 · Abgeschlossen und frühere SQL-Migrationen entfernt
+
+Das vorhandene Volume und das aktuelle Backup verwenden das gültige Schema. TS-15 ist behoben. Die automatische Versionserkennung und Migrationsreihenfolge entfallen als offene Arbeiten. Die früheren SQL-Migrationsdateien, das zugehörige Skript und die Aufrufanleitungen wurden entfernt. Der Ersatztest stellt einen Dump des aktuellen Schemas in einer separaten Testdatenbank wieder her und prüft Daten und Constraints.
+
+`python -B -m pytest -c tests/pytest.ini tests --all -ra --tb=short` bestand mit 318 Unit- und 17 Integrationstests in 116,37 Sekunden. Kein Test wurde übersprungen. Der laufende Stack, sein Volume und die vorhandenen Backups wurden nicht verändert.
+
+### TS-15 · Testinstallation in frischer Python-Umgebung geprüft
+
+In einer neuen Windows-venv mit Python 3.13.1 ließ sich die Testumgebung mit `pip install -r tests/podman/requirements.txt` gemäß README installieren. `pip check` meldete keine Konflikte. `python -B -m pytest -c tests/pytest.ini tests --all -ra --tb=short` bestand mit 322 Unit- und 19 Integrationstests in 162,25 Sekunden. Kein Test wurde übersprungen. Der Integrationstestlauf verwendete eigene Podman-Ressourcen. Der laufende Stack und sein Bestandsvolume wurden nicht verändert.
+
+### TS-15 · Nicht fixierte Python-Abhängigkeiten als Risiko akzeptiert
+
+R-05 erfasst jetzt auch nicht fixierte Python-Abhängigkeiten. Bestandene Integrationstests im isolierten Stack genügen als Freigabekriterium beim Neubau der API-Images. Die Prüfung der Testinstallation in einer frischen Umgebung bleibt in TS-15 offen. Die Änderung betrifft nur die Dokumentation.
+
+### TS-15 · Modelländerungen als Risiko akzeptiert
+
+R-05 erfasst Änderungen von Modellrevisionen unter derselben Modellkennung. Die Untersuchung von Modelldrift ist ein Projektziel. TS-15 führt die Fixierung der Modellrevisionen nicht mehr als offene Arbeit. Die Änderung betrifft die Dokumentation. Ein spezifischer Modelldrift-Test wurde nicht hinzugefügt.
+
+### TS-15 · Geprüfte API-Images später ausrollen
+
+Das Aktualisierungsskript speichert nach erfolgreichen Integrationstests die vollständigen Image-IDs. `-DeployTested` verwendet diese lokal gespeicherten Freigaben direkt. Beide Rollout-Wege prüfen Gesundheitsstatus, Vector-Bestand, Reranking und RAG-Antwort je nach aktiven Diensten und wechseln bei einem Fehler auf die bisherigen API-Container zurück.
+
+Die lesenden Funktionsprüfungen bestanden gegen den laufenden Stack. Der verzögerte Rollout und ein Rückwechsel nach fehlgeschlagener RAG-Prüfung wurden simuliert. Die bereits vollständig geprüfte Freigabe `5a6286c7e62e` wurde lokal erfasst. Bei dieser Änderung wurden keine Container ausgetauscht und keine Integrationstests neu gestartet.
+
+### TS-15 · Drei geprüfte API-Images ausgerollt
+
+Vector-API (`9b12a28bec62`), RAG-API (`ab53469ae575`) und Reranker (`21850829ee6a`) laufen mit den zuvor isoliert geprüften Images und melden `UP`. Die Vector-API meldete vor und nach dem Wechsel 11.243 Chunks in vier Embedding-Sets und lieferte den Chunk `pg3062-315`. Ein direkter Reranking-Aufruf lieferte zwei endliche Scores. RAG beantwortete die Frage nach Hannibal mit `phi3:mini` und zwei per Reranker ausgewählten Chunks.
+
+Container-ID, Image, Startzeitpunkt und Volume-Mount von `vectordb` blieben gleich. Die vorherigen API-Container bleiben gestoppt unter ihren Namen mit dem Zusatz `-before-update-20261128-115022`. Ein erster Ausrollversuch wurde wegen eines Fehlers bei der Auswertung der Chunk-IDs durch den Prüflauf zurückgerollt. Der Wiederholungslauf mit korrigierter Prüfung war erfolgreich.
+
+### TS-15 · API-Aktualisierung mit allen Diensten geprüft
+
+`scripts/update-api-images.ps1 -TestOnly` baute Vector-API (`9b12a28bec62`), RAG-API (`ab53469ae575`) und Reranker (`21850829ee6a`) mit dem aktuellen Basisimage neu. Im isolierten Podman-Stack bestanden alle 19 Integrationstests einschließlich PostgreSQL/pgvector, Import, Ollama, RAG-Ende-zu-Ende und Reranking in 143,54 Sekunden. Es gab keine übersprungenen Tests. Der Lauf endete vor dem Rollout.
+
+### TS-15 · Regelmäßige Aktualisierung der API-Images
+
+Bewegliche Basisimage-Tags der API-Dienste sind als R-05 akzeptiert. `scripts/update-api-images.ps1` baut die Images der laufenden API-Dienste mit aktuellen Basisimages. Ein isolierter Podman-Teststack verwendet deren Image-IDs. Nach erfolgreicher Prüfung übernimmt das Skript dieselben Images in den laufenden Stack und hält die bisherigen Container für einen Rückwechsel vor.
+
+322 Unit-Tests und 9 isolierte Integrationstests mit neu gebauter Vector-API bestanden. Rollout und Rückwechsel bei einem Startfehler wurden mit simulierten Podman-Kommandos geprüft. Die optionalen Dienste RAG und Reranker liefen zum Prüfzeitpunkt nicht und wurden im Aktualisierungslauf nicht einbezogen. Der laufende Stack wurde bei dieser Prüfung nicht ausgetauscht.
+
 ### TS-15 · PostgreSQL und Vector-API im laufenden Pod ausgetauscht
 
 `vectordb` läuft im bestehenden Pod mit Image `649b1453ea95`, PostgreSQL 17.6, pgvector 0.8.0 und dem bisherigen Volume `pgvector-data`. `vector-api` bedient Port 5500 mit Image `928edc882b2a`. Die Vorgänger `vectordb-before-ts15-20261128-085240` und `vector-api-before-actuator-20261127-185135` bleiben gestoppt für einen Rückwechsel verfügbar.
@@ -147,15 +187,15 @@ Kapitel 9.5 hält fest, warum Dateistamm und Chunknummer Teil der ID sind. TS-23
 
 Der Container `vector-api` läuft im bestehenden Pod mit Image `14c79543895a`. `GET /health/ready` lieferte HTTP 200. `POST /vectors` lieferte für fehlenden Chunktext, `null`, einen leeren String, reine Leerzeichen und eine Mischung aus Leerzeichen, LF und CR jeweils HTTP 400 mit Problem Details für `/chunktext`. Der vorherige Container bleibt gestoppt unter `vector-api-before-ts20-20261127-103748` verfügbar.
 
-### Migration 003 auf der laufenden Datenbank angewendet
+### Pflichtfeldregel auf der laufenden Datenbank angewendet
 
-PostgreSQL hat Migration 003 auf `vectordb/vector_db` mit `COMMIT` abgeschlossen. `NOT NULL` und der validierte Check-Constraint `vectors_chunktext_nonblank` sind aktiv. Alle 11.243 Zeilen erfüllen die Regel. Direkte Inserts und Updates mit `NULL`, leerem String, reinen Leerzeichen und einer Kombination aus Leerzeichen, LF und CR wurden jeweils abgewiesen. Die Prüftransaktion wurde zurückgerollt.
+PostgreSQL hat die Schemaänderung auf `vectordb/vector_db` mit `COMMIT` abgeschlossen. `NOT NULL` und der validierte Check-Constraint `vectors_chunktext_nonblank` sind aktiv. Alle 11.243 Zeilen erfüllen die Regel. Direkte Inserts und Updates mit `NULL`, leerem String, reinen Leerzeichen und einer Kombination aus Leerzeichen, LF und CR wurden jeweils abgewiesen. Die Prüftransaktion wurde zurückgerollt.
 
 Backup vor der Migration: `backups/20261127-103511-000482.dump`. Nach einer Podman-Transportmeldung beim Migrationslauf wurde das Archiv erneut mit `pg_restore --list` geprüft. Es enthält den Tabellendateneintrag für `public.vectors`.
 
 ### Pflichtregel für Chunktext implementiert
 
-TS-20. PostgreSQL weist bei Inserts und Updates `NULL`, leere Strings und reine Kombinationen aus Leerzeichen, LF und CR ab. Die Vector-API meldet ungültigen oder fehlenden Chunktext mit HTTP 400 vor dem Datenbankzugriff. Migration 003 prüft den Bestand transaktional und bricht bei ungültigen Werten ab. Die laufende Datenbank wurde für diese Änderung nicht migriert.
+TS-20. PostgreSQL weist bei Inserts und Updates `NULL`, leere Strings und reine Kombinationen aus Leerzeichen, LF und CR ab. Die Vector-API meldet ungültigen oder fehlenden Chunktext mit HTTP 400 vor dem Datenbankzugriff. Die damalige Schemaänderung prüfte den Bestand transaktional und brach bei ungültigen Werten ab. Die laufende Datenbank wurde für diese Änderung nicht migriert.
 
 302 Unit-Tests und 9 Standard-Podman-Integrationstests bestanden. Die Migrationstests prüften auch das Zurückrollen bei leeren Bestandswerten, das Ablehnen ungültiger Inserts und Updates sowie die Backup-Wiederherstellung. Die 12 optionalen Tests für RAG, Reranker und Ollama wurden für diese Schreibvalidierung nicht aktiviert.
 
@@ -382,13 +422,13 @@ Die Pipeline und die Testaufrufer verwenden den Pluralpfad für die Bereichslös
 
 ### TS-05 auf Einzelwrites und Wiederaufnahme am Chunk umgestellt
 
-`Ingest.pipeline` schreibt jeden Chunk direkt und hält nach der Bestätigung die nächste Nummer im Laufbericht fest. `--resume` verwendet diese Nummer. `--start` startet einen neuen Lauf mit einem vorhandenen Präfix. Nach dem letzten bestätigten Chunk löscht die Vector-API überzählige IDs desselben Dokuments im Zielset. Der Zwischenstand nach einem Fehler ist im Sinne von Eventual Consistency akzeptiert. Der vorherige atomare Entwurf mit Migration 003 wurde durch diesen Ablauf ersetzt.
+`Ingest.pipeline` schreibt jeden Chunk direkt und hält nach der Bestätigung die nächste Nummer im Laufbericht fest. `--resume` verwendet diese Nummer. `--start` startet einen neuen Lauf mit einem vorhandenen Präfix. Nach dem letzten bestätigten Chunk löscht die Vector-API überzählige IDs desselben Dokuments im Zielset. Der Zwischenstand nach einem Fehler ist im Sinne von Eventual Consistency akzeptiert. Der vorherige atomare Entwurf mit einer eigenen Schemaänderung wurde durch diesen Ablauf ersetzt.
 
 Prüfung mit 243 Unit-Tests und 12 isolierten Podman-Integrationstests einschließlich Ollama. Der Integrationstest prüft den sichtbaren Datenstand nach einem Abbruch, die Wiederaufnahme, den unveränderten Präfix und die Bereinigung. Sechs optionale RAG- und Reranker-Tests wurden ausgelassen, da sich die Änderung auf Import und Vector-API beschränkt.
 
 ### TS-05 für die Importpipeline abgeschlossen
 
-`Ingest.pipeline` veröffentlicht einen vollständigen Chunk-Satz pro Dokument und Set in einer Datenbanktransaktion. Die Transaktion entfernt überzählige kanonische Chunks und speichert einen Freigabebeleg. Nach einer verlorenen Antwort bestätigt derselbe Batch mit derselben Lauf-ID den ursprünglichen Commit. Der Laufbericht im Format 2 unterstützt `--resume` mit geprüften Zwischenartefakten und `--continue-on-error` bei isolierten Chunkfehlern. Die Anleitungen beschreiben Migration 003 mit Backup und die manuelle Zuordnung alter Erste-Punkt-IDs.
+`Ingest.pipeline` veröffentlicht einen vollständigen Chunk-Satz pro Dokument und Set in einer Datenbanktransaktion. Die Transaktion entfernt überzählige kanonische Chunks und speichert einen Freigabebeleg. Nach einer verlorenen Antwort bestätigt derselbe Batch mit derselben Lauf-ID den ursprünglichen Commit. Der Laufbericht im Format 2 unterstützt `--resume` mit geprüften Zwischenartefakten und `--continue-on-error` bei isolierten Chunkfehlern. Die damalige Anleitung beschrieb die Schemaänderung mit Backup und die manuelle Zuordnung alter Erste-Punkt-IDs.
 
 Prüfung mit 243 Unit-Tests und 13 Podman-Integrationstests einschließlich Ollama, kürzerem Neuimport, Transaktionsrollback, wiederholter Freigabe und Backup-Restore. Sechs optionale RAG- und Reranker-Tests wurden ausgelassen, da die Änderung den Import und die Vector-API betrifft. Migration und Bereinigung wurden ausschließlich in Testressourcen geprüft.
 

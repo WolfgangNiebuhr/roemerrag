@@ -66,8 +66,11 @@ def podman_stack(request):
     images = []
     volume_created = False
     pod_created = False
+    candidate_images = json.loads(os.environ.get("RAG_TEST_API_IMAGES", "{}"))
 
     def build(tag, dockerfile, context):
+        if candidate_images and context == ".":
+            return candidate_images[tag]
         image = f"localhost/{tag}:test-{test_id}"
         if context == ".":
             from scripts.build_image import build_image

@@ -19,7 +19,7 @@ Automatisierte Tests sichern Import, Datenhaltung, Schnittstellen und Zusammenar
 | Stufe | Prüfumfang | Voraussetzungen |
 |---|---|---|
 | Unit- und Vertragstests | Chunking, Adapterverträge, Fehlerpfade und Ablauf mit Testdoubles | Python |
-| Podman-Standardintegration | Image-Build, PostgreSQL/pgvector, Vector-API, Importfehler und Schemamigrationen | Gestartete Podman-Machine |
+| Podman-Standardintegration | Image-Build, PostgreSQL/pgvector, Vector-API, Importfehler und Backup-Wiederherstellung | Gestartete Podman-Machine |
 | Optionale Integration | RAG-HTTP, Reranker-Modellwahl und echte Ollama-Embeddings beziehungsweise Keyword-Anreicherung | Dienste und Modelle gemäß gewählter Testgruppe |
 | Ende zu Ende | Kleinkorpus, Retrieval, Generierung und Evaluation mit echten Modellen | RAG-Testcontainer und Host-Ollama, für Reranking zusätzlich der Reranker |
 
@@ -60,7 +60,7 @@ Ollama ist ein externer, mit dem regulären Betrieb geteilter Host-Dienst. Der e
 
 Der Wiederanlauftest startet die API in einem zusätzlichen isolierten Pod vor PostgreSQL. Er prüft Laufzeitinformationen ohne Datenbank und den Health-Status HTTP 503. Nach dem Datenbankstart speichert er einen Chunk, erstellt den PostgreSQL-Container mit demselben eigenen Testvolume neu und prüft, dass der Chunk ohne Neustart der API abrufbar und per Vektorsuche auffindbar bleibt. Der Test räumt Pod und Volume auch bei Fehlern auf.
 
-`tests/podman/test_embedding_migration.py` prüft `001_embedding_set_id.sql` und `002_chunktext.sql` in eigenen Testdatenbanken. Es kontrolliert erhaltene Zeilen, Vektoren und Unique Constraints, wiederholbare Migrationen und die Wiederherstellung der gesicherten Struktur. Die API-Vertragstests prüfen die Set-Kennung `embedding_set_id` und das Antwortfeld `chunktext`.
+`tests/podman/test_vector_backup.py` erstellt einen Dump des aktuellen Schemas und spielt ihn in eine separate Testdatenbank zurück. Der Test vergleicht die wiederhergestellte Zeile einschließlich Vektor und prüft die Constraints für Chunktext und eindeutige Chunk-IDs je Set.
 
 ### Dokumentimport
 

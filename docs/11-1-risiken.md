@@ -10,7 +10,7 @@ agent_instructions:
 
 # 11.1 Risiken
 
-Stand: 27.11.2026. Dieses Register enthält ausschließlich ausdrücklich als Risiko markierte Einträge. Technische Schulden werden separat in [Abschnitt 11.2](11-2-technische-schulden.md) geführt und gelten nicht automatisch als Risiken. Risiken erhalten eine eigene Nummerierung mit dem Präfix R.
+Stand: 28.11.2026. Dieses Register enthält ausschließlich ausdrücklich als Risiko markierte Einträge. Technische Schulden werden separat in [Abschnitt 11.2](11-2-technische-schulden.md) geführt und gelten nicht automatisch als Risiken. Risiken erhalten eine eigene Nummerierung mit dem Präfix R.
 
 ## R-01 – Manuelle Zuordnung von Importvarianten · Akzeptiertes Risiko
 
@@ -47,3 +47,12 @@ Konzept: [Kapitel 8.4.7](8-4-importkonzept.md#847-identitaet-wiederholung-und-ab
 - **Auslöser.** Die Zahl der Scores weicht von der Zahl der übergebenen Chunks ab. Scores können fehlen, wenn ein Ersatzdienst nur seine Top-Treffer zurückgibt oder ein Adapter fehlgeschlagene Batches überspringt. Überzählige Scores können entstehen, wenn ein Adapter beim Zusammenführen der Ergebnisse einen Batch doppelt anhängt.
 - **Auswirkung.** Bei fehlenden Scores können relevante Chunks still aus dem Antwortkontext und der Evaluation fallen, auch bei voller `top_k`-Auswahl. Ist die Rangliste leer, meldet die RAG-API `no_context`, obwohl das Retrieval Treffer geliefert hat. Der Reranker verwirft überzählige Scores am Ende der Liste still. Sind zusätzliche Scores vorher eingefügt, können nachfolgende Chunks falsch bewertet und einsortiert werden.
 - **Behandlung und Begründung.** Für den Betrieb mit dem Standardmodell `cross-encoder/ms-marco-MiniLM-L6-v2` wird eine abweichende Score-Anzahl als Risiko akzeptiert. Im lokalen Modelllauf entsprach die Anzahl der Scores der Anzahl der übergebenen Chunks, auch bei langen Eingaben, mehreren Batches und parallelen Anfragen. Der technische Befund ist unter [TS-19](11-2-technische-schulden.md#ts-19--stiller-trefferverlust-beim-reranking) dokumentiert.
+
+## R-05 – Veränderliche Basisimages, Python-Abhängigkeiten und Modellrevisionen
+
+**Akzeptiertes Risiko, Entscheidung vom 28.11.2026.**
+
+- **Auslöser und Auswirkung.** Vector-API, RAG-API und Reranker beziehen ihr Python-Basisimage über einen beweglichen Tag. Ein Neubau kann bei gleichem Projektstand einen anderen Plattformstand ergeben. Änderungen können den Build oder die Laufzeit der Dienste beeinflussen. Auch unter derselben Modellkennung kann sich die bereitgestellte Revision ändern. Dadurch können sich Embeddings, Trefferreihenfolgen oder generierte Antworten bei gleicher Versuchskonfiguration verändern.
+- **Begründung.** Für das lokale Experimentiersystem hat eine aktuelle Plattform Vorrang vor der exakten Reproduktion früherer API-Builds. Änderungen der Modellrevisionen werden akzeptiert, weil die Untersuchung von Modelldrift ein Projektziel ist. Ein spezifischer Test auf Modelldrift ist derzeit nicht vorgesehen. [TS-15](11-2-technische-schulden.md#ts-15--nicht-reproduzierbare-builds-und-testumgebungen)
+- **Python-Abhängigkeiten.** Direkte und transitive Python-Abhängigkeiten dürfen beim Neubau neu aufgelöst werden. Neuere Paketstände können den Build oder den Dienststart beeinträchtigen und Verhalten oder Laufzeiten verändern. Änderungen außerhalb der abgedeckten Testfälle sind als Restrisiko akzeptiert.
+- **Freigabekriterium.** Die API-Images regelmäßig mit aktuellen Basisimages neu erstellen. Bestandene Integrationstests im isolierten Podman-Stack genügen als Freigabekriterium für den Neubau. Im laufenden Stack genau die geprüften Images einsetzen. [Aktualisierungsskript](../scripts/update-api-images.ps1)
