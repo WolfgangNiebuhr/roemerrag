@@ -89,11 +89,11 @@ def podman_stack(request):
         _run("volume", "create", volume)
         volume_created = True
         # Let Podman allocate host ports; a manually used stack may be running.
-        publish = ["-p", "5500"]
+        publish = ["-p", "127.0.0.1::5500"]
         if include_rag:
-            publish.extend(["-p", "5600"])
+            publish.extend(["-p", "127.0.0.1::5600"])
         if include_reranker:
-            publish.extend(["-p", "5000"])
+            publish.extend(["-p", "127.0.0.1::5000"])
         _run("pod", "create", "--name", pod, *publish)
         pod_created = True
         containers.append(db)
@@ -106,7 +106,9 @@ def podman_stack(request):
 
         def host_port(container_port):
             binding = _run("port", infra, f"{container_port}/tcp", capture=True).stdout
-            return int(binding.splitlines()[0].rsplit(":", 1)[1])
+            host, port = binding.strip().rsplit(":", 1)
+            assert host == "127.0.0.1", binding
+            return int(port)
 
         vector_port = host_port(5500)
         rag_port = host_port(5600) if include_rag else None

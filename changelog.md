@@ -17,6 +17,28 @@ Aus README und docs übernommene Änderungshistorie. Gleichdatierte Einträge fo
 
 ## 2026-11-28
 
+### TS-18 · Technische Randbedingung verlinkt
+
+Der Lösungsvorschlag verweist auf „Lokaler Betrieb“ in Abschnitt 2.1. Für die reine Verlinkung wurden keine Laufzeittests ausgeführt.
+
+### Lokalen Betrieb als technische Randbedingung ergänzt
+
+Abschnitt 2.1 nennt den lokalen Einzelplatzbetrieb und legt fest, dass vor einer Bereitstellung als Netzwerkdienst Konzepte für Authentifizierung und Autorisierung entwickelt und umgesetzt werden müssen. Für die reine Dokumentationsänderung wurden keine Laufzeittests ausgeführt.
+
+### TS-18 · Systemgrenze klargestellt
+
+Der Einzelplatzbetrieb und seine LAN-Prüfung beziehen sich auf den Podman-Projektstack. Ollama ist ein externer Modelldienst. Die Dokumentation beschreibt den benötigten Zugriff, seine Netzwerkfreigaben liegen beim Betreiber. Für diese redaktionelle Änderung wurden die Laufzeittests nicht erneut ausgeführt.
+
+### TS-18 · Laufenden Stack auf Loopback umgestellt
+
+PostgreSQL, Vector-API, RAG-API und Reranker laufen mit denselben Images im neuen Pod `vectorpod-loopback`. Die Container wurden unter ihren bisherigen Dienstnamen neu gestartet. Der Reranker behält seine GPU-Startoptionen. Das bestehende Volume `pgvector-data` ist wieder eingebunden. Vor der Umstellung wurde `backups/ts18-20261128-135016.dump` erstellt und mit `pg_restore --list` geprüft. Der bisherige Pod und die bisherigen Container mit der Rückwechselkennung `20261128-135300` bleiben gestoppt verfügbar.
+
+Windows-TCP-Verbindungen zu 5432, 5500, 5600 und 5000 waren über IPv4-Loopback erfolgreich und über die LAN-Adresse des Hosts erfolglos. Ein separater LAN-Client wurde nicht verwendet. Der Import über die laufende Vector-API erzeugte mit echten Ollama-Modellen drei Chunks in einem temporären Embedding-Set. RAG lieferte daraus mit aktivem Reranking die erwartete Antwort samt Quellchunk. Das Testset wurde entfernt. Der Bestand umfasst weiterhin 11.243 Chunks in vier Embedding-Sets. Ollama-Firewall-Regeln wurden bei diesem Podman-Wechsel nicht geändert.
+
+### TS-18 · Lokalen Einzelplatzbetrieb festgelegt
+
+Die Podman-Startbefehle binden Hostports an IPv4-Loopback. RAG-API und optionaler Reranker laufen im selben Pod. Die Startanleitung beschreibt die Windows-Firewall-Begrenzung für Ollama und den Wechsel bestehender Portzuordnungen unter Erhalt des Datenvolumes. Der isolierte Teststack prüft seine Loopback-Bindungen. 318 Unit-Tests und drei Podman-Ende-zu-Ende-Tests mit den lokalen API-Images bestanden. Geprüft wurden der Import mit echten Ollama-Modellen, RAG mit Reranking und die Evaluationskette. Die übrigen Podman-Tests und eine Erreichbarkeitsprüfung von einem zweiten LAN-Gerät wurden nicht ausgeführt. Bestehende Container, Volumes und Firewall-Regeln wurden nicht geändert.
+
 ### Bausteinsicht und Verteilungssicht abgeglichen
 
 Abschnitt 5.4 entfernt. Kapitel 7 dokumentiert Image-Builds, Podman-Topologie, Volumes und Testverteilung. Aufruf und Konfiguration der Vector-Suche sowie die Definition des Datenbankschemas stehen bei den betreffenden Bausteinen in Kapitel 5. Die Zugriffswege der lokalen Import-, Abfrage- und Analysewerkzeuge wurden mit dem Code abgeglichen. Unit- und Podman-Tests wurden für diese Dokumentationsänderung nicht ausgeführt.

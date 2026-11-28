@@ -234,7 +234,7 @@ Deterministische Vertragstests und Qualitätsläufe mit echten Modellen getrennt
 
 ### TS-18 – Experimenteller Betriebsrahmen
 
-**Status** · teilweise behoben
+**Status** · behoben
 
 **Schweregrad** · P3 im lokalen Betrieb, P1 vor einer Exposition
 
@@ -242,15 +242,9 @@ Deterministische Vertragstests und Qualitätsläufe mit echten Modellen getrennt
 
 Die APIs starten Flask-Entwicklungsserver; Authentifizierung fehlt, Beispiel-DB-Zugangsdaten sind fest vorbelegt. Siehe [Startanleitung](../README.md), [Vector](../Vector/app.py), [RAG](../rag/app.py) und [Reranker](../reranker/app.py). Der dokumentierte lokale Experimentbetrieb ist nicht ohne weitere Maßnahmen auf Mehrbenutzer- oder exponierten Dauerbetrieb übertragbar.
 
-#### Noch offen
-
-Für Mehrbenutzer- oder exponierten Betrieb fehlen geeigneter Serverbetrieb, Zugangskontrolle und externe Geheimniskonfiguration.
-
-Die [Startanleitung](../README.md) veröffentlicht die Ports ohne explizite Bindung an Loopback. Vor einer Freigabe die tatsächliche Erreichbarkeit der veröffentlichten Ports prüfen.
-
 **Lösungsvorschlag**
 
-Serverbetrieb, Zugangskontrolle und externe Geheimnisse vor einer Exposition umsetzen und prüfen.
+Die Randbedingung [Lokaler Betrieb](2-randbedingungen.md#21-technische-randbedingungen) legt den Einzelplatzbetrieb für Römer-RAG fest. Die [Startanleitung](../README.md#lokalen-stack-starten) bindet veröffentlichte Podman-Ports an IPv4-Loopback. RAG-API und Reranker kommunizieren innerhalb desselben Pods. Ollama ist gemäß [Kontextabgrenzung](3-kontextabgrenzung.md) ein externer Modelldienst. Für TS-18 zählt seine Erreichbarkeit durch die Projektkomponenten. Geeigneten Serverbetrieb, Zugangskontrolle und externe Geheimnisse erst bei konkretem Bedarf an Mehrbenutzerbetrieb oder Netzwerkfreigabe umsetzen und prüfen.
 
 ### TS-19 – Stiller Trefferverlust beim Reranking
 

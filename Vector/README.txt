@@ -4,15 +4,15 @@ Lokale Version via Podman
 
 podman build -t vectordb:local .
 podman volume create pgvector-data
-podman run -d --name vectordb -p 5432:5432 -e POSTGRES_USER=admin -e POSTGRES_PASSWORD=admin -e POSTGRES_DB=vector_db -e PGDATA=/var/lib/postgresql/data/pgdata -v pgvector-data:/var/lib/postgresql/data localhost/vectordb:local
+podman run -d --name vectordb -p 127.0.0.1:5432:5432 -e POSTGRES_USER=admin -e POSTGRES_PASSWORD=admin -e POSTGRES_DB=vector_db -e PGDATA=/var/lib/postgresql/data/pgdata -v pgvector-data:/var/lib/postgresql/data localhost/vectordb:local
 
 ohne Volume:
-podman run -d --name vectordb -p 5432:5432 -e POSTGRES_USER=admin -e POSTGRES_PASSWORD=admin -e POSTGRES_DB=vector_db localhost/vectordb:local
+podman run -d --name vectordb -p 127.0.0.1:5432:5432 -e POSTGRES_USER=admin -e POSTGRES_PASSWORD=admin -e POSTGRES_DB=vector_db localhost/vectordb:local
 
 
 Zusammen mit API-Image in einem Pod
 podman build -f Dockerfile.api -t vectorapi:local .
-podman pod create --name vectorpod -p 5432:5432 -p 5500:5500
+podman pod create --name vectorpod -p 127.0.0.1:5432:5432 -p 127.0.0.1:5500:5500
 podman volume create pgvector-data
 podman run -d --name vectordb --pod vectorpod -e POSTGRES_USER=admin -e POSTGRES_PASSWORD=admin -e POSTGRES_DB=vector_db -e PGDATA=/var/lib/postgresql/data/pgdata -v pgvector-data:/var/lib/postgresql/data localhost/vectordb:local
 podman run -d --name vector-api --pod vectorpod -e DB_HOST=127.0.0.1 -e DB_PORT=5432 -e DB_USER=admin -e DB_PASSWORD=admin -e POSTGRES_DB=vector_db localhost/vectorapi:local

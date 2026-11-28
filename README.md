@@ -24,9 +24,11 @@ Die arc42-Dokumentation beginnt mit [Einführung und Zielen](docs/1-einfuehrung-
 
 ## Lokalen Stack starten
 
+Der Stack ist für Experimente durch eine Person auf demselben Windows-Rechner vorgesehen. Die veröffentlichten Podman-Ports sind an IPv4-Loopback gebunden. Für einen bestehenden Pod die Portzuordnungen mit `podman port -a` prüfen. Hat er abweichende Bindungen oder fehlt ein benötigter Port, den Pod nach Sicherung neu anlegen und `pgvector-data` wieder einbinden. Ein Neustart allein übernimmt keine neuen Portzuordnungen.
+
 Die Befehle gelten für PowerShell im Projektstamm und einen Neuaufbau. Bereits vorhandene Container nicht erneut unter denselben Namen anlegen. PostgreSQL/pgvector, Vector-API und RAG-API laufen mit Podman; Ollama läuft als Windows-Hintergrund-App. Der Reranker wird optional durch die RAG-API aufgerufen. PostgreSQL-Daten bleiben im Named Volume erhalten; Ollama verwaltet seine Modelle separat im Windows-Benutzerprofil. Eine GPU ist für den Grundbetrieb nicht erforderlich.
 
-### Ollama auf Windows vorbereiten
+### Externen Modelldienst Ollama auf Windows vorbereiten
 
 Ollama installieren und einmalig die dauerhafte Netzwerkbindung für den Benutzer setzen:
 
@@ -43,7 +45,7 @@ ollama pull gemma4:e4b
 ollama pull gemma3:4b
 ```
 
-Die Bindung nimmt Verbindungen auf allen IPv4-Schnittstellen an; den Zugriff über die Windows-Firewall auf die benötigte Umgebung begrenzen. Netzwerkgrenzen, Automatik und Fehlersuche erklärt die [Laufzeitsicht](docs/6-laufzeitsicht.md).
+Die Beispielbindung nimmt Verbindungen auf allen IPv4-Schnittstellen an. Der Betreiber des externen Modelldienstes legt die Firewall-Freigaben fest. Für den Beispielaufbau benötigen der Windows-Host und die Podman-Machine Zugriff auf Ollama. Die LAN-Prüfung für TS-18 betrifft die veröffentlichten Podman-Ports des Projektstacks. Netzwerkgrenzen, Automatik und Fehlersuche erklärt die [Laufzeitsicht](docs/6-laufzeitsicht.md).
 
 ### Images bauen
 
@@ -76,7 +78,7 @@ Jeder erfolgreiche Testlauf speichert die vollständigen Image-IDs unter `artifa
 ### Vector-Datenbank und API starten
 
 ```powershell
-podman pod create --name vectorpod -p 5432:5432 -p 5500:5500 -p 5600:5600
+podman pod create --name vectorpod -p 127.0.0.1:5432:5432 -p 127.0.0.1:5500:5500 -p 127.0.0.1:5600:5600 -p 127.0.0.1:5000:5000
 podman volume create pgvector-data
 podman run -d --name vectordb --pod vectorpod -e POSTGRES_USER=admin -e POSTGRES_PASSWORD=admin -e POSTGRES_DB=vector_db -e PGDATA=/var/lib/postgresql/data/pgdata -v pgvector-data:/var/lib/postgresql/data localhost/vectordb:local
 # Erst fortfahren, sobald der folgende Befehl Erfolg meldet; ggf. wiederholen:
@@ -98,16 +100,8 @@ Das aktuelle RAG-Image ermittelt Ollama beim ersten Modellaufruf automatisch. Im
 
 ```powershell
 python scripts/build_image.py rag-api --tag rag-api:local
-podman run -d --name rag-api --pod vectorpod -e VECTOR_API_URL=http://127.0.0.1:5500/search localhost/rag-api:local
+podman run -d --name rag-api --pod vectorpod -e VECTOR_API_URL=http://127.0.0.1:5500/search -e RERANKER_URL=http://127.0.0.1:5000/rerank localhost/rag-api:local
 ```
-
-Der Pod muss wie oben Port 5600 veröffentlichen. Bei einem älteren Pod ohne dieses Mapping kann die RAG-API stattdessen separat gestartet werden; den vorhandenen Datenbank-Pod dabei erhalten. Nur eine der beiden RAG-Startvarianten ausführen:
-
-```powershell
-podman run -d --name rag-api -p 5600:5600 localhost/rag-api:local
-```
-
-Diese Variante nutzt `http://host.containers.internal:5500/search` für die bereits veröffentlichte Vector-API. Falls diese Adresse in der eigenen Netzwerkkonfiguration nicht erreichbar ist, `VECTOR_API_URL` beim Containerstart explizit setzen. Die automatische Gateway-Ermittlung gilt nur für Ollama.
 
 CLI und RAG verwenden gemeinsame Defaults aus `rag/embedding_config.py`: `EMBEDDING_MODEL=snowflake-arctic-embed2` und `EMBEDDING_SET_ID=snowflake-arctic-embed2-v2`. Beide sind unabhängig über gleichnamige Umgebungsvariablen konfigurierbar. Die Importpipeline liest Embeddingmodell und Set-Kennung aus ihrer Versuchskonfiguration. Die Set-Kennung wählt gespeicherte Daten und legt kein Modell fest.
 
@@ -126,7 +120,7 @@ Für eine vollständige Wiederherstellung ein aktuelles Backup im PostgreSQL-Cus
 ### Optionalen Reranker starten
 
 ```powershell
-podman run -d --name reranker -p 5000:5000 localhost/reranker:local
+podman run -d --name reranker --pod vectorpod localhost/reranker:local
 Invoke-RestMethod http://127.0.0.1:5000/actuator/health
 ```
 
@@ -186,7 +180,7 @@ python -m pytest -c tests/pytest.ini tests --all --keep-podman
 ```
 
 `--all` aktiviert die optionalen RAG-, Reranker- und Ollama-Gruppen. Der Reranker lädt sein Modell beim Image-Build. Alle Podman-Ressourcen und Testdaten sind von regulären Stack-Ressourcen getrennt.
-Für den Ende-zu-Ende-Test auf dem Host vorab `ollama pull snowflake-arctic-embed2`, `ollama pull phi3:mini` und `ollama pull gemma3:4b` ausführen. Der Import verwendet `gemma3:4b` für Keywords. Embedding- und Antwortmodell müssen auch aus dem RAG-Container über den automatisch ermittelten oder explizit konfigurierten Endpunkt erreichbar sein. Podman weist dem Teststack dynamische Hostports zu; ein regulärer Stack kann parallel weiterlaufen. PostgreSQL wird nur innerhalb des Test-Pods angesprochen. Die RAG-API verwendet dort `VECTOR_API_URL=http://127.0.0.1:5500/search` für die eigene Vector-API. Außerhalb der Tests bleibt der Standard `http://host.containers.internal:5500/search` erhalten; `VECTOR_API_URL` kann ihn beim Containerstart überschreiben.
+Für den Ende-zu-Ende-Test auf dem Host vorab `ollama pull snowflake-arctic-embed2`, `ollama pull phi3:mini` und `ollama pull gemma3:4b` ausführen. Der Import verwendet `gemma3:4b` für Keywords. Embedding- und Antwortmodell müssen auch aus dem RAG-Container über den automatisch ermittelten oder explizit konfigurierten Endpunkt erreichbar sein. Podman weist dem Teststack dynamische Loopback-Ports zu. Ein regulärer Stack kann parallel weiterlaufen. PostgreSQL wird nur innerhalb des Test-Pods angesprochen. Die RAG-API verwendet dort `VECTOR_API_URL=http://127.0.0.1:5500/search` für die eigene Vector-API. Außerhalb der Tests bleibt der Standard `http://host.containers.internal:5500/search` erhalten; `VECTOR_API_URL` kann ihn beim Containerstart überschreiben.
 
 Bei Verbindungsfehlern Windows-Aufruf und Container-Aufruf getrennt prüfen; ein erfolgreicher Host-Test beweist keinen Zugriff aus dem Container. Die [Laufzeitsicht](docs/6-laufzeitsicht.md) enthält konkrete Diagnosebefehle und die dauerhafte Einrichtung der Hintergrund-App. `OLLAMA_HOST_URL` setzt die Adresse für den E2E-Import (Standard `http://localhost:11434`); `OLLAMA_CONTAINER_URL` setzt optional die Adresse aus dem Testcontainer (ohne Vorgabe: automatische Ermittlung). Beide müssen denselben Modellserver erreichen. Die Testfixture reicht die Containeradresse als `OLLAMA_BASE_URL` weiter.
 
@@ -206,7 +200,7 @@ Der Test prüft vor dem Import die Modellverfügbarkeit über `/api/tags`. Danac
 Der Standardstart benötigt keine GPU. Für einen optionalen NVIDIA-GPU-Start unter WSL2 werden ein passender Windows-NVIDIA-Treiber, `/dev/dxg` und die WSL-Treiberbibliotheken benötigt. Bei einem Neuaufbau kann der Reranker statt des CPU-Starts so gestartet werden:
 
 ```powershell
-podman run -d --name reranker -p 5000:5000 --device /dev/dxg -v /usr/lib/wsl/lib:/usr/lib/wsl/lib:ro -v /usr/lib/wsl/drivers:/usr/lib/wsl/drivers:ro -e LD_LIBRARY_PATH=/usr/lib/wsl/lib localhost/reranker:local
+podman run -d --name reranker --pod vectorpod --device /dev/dxg -v /usr/lib/wsl/lib:/usr/lib/wsl/lib:ro -v /usr/lib/wsl/drivers:/usr/lib/wsl/drivers:ro -e LD_LIBRARY_PATH=/usr/lib/wsl/lib localhost/reranker:local
 ```
 
 Die Geräteweitergabe allein garantiert keine CUDA-Inferenz; auch die installierte torch-Variante muss CUDA unterstützen. Diese optionale Konfiguration ist kein Bestandteil der Standard-Testfixture. Die zusätzliche Einbindung von `/usr/lib/wsl/drivers` ist erforderlich: Fehlen diese Treiberdateien, kann CUDA trotz sichtbarem `/dev/dxg` mit `cuInit: 100` scheitern.
@@ -267,7 +261,7 @@ Die CLI sendet metric=cosine, num_results=5, top_k=6 und das Rerankermodell expl
 
 `POST /process` akzeptiert neben query, embedding_set_id, metric und num_results die optionalen Felder `top_k` (Integer >= 0, Standard 0), `reranker` und `answer_model` (nichtleere Strings). Ohne Angabe bleiben API-Defaults metric=euclidean und Antwortmodell gemma4:e4b erhalten. Die Antwort behaelt response, metrics und chunks und ergaenzt `status` (ok/no_context), `retrieved_results` und `selected_results` (jeweils chunk_id und chunktext) sowie `reranking` (null oder model und duration in Sekunden). chunks nennt ausgewaehlte IDs. Leeres Retrieval oder leeres Reranking verhindert Generierung; metrics ist dann null.
 
-Der API-Container benoetigt bei Reranking `RERANKER_URL` (Standard `http://host.containers.internal:5000/rerank`), optional `RERANK_MODEL`; bei gemeinsamen Pods kann die URL auf `http://127.0.0.1:5000/rerank` zeigen. Fuer das laufende System muss das RAG-Image nach dem Umbau neu gebaut und der Container neu erstellt werden. API-Clients muessen zusaetzliche Antwortfelder tolerieren.
+Die RAG-API erreicht den Reranker im gemeinsamen Pod über `RERANKER_URL=http://127.0.0.1:5000/rerank`. Das Standardmodell des Rerankers lässt sich über `RERANK_MODEL` konfigurieren.
 
 Die Konfiguration der Zeitlimits und die Wiederholungsregeln für RAG-API, CLI und Importpipeline stehen im [Fehlerkonzept](docs/8-3-error-handling.md#834-timeouts-und-wiederholungen). Die RAG-API gibt die Request-ID als `X-Request-ID` an aufgerufene Dienste weiter.
 

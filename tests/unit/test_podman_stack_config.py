@@ -23,7 +23,7 @@ def test_stack_uses_allocated_ports_and_internal_retrieval(monkeypatch, reranker
             output = "test-infra\n"
         elif args[0] == "port":
             assert args[1] == "test-infra"
-            output = f"0.0.0.0:{ports[args[2]]}\n"
+            output = f"127.0.0.1:{ports[args[2]]}\n"
         return SimpleNamespace(stdout=output)
 
     monkeypatch.setitem(vars(stack), "_run", run)
@@ -40,7 +40,10 @@ def test_stack_uses_allocated_ports_and_internal_retrieval(monkeypatch, reranker
         assert urls["rag_url"] == "http://127.0.0.1:45101"
         assert urls["reranker_url"] == ("http://127.0.0.1:45102" if reranker else None)
         create = next(call for call in calls if call[:2] == ("pod", "create"))
-        assert create[4:] == (("-p", "5500", "-p", "5600", "-p", "5000") if reranker else ("-p", "5500", "-p", "5600"))
+        expected_publish = ("-p", "127.0.0.1::5500", "-p", "127.0.0.1::5600")
+        if reranker:
+            expected_publish += ("-p", "127.0.0.1::5000")
+        assert create[4:] == expected_publish
         rag_run = next(call for call in calls if "VECTOR_API_URL=http://127.0.0.1:5500/search" in call)
         assert rag_run[0] == "run"
         expected_ready = [("http://127.0.0.1:45100", 120), ("http://127.0.0.1:45101", 120)]

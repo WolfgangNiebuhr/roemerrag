@@ -15,6 +15,7 @@ agent_instructions:
 
 | Randbedingung | Bedeutung |
 |---|---|
+| Lokaler Betrieb | Römer-RAG ist für den lokalen Einzelplatzbetrieb ausgelegt. Vor einer Bereitstellung als Netzwerkdienst müssen Konzepte für Authentifizierung und Autorisierung entwickelt und umgesetzt werden. |
 | Python | Anwendungen, Import, Analyse und Tests werden in Python entwickelt. |
 | Podman | Der aktuelle lokale Containerbetrieb und die Integrationstests verwenden Podman. |
 | PostgreSQL mit pgvector | Chunks, Set-Kennungen und Embeddings werden im vorhandenen relationalen Vektorspeicher gehalten. Das aktuelle Schema verwendet Vektoren mit 1024 Dimensionen; andere Dimensionen benötigen eine bewusste Anpassung. |
