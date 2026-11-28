@@ -17,6 +17,12 @@ Aus README und docs übernommene Änderungshistorie. Gleichdatierte Einträge fo
 
 ## 2026-11-28
 
+### TS-24 · Gemeinsame Business-Funktionen für RAG und Evaluation
+
+`/process` und die Evaluationsendpunkte verwenden dieselben Funktionen für Frageembedding, Retrieval, Trefferauswahl und Generierung. Die HTTP-Verträge bleiben erhalten. Der Paritätstest prüft die Aufrufreihenfolge, die Übergaben an Reranker und Generator sowie die Ergebnisse mit aktivem und deaktiviertem Reranking und bei fehlendem Kontext.
+
+321 Unit-Tests und fünf Podman-Integrationstests für die RAG-API und die Ende-zu-Ende-Abläufe mit Ollama und Reranker bestanden. Die übrigen Podman-Tests wurden wegen des auf die RAG-API begrenzten Änderungsumfangs nicht ausgeführt.
+
 ### TS-21 · Zielgröße ohne Zeichen-Fallback festgelegt
 
 TS-21 ist abgelehnt. In der v2-Beispielkonfiguration gelten 1.000 Zeichen ohne Zeichen-Fallback bewusst als Zielgröße. Der zugehörige offene Testpunkt entfällt in TS-17 und im Testkonzept. Für diese reine Dokumentationsänderung wurden keine Unit- oder Podman-Tests ausgeführt.

@@ -331,7 +331,7 @@ def test_process_reranks_and_preserves_original_results(monkeypatch, selected):
     assert response.json['retrieved_results'] == rows
     assert response.json['selected_results'] == selected
     assert response.json['reranking']['model'] == 'rerank'
-    rerank.assert_called_once_with('q', rows, 'rerank', 1)
+    rerank.assert_called_once_with('q', rows, 'rerank', 1, with_scores=True)
     if selected:
         generate.assert_called_once_with('second', 'q', 'answer-model')
     else:
@@ -527,6 +527,82 @@ def test_empty_evaluation_does_not_call_provider(monkeypatch, endpoint):
     assert response.status_code == 200
     assert response.json['status'] == 'no_context'
     post.assert_not_called()
+
+
+@pytest.mark.parametrize("top_k, only_blank, expected_chunks, expected_context", [
+    (1, False, ["b"], "second"),
+    (0, False, ["a", "b"], "first\nsecond"),
+    (1, True, [], ""),
+])
+def test_process_and_evaluation_share_business_steps(
+    monkeypatch, top_k, only_blank, expected_chunks, expected_context,
+):
+    rows = [{"chunk_id": "blank", "chunktext": " \t", "distance": 0.1}]
+    if not only_blank:
+        rows.extend([
+            {"chunk_id": "a", "chunktext": "first", "distance": 0.2},
+            {"chunk_id": "b", "chunktext": "second", "distance": 0.3},
+        ])
+
+    def embed(query, with_metrics=False):
+        vector = rag_app.np.array([1.0])
+        return (vector, {}) if with_metrics else vector
+
+    monkeypatch.setattr(rag_app, "generate_embedding", embed)
+    monkeypatch.setattr(rag_app, "search_vectors", Mock(return_value=rows))
+    ranked = Mock(status_code=200)
+    ranked.json.return_value = {"ranked_documents": [{"original_index": 1, "score": 0.9}]}
+    reranker = Mock(return_value=ranked)
+    monkeypatch.setattr(rag_app, "upstream_post", reranker)
+    generator = Mock(return_value=("answer", {"answer_tokens": 1}))
+    monkeypatch.setattr(rag_app, "generate_answer", generator)
+
+    steps = Mock()
+    expected_steps = ["embed_query", "retrieve_hits", "select_hits", "generate_from_hits"]
+    for name in expected_steps:
+        spy = Mock(wraps=getattr(rag_app, name))
+        steps.attach_mock(spy, name)
+        monkeypatch.setattr(rag_app, name, spy)
+
+    client = rag_app.app.test_client()
+    payload = {"query": "q", "top_k": top_k, "answer_model": "answer-model", "reranker": "rerank"}
+    process = client.post("/process", json=payload)
+    assert process.status_code == 200
+    assert [call[0] for call in steps.mock_calls] == expected_steps
+    steps.reset_mock()
+
+    retrieved = client.post("/evaluate/retrieve", json=payload)
+    assert retrieved.status_code == 200
+    assert retrieved.json["results"] == rows
+    selected = client.post("/evaluate/rerank", json=retrieved.json["next_request"])
+    assert selected.status_code == 200
+    generated = client.post("/evaluate/generate", json=selected.json["next_request"])
+    assert generated.status_code == 200
+    assert [call[0] for call in steps.mock_calls] == expected_steps
+
+    for field in ("status", "response", "metrics", "chunks"):
+        assert process.json[field] == generated.json[field]
+    assert process.json["chunks"] == expected_chunks
+    assert generated.json["context"] == expected_context
+    assert process.json["selected_results"] == [
+        {"chunk_id": row["chunk_id"], "chunktext": row["chunktext"]}
+        for row in generated.json["results"]
+    ]
+    if top_k and not only_blank:
+        assert [call.args[1]["documents"] for call in reranker.call_args_list] == [
+            ["first", "second"], ["first", "second"],
+        ]
+        assert selected.json["results"][0]["original_index"] == 1
+        assert selected.json["results"][0]["rerank_score"] == 0.9
+    else:
+        reranker.assert_not_called()
+    if expected_chunks:
+        assert [call.args for call in generator.call_args_list] == [
+            (expected_context, "q", "answer-model"), (expected_context, "q", "answer-model"),
+        ]
+    else:
+        assert process.json["status"] == "no_context"
+        generator.assert_not_called()
 
 
 def test_retrieve_accepts_cached_vector(monkeypatch):

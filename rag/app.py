@@ -289,6 +289,51 @@ def retrieval_distances(embedding, results):
     return distances
 
 
+def embed_query(query, *, supplied_vector=None, with_metrics=False):
+    if supplied_vector is not None:
+        return np.array(supplied_vector, dtype=float), None
+    if with_metrics:
+        return generate_embedding(query, with_metrics=True)
+    return generate_embedding(query), None
+
+
+def retrieve_hits(embedding, embedding_set, metric, count, *, include_distances=False):
+    return validate_results(search_vectors(
+        embedding, embedding_set, metric, count, include_vector=include_distances,
+    ))
+
+
+def usable_hits(results):
+    return [row for row in results if row["chunktext"].strip()]
+
+
+def select_hits(query, results, model, top_k):
+    candidates = usable_hits(results)
+    if not candidates or top_k == 0:
+        return candidates, candidates, None
+    started = time.monotonic()
+    selected = rerank_results(query, candidates, model, top_k, with_scores=True)
+    return candidates, selected, {"model": model, "duration": time.monotonic() - started}
+
+
+def generate_from_hits(query, results, model, **prompts):
+    selected = usable_hits(results)
+    context = "\n".join(row["chunktext"] for row in selected)
+    if selected:
+        answer, metrics = generate_answer(context, query, model, **prompts)
+    else:
+        answer = "Die Frage kann basierend auf dem gegebenen Kontext nicht beantwortet werden."
+        metrics = None
+    return {
+        "results": selected, "context": context, "status": "ok" if selected else "no_context",
+        "response": answer, "metrics": metrics, "chunks": [row["chunk_id"] for row in selected],
+    }
+
+
+def process_hit_fields(results):
+    return [{"chunk_id": row["chunk_id"], "chunktext": row["chunktext"]} for row in results]
+
+
 @app.post("/evaluate/retrieve")
 def evaluate_retrieve():
     with validating_request():
@@ -309,18 +354,16 @@ def evaluate_retrieve():
     started = time.monotonic()
     g.stage = "embedding"
     embedding_started = time.monotonic()
-    embedding_metrics = None
-    if supplied_vector is not None:
-        embedding = np.array(supplied_vector, dtype=float)
-    else:
-        embedding, embedding_metrics = generate_embedding(data["query"], with_metrics=True)
+    embedding, embedding_metrics = embed_query(
+        data["query"], supplied_vector=supplied_vector, with_metrics=True,
+    )
     embedding_duration = time.monotonic() - embedding_started if supplied_vector is None else None
     g.stage = "retrieval"
     retrieval_started = time.monotonic()
     embedding_set = data["embedding_set_id"]
     metric = data["metric"]
-    results = search_vectors(
-        embedding, embedding_set, metric, data["num_results"], include_vector=include_distances,
+    results = retrieve_hits(
+        embedding, embedding_set, metric, data["num_results"], include_distances=include_distances,
     )
     retrieval_duration = time.monotonic() - retrieval_started
     diagnostics = {}
@@ -329,7 +372,7 @@ def evaluate_retrieve():
         results = [{key: value for key, value in row.items() if key != "vector"} for row in results]
     if reference_text is not None:
         g.stage = "embedding"
-        reference_vector = generate_embedding(reference_text)
+        reference_vector, _ = embed_query(reference_text)
         diagnostics["reference"] = compare_embeddings(embedding, reference_vector)
     next_request = generation_input(data, results)
     next_request.update(top_k=data["top_k"], reranker=data.get("reranker", RERANKER_MODEL))
@@ -354,11 +397,9 @@ def evaluate_rerank():
         data = parse_rag_options(data, default_top_k=5)
     started = time.monotonic()
     g.stage = "reranking"
-    # Match /process: whitespace-only passages are never sent to the reranker.
-    results = [row for row in data["results"] if row["chunktext"].strip()]
     model = data.get("reranker", RERANKER_MODEL)
     top_k = data["top_k"]
-    selected = rerank_results(data["query"], results, model, top_k, with_scores=True) if results and top_k else results
+    _, selected, _ = select_hits(data["query"], data["results"], model, top_k)
     return jsonify(query=data["query"], results=selected, reranker=model, top_k=top_k,
                    status="ok" if selected else "no_context",
                    metrics={"input_count": len(data["results"]), "selected_count": len(selected)},
@@ -375,18 +416,12 @@ def evaluate_generate():
         data = parse_rag_options(data, default_top_k=5)
     started = time.monotonic()
     g.stage = "generation"
-    selected = [row for row in data["results"] if row["chunktext"].strip()]
-    context = "\n".join(row["chunktext"] for row in selected)
     model = data.get("answer_model", ANSWER_MODEL_NAME)
-    metrics = None
-    if selected:
-        answer, metrics = generate_answer(context, data["query"], model,
-            system_prompt=data.get("system_prompt"), user_prompt=data.get("user_prompt"))
-    else:
-        answer = "Die Frage kann basierend auf dem gegebenen Kontext nicht beantwortet werden."
-    return jsonify(query=data["query"], results=selected, context=context, answer_model=model,
-                   status="ok" if selected else "no_context", response=answer,
-                   chunks=[row["chunk_id"] for row in selected], metrics=metrics,
+    generated = generate_from_hits(
+        data["query"], data["results"], model,
+        system_prompt=data.get("system_prompt"), user_prompt=data.get("user_prompt"),
+    )
+    return jsonify(**generated, query=data["query"], answer_model=model,
                    timings={"generation_request_duration": time.monotonic() - started},
                    request=generation_input(data, data["results"]))
 
@@ -401,34 +436,23 @@ def process_request():
     embedding_set = data["embedding_set_id"]
     g.stage = "embedding"
     started = time.monotonic()
-    embedding = generate_embedding(query)
+    embedding, _ = embed_query(query)
     timings["embedding_duration"] = time.monotonic() - started
     g.stage = "retrieval"
     started = time.monotonic()
-    retrieved = validate_results(search_vectors(embedding, embedding_set, data["metric"], data["num_results"]))
-    retrieved = [{"chunk_id": row["chunk_id"], "chunktext": row["chunktext"]}
-                 for row in retrieved if row["chunktext"].strip()]
+    results = retrieve_hits(embedding, embedding_set, data["metric"], data["num_results"])
     timings["retrieval_duration"] = time.monotonic() - started
-    selected = retrieved
-    reranking = None
-    top_k = data["top_k"]
-    if selected and top_k > 0:
-        g.stage = "reranking"
-        model = data.get("reranker", RERANKER_MODEL)
-        started = time.monotonic()
-        selected = rerank_results(query, retrieved, model, top_k)
-        reranking = {"model": model, "duration": time.monotonic() - started}
-    result = {"retrieved_results": retrieved, "selected_results": selected,
-              "reranking": reranking, "timings": timings, "chunks": [row["chunk_id"] for row in selected]}
-    if not selected:
-        timings["pipeline_duration"] = time.monotonic() - pipeline_started
-        return jsonify(**result, status="no_context", metrics=None,
-                       response="Die Frage kann basierend auf dem gegebenen Kontext nicht beantwortet werden.")
+    g.stage = "reranking"
+    retrieved, selected, reranking = select_hits(
+        query, results, data.get("reranker", RERANKER_MODEL), data["top_k"],
+    )
     g.stage = "generation"
-    context = "\n".join(row["chunktext"] for row in selected)
-    answer, metrics = generate_answer(context, query, data.get("answer_model", ANSWER_MODEL_NAME))
+    generated = generate_from_hits(query, selected, data.get("answer_model", ANSWER_MODEL_NAME))
     timings["pipeline_duration"] = time.monotonic() - pipeline_started
-    return jsonify(**result, status="ok", response=answer, metrics=metrics)
+    return jsonify(retrieved_results=process_hit_fields(retrieved),
+                   selected_results=process_hit_fields(generated["results"]),
+                   reranking=reranking, timings=timings, chunks=generated["chunks"],
+                   status=generated["status"], response=generated["response"], metrics=generated["metrics"])
 
 
 if __name__ == '__main__':

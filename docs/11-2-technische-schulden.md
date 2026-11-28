@@ -313,7 +313,7 @@ Das bestehende Format ist eine bewusste [Architekturentscheidung](9-architekture
 
 ### TS-24 – Treffer- und Kontextregeln in mehreren RAG-HTTP-Handlern
 
-**Status** · offen
+**Status** · behoben
 
 **Schweregrad** · P2
 
