@@ -2,6 +2,7 @@
 
 purpose: "Kompakte Zusammenfassung der prägenden Architekturentscheidungen mit Bezug zu Zielen und Randbedingungen."
 agent_instructions:
+  - Dies ist Teil einer  Architekturdokumentation nach Arc42
   - "Diese Anweisungen gelten für das gesamte Kapitel 4 und bleiben im HTML-Kommentar."
   - "Nach arc42 nur grundlegende Lösungsansätze und Entscheidungen aufnehmen, die die Architektur prägen. Dazu gehören der grobe Systemzuschnitt, wesentliche Technologieentscheidungen und Ansätze zur Erreichung der wichtigsten Qualitätsziele."
   - "Pro Ansatz knapp erläutern, was gewählt wurde und warum. Die Begründung auf Projektziele, Qualitätsziele oder maßgebliche Randbedingungen beziehen."
@@ -10,7 +11,7 @@ agent_instructions:
 
 -->
 
-# 4 Lösungsstrategie nach arc42 – Römer-RAG
+# 4 Lösungsstrategie – Römer-RAG
 
 Die Strategie richtet sich an den [Qualitätszielen aus Kapitel 1](1-einfuehrung-und-ziele.md#12-qualitätsziele) aus.
 

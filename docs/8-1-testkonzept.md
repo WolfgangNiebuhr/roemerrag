@@ -2,6 +2,7 @@
 
 purpose: "Systemübergreifende Teststrategie mit Teststufen, Isolation und Abdeckung wichtiger Verträge."
 agent_instructions:
+  - Dies ist Teil einer  Architekturdokumentation nach Arc42
   - "Je Teststufe erläutern, was sie prüft, welche Abhängigkeiten sie braucht und wie Testdaten und Betriebsdaten getrennt werden. Stabile Aufrufoptionen und relevante Abdeckung dürfen hier als Referenz stehen."
   - "Qualitätsanforderungen und ihre Erfolgskriterien in Kapitel 10 pflegen. Testtopologie steht in Kapitel 7, konkrete Prüfergebnisse im Changelog."
   - "In diesem Kapitel nur den aktuellen Stand und ausdrücklich als offen gekennzeichnete Ziele beschreiben."
@@ -80,7 +81,7 @@ Evaluations-Vertragstests prüfen direkt verkettbare `next_request`-Antworten, e
 
 ### Reranker
 
-`tests/unit/test_reranker_unit.py` prüft mit einem Fake-Modell Eingabevalidierung, leere Dokumentlisten, Rangfolge, Modellwahl und Default, Wiederverwendung, Wechsel, parallele Anfragen sowie Lade- und Inferenzfehler. `tests/podman/test_reranker.py` prüft Health und HTTP-Modellwechsel mit MiniLM-L6 und TinyBERT-L2 im selben Container. Das Standardmodell wird beim Image-Build geladen und beim ersten entsprechenden Zugriff in den Prozess geladen. Der Download des Zusatzmodells benötigt Netzwerkzugriff.
+`tests/unit/test_reranker_unit.py` prüft mit einem Fake-Modell Eingabevalidierung, leere Dokumentlisten, Rangfolge, Modellwahl und Default, Wiederverwendung, Wechsel, parallele Anfragen sowie Lade- und Inferenzfehler. `tests/podman/test_reranker.py` prüft Health und HTTP-Modellwechsel mit MiniLM-L6 und TinyBERT-L2 im selben Container. Die Gewichte des Standardmodells werden beim Image-Build bereitgestellt. Der Dienst lädt das Modell beim Prozessstart im Hintergrund. Der Download des Zusatzmodells benötigt Netzwerkzugriff.
 
 ### Gemeinsame Health-Schnittstelle
 
@@ -102,4 +103,6 @@ Tests verwenden statische Paketimporte fuer normale Projektmodule. Reexportierte
 
 ## Offene Testziele
 
-Das [Schuldenregister](11-2-technische-schulden.md#1122-schuldenregister) führt offene Vertrags- und Testlücken. Dazu gehören eine nicht beantwortbare Frage bei vorhandenem Kontext, Goldantworten und referenzierte Retrievaltreffer, Prüfungen von Reranker-Health während Laden und Inferenz, die Prüfung des Schemas samt Index beim Neuaufbau sowie repräsentative Suchpläne und Lastprofile. GPU-Prüfungen benötigen passende Hardware und bilden eine eigene Testgruppe. Echte Modelle werden anhand fachlicher Kriterien geprüft, da Modellversion, Hardware und Sampling Antworten beeinflussen.
+Offen sind Qualitätsläufe mit echten Modellen über den in [TS-17](11-2-technische-schulden.md#ts-17--testabdeckung-umgeht-relevante-verarbeitungspfade) beschriebenen Referenzkorpus. Sie sollen Retrieval und Reranking anhand der referenzierten Passagen bewerten und die Antworten anhand fachlicher Kriterien prüfen. Dazu gehört eine unbeantwortbare Frage bei vorhandenem, thematisch ähnlichem Kontext. Korpus und Versuchsparameter sollen für jeden Lauf nachvollziehbar sein.
+
+Weitere offene Testziele sind ein Regressionstest für die noch festzulegende Größenregel aus [TS-21](11-2-technische-schulden.md#ts-21--überschrittene-chunkgröße-bei-langen-passagen) sowie Suchpläne und Lastprofile für größere Bestände und parallele Anfragen. GPU-Prüfungen benötigen passende Hardware und bilden eine eigene Testgruppe.

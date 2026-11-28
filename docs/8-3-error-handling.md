@@ -2,6 +2,7 @@
 
 purpose: "Gemeinsame Regeln für Fehlererkennung, Fehlerübersetzung und Diagnose an Dienst- und Werkzeuggrenzen."
 agent_instructions:
+  - Dies ist Teil einer  Architekturdokumentation nach Arc42
   - "Geltungsbereich und Verantwortlichkeiten je Schicht erklären. Gemeinsame Fehlerverträge, Fehlerklassen, Zeitbudgets und Diagnoseregeln zentral pflegen."
   - "Umgesetzte Verträge und ausdrücklich offene Zielregeln klar kennzeichnen. Konkrete Fehlerabläufe in Kapitel 6 und Prüfverfahren in Kapitel 8.1 beschreiben."
   - "Gültige Änderungen direkt einarbeiten. Datierte Nachträge sowie Änderungs-, Prüf- und Ausrollnachweise ausschließlich in ../changelog.md pflegen."

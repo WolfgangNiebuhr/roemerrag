@@ -2,6 +2,7 @@
 
 purpose: "Architekturrelevante Szenarien und Interaktionen der Bausteine zur Laufzeit."
 agent_instructions:
+  - Dies ist Teil einer  Architekturdokumentation nach Arc42
   - "Wenige repräsentative fachliche, externe, betriebliche oder Fehlerabläufe auswählen. Beteiligte Bausteine und die wesentliche Reihenfolge und Wirkung ihrer Interaktionen zeigen."
   - "Bausteinnamen aus Kapitel 5 verwenden. Für statische Zuständigkeiten auf Kapitel 5, für Topologie auf Kapitel 7 und für Setup oder Diagnosebefehle auf die README verweisen."
   - "In diesem Kapitel nur den aktuellen Stand und ausdrücklich als offen gekennzeichnete Ziele beschreiben."
@@ -10,7 +11,7 @@ agent_instructions:
 
 -->
 
-# 6 Laufzeitsicht nach arc42 – Römer-RAG
+# 6 Laufzeitsicht – Römer-RAG
 
 Diese Sicht beschreibt Fragebeantwortung, Dokumentimport und die dabei benötigte Verbindung zu Windows-Ollama im Podman-Betrieb. Die [Bausteinsicht](5-bausteinsicht.md) beschreibt die Komponenten; Startbefehle stehen im [README](../README.md).
 

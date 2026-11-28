@@ -2,6 +2,7 @@
 
 purpose: "Technische und organisatorische Vorgaben und Konventionen, die den Gestaltungsspielraum einschränken."
 agent_instructions:
+  - Dies ist Teil einer  Architekturdokumentation nach Arc42
   - "Je Randbedingung die verbindliche Vorgabe und ihre Auswirkung auf Entwurf, Umsetzung oder Betrieb festhalten. Technische Vorgaben, organisatorische Vorgaben und Konventionen unterscheidbar halten."
   - "Gesetzte Vorgaben von gewählten Lösungsansätzen (4 und 9) und der aktuellen Infrastruktur (7) unterscheiden. Setup- und Bedienbefehle in der README pflegen."
   - "Gültige Änderungen direkt einarbeiten. Datierte Nachträge sowie Änderungs-, Prüf- und Ausrollnachweise ausschließlich in ../changelog.md pflegen."

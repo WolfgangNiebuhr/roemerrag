@@ -17,6 +17,18 @@ Aus README und docs übernommene Änderungshistorie. Gleichdatierte Einträge fo
 
 ## 2026-11-28
 
+### Bausteinsicht und Verteilungssicht abgeglichen
+
+Abschnitt 5.4 entfernt. Kapitel 7 dokumentiert Image-Builds, Podman-Topologie, Volumes und Testverteilung. Aufruf und Konfiguration der Vector-Suche sowie die Definition des Datenbankschemas stehen bei den betreffenden Bausteinen in Kapitel 5. Die Zugriffswege der lokalen Import-, Abfrage- und Analysewerkzeuge wurden mit dem Code abgeglichen. Unit- und Podman-Tests wurden für diese Dokumentationsänderung nicht ausgeführt.
+
+### Bausteinsicht mit der Implementierung abgeglichen
+
+Die Bausteinsicht beschreibt die konfigurierbaren RAG-Defaults, die Zuständigkeit der Importpipeline, den Datenbankzugriff der Health-Endpunkte und den Datenbank-Image-Build. Der Abschnitt „Offene Punkte“ entfällt. Die dort genannten Arbeiten stehen bereits in TS-17 und TS-18. Veränderliche Abhängigkeiten sind als R-05 erfasst. Geprüft wurden Quellcode, Startanleitung und Testaufbau. Unit- und Podman-Tests wurden für die Dokumentationsänderung nicht ausgeführt.
+
+### TS-17 · Offene Evaluations- und Testarbeiten präzisiert
+
+Schuldenregister, Testkonzept und Bausteinsicht mit Quellcode, vorhandenen Tests und dokumentierten Schema- und Suchplanprüfungen abgeglichen. TS-17 beschreibt jetzt die fehlenden Referenzfälle, Passagenzuordnungen, Antwortkriterien und Laufparameter sowie die verbleibenden Last- und Chunking-Prüfungen. Bei TS-18 ist die Portbindung dokumentiert, bei TS-26 der entfallene Suchalias berücksichtigt. Die Änderung betrifft nur Markdown. Unit- und Podman-Tests wurden dafür nicht erneut ausgeführt.
+
 ### TS-16 · Schema des neuesten Backups abgeglichen
 
 Das Schema aus `backups/ts15-20261128-085240.dump` wurde mit `pg_restore --schema-only --exit-on-error` in einer isolierten Testdatenbank wiederhergestellt. Die drei Schema-Dumps aus dem Backup-Restore, der laufenden Datenbank und der frischen Initialisierung mit `Vector/init.sql` waren bytegleich (PostgreSQL 17.6, pgvector 0.8.0). Der Testcontainer und sein temporäres Volume wurden entfernt. Die Prüfung umfasste das Schema. Tabellendaten wurden nicht wiederhergestellt, und die Anwendungstests wurden für diesen Vergleich nicht wiederholt.

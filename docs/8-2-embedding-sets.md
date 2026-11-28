@@ -2,6 +2,7 @@
 
 purpose: "Übergreifende Semantik der Embedding-Sets und nachvollziehbare Zuordnung zu tatsächlich verwendeten Importparametern."
 agent_instructions:
+  - Dies ist Teil einer  Architekturdokumentation nach Arc42
   - "Die gemeinsam genutzte Set-Identität, die Regeln für Vergabe und Wiederverwendung und ihre Bedeutung für Import, Retrieval und Auswertung erklären. Die Begründung für die manuelle Zuordnung ist in Kapitel 9 dokumentiert."
   - "Das Set-Verzeichnis anhand belegter Parameter pflegen. Geplante, tatsächlich verwendete und historisch unbekannte Angaben klar kennzeichnen. Nur für die Herkunft relevante Datumsangaben bei Set-Einträgen führen."
   - "Gültige Änderungen direkt einarbeiten. Datierte Nachträge sowie Änderungs-, Prüf- und Ausrollnachweise ausschließlich in ../changelog.md pflegen."

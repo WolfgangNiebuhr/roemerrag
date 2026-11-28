@@ -2,6 +2,7 @@
 
 purpose: "Statische Zerlegung des Systems in Bausteine mit Verantwortlichkeiten, Schnittstellen und Abhängigkeiten."
 agent_instructions:
+  - Dies ist Teil einer  Architekturdokumentation nach Arc42
   - "Das Gesamtsystem auf der obersten Ebene als Whitebox zeigen und seine Bausteine als Blackboxes mit Zweck, Verantwortung und relevanten Schnittstellen erklären. Nur wichtige Bausteine auf weiteren Ebenen verfeinern und auf die Implementierung verweisen."
   - "Interne statische Beziehungen hier pflegen und für externe Systemgrenzen (3), zeitliche Interaktionen (6) und Infrastrukturzuordnung (7) auf die jeweiligen Sichten verweisen."
   - "In diesem Kapitel nur den aktuellen Stand und ausdrücklich als offen gekennzeichnete Ziele beschreiben."
@@ -10,11 +11,11 @@ agent_instructions:
 
 -->
 
-# 5 Bausteinsicht nach arc42 – Römer-RAG
+# 5 Bausteinsicht – Römer-RAG
 
 Die [Lösungsstrategie](4-loesungsstrategie.md#verantwortlichkeiten-und-abhängigkeiten) erläutert die Prinzipien, nach denen Zuständigkeiten und Abhängigkeiten der Bausteine festgelegt sind.
 
-Die [Laufzeitsicht](6-laufzeitsicht.md) beschreibt Aufrufreihenfolge und Netzwerkverhalten; das [README](../README.md) enthält Setup und Startbefehle.
+Die [Laufzeitsicht](6-laufzeitsicht.md) beschreibt Aufrufreihenfolge und Netzwerkverhalten. Die [Verteilungssicht](7-verteilungssicht.md) ordnet die Bausteine Hosts, Pods und Containern zu. Das [README](../README.md) enthält Setup und Startbefehle.
 
 ## 5.1 Gesamtsystem als Blackbox
 
@@ -46,7 +47,7 @@ flowchart LR
 
 | Baustein | Verantwortung | Maßgebliche Implementierung |
 |---|---|---|
-| Dokumentimport | Chunking, optionale Keywords, normalisierte Embeddings und Speicherung | [pipeline.py](../Ingest/pipeline.py), [chunking.py](../Ingest/utils/chunking.py), [keywords.py](../Ingest/utils/keywords.py) |
+| Dokumentimport | Chunking, optionale Keyword-Anreicherung, konfigurierbare Embeddings und Speicherung | [pipeline.py](../Ingest/pipeline.py), [chunking.py](../Ingest/utils/chunking.py) |
 | RAG-API | Embedding, Retrieval, optionales Reranking, Kontext und Generierung orchestrieren | [app.py](../rag/app.py), [ollama_endpoint.py](../rag/ollama_endpoint.py), [Dockerfile](../rag/Dockerfile) |
 | Vector-API | CRUD und Ähnlichkeitssuche über PostgreSQL | [app.py](../Vector/app.py), [Dockerfile.api](../Vector/Dockerfile.api) |
 | Vektorspeicher | Chunks, Varianten und Vektoren persistent speichern | [init.sql](../Vector/init.sql), [Dockerfile](../Vector/Dockerfile) |
@@ -66,13 +67,13 @@ Die Endpunkte validieren und dekodieren ihre Eingaben vor Datenbank- oder Modell
 
 | Teil | Verantwortung / Konfiguration |
 |---|---|
-| HTTP-Einstieg | `POST /process` liest `query`, `embedding_set_id`, `metric`, `num_results` und optionale Modell- und Reranking-Parameter. Standard sind Set `snowflake-arctic-embed2-v2`, Metrik `euclidean` und fünf Treffer. |
+| HTTP-Einstieg | `POST /process` liest `query`, `embedding_set_id`, `metric`, `num_results` und optionale Modell- und Reranking-Parameter. Der Set-Default ist über `EMBEDDING_SET_ID` konfigurierbar und steht auf `snowflake-arctic-embed2-v2`. Standard sind Metrik `euclidean` und fünf Treffer. |
 | Ollama-Resolver | `OLLAMA_BASE_URL` hat Vorrang. Sonst Prüfung des Podman-Hostnamens und unter WSL der sichtbaren IPv4-Default-Gateways über `/api/tags`. Erfolgreiche Auswahl wird pro Prozess gespeichert. |
-| Embeddingadapter | `/api/embeddings`, Modell `snowflake-arctic-embed2`, Normalisierung des Fragevektors. |
-| Retrievaladapter | `VECTOR_API_URL`, Standard `http://host.containers.internal:5500/search`. Im gemeinsamen Pod explizit `http://127.0.0.1:5500/search` setzen. |
-| Reranking | Ruft den separaten Reranker bei vorhandenen Treffern und `top_k > 0` auf. Standardmäßig ist Reranking für `/process` deaktiviert. |
+| Embeddingadapter | `/api/embeddings`, Modell über `EMBEDDING_MODEL` (Standard `snowflake-arctic-embed2`), Normalisierung des Fragevektors. |
+| Retrievaladapter | Ruft `POST /search` der Vector-API auf. `VECTOR_API_URL` konfiguriert die Zieladresse und verwendet standardmäßig `http://host.containers.internal:5500/search`. |
+| Reranking | Ruft bei vorhandenen Treffern und `top_k > 0` den über `RERANKER_URL` konfigurierten Dienst auf. Standardmäßig ist Reranking für `/process` deaktiviert. |
 | Kontextbildung | Validiert `chunk_id` und `chunktext` und verknüpft die nicht leeren Texte der ausgewählten Treffer. |
-| Generierungsadapter | `/api/generate`, Modell `gemma4:e4b`, ohne Streaming; liefert Antwort und Laufzeit-/Tokenmetriken. |
+| Generierungsadapter | `/api/generate` liefert Antwort und Laufzeit- und Tokenmetriken ohne Streaming. Das Antwortmodell lässt sich je Anfrage wählen. `ANSWER_MODEL` konfiguriert den Standard (`gemma4:e4b`). |
 
 Die Antwort enthält `response`, `chunks`, `metrics` sowie getrennte `retrieved_results` und `selected_results`. Leerer Kontext führt zu HTTP 200 mit `status: no_context`, leeren `chunks` und `metrics: null`. Ungültige Retrievalantworten ergeben HTTP 502. Die Serverzeiten `embedding_duration`, `retrieval_duration` und `pipeline_duration` stehen in `timings`, auch bei `no_context`. Generierungsmetriken verwenden `generation_duration` mit `total_duration` als Alias. Ungültige optionale Metriken werden als `null` ausgegeben. Der Prompt begrenzt die Antwort auf den Kontext. Ein erfolgreicher API-Aufruf garantiert keine Faktentreue.
 
@@ -82,9 +83,9 @@ Die Evaluationsendpunkte `POST /evaluate/retrieve`, `POST /evaluate/rerank` und 
 
 ### 5.3.3 Vector-API und Datenhaltung
 
-Die Vector-API initialisiert den `ThreadedConnectionPool` erst nach der Eingabevalidierung. Er umfasst eine bis zehn Verbindungen. Der Transaktionskontext führt Commit oder Rollback aus und verwirft defekte Verbindungen. Einstellungen sind `POSTGRES_DB`, `DB_HOST`, `DB_PORT`, `DB_USER` und `DB_PASSWORD`. [Zeitlimits und Initialisierungsversuche](8-3-error-handling.md#834-timeouts-und-wiederholungen)
+Die Vector-API initialisiert den `ThreadedConnectionPool` beim ersten Datenbankzugriff. Bei fachlichen Anfragen erfolgt dieser Zugriff nach der Eingabevalidierung. Der Pool umfasst eine bis zehn Verbindungen. Der Transaktionskontext führt Commit oder Rollback aus und verwirft defekte Verbindungen. Einstellungen sind `POSTGRES_DB`, `DB_HOST`, `DB_PORT`, `DB_USER` und `DB_PASSWORD`. [Zeitlimits und Initialisierungsversuche](8-3-error-handling.md#834-timeouts-und-wiederholungen)
 
-`GET /actuator/health` prüft Datenbankzugriff und Schema. `GET /actuator/info` meldet den Zustand des Verbindungspools und die in `vectors` vorhandenen Embedding-Set-IDs. Fehlende Bereitschaft und Poolerschöpfung ergeben HTTP 503. Nach einem Datenbankwiederanlauf kann sich die API ohne Neustart erholen.
+`GET /actuator/health` prüft den lesenden Zugriff auf die benötigten Spalten in `vectors`. `GET /actuator/info` meldet, ob der Verbindungspool initialisiert ist, und listet die in `vectors` vorhandenen Embedding-Set-IDs. Fehlende Bereitschaft und Poolerschöpfung ergeben HTTP 503. Nach einem Datenbankwiederanlauf kann sich die API ohne Neustart erholen.
 
 | Methode / Pfad | Aufgabe |
 |---|---|
@@ -99,30 +100,12 @@ Der JSON-Body für `DELETE /chunks` enthält `document_id` (Dateistamm), `embedd
 
 Die Tabelle `vectors` enthält `id SERIAL PRIMARY KEY`, `chunk_id TEXT NOT NULL`, `embedding_set_id TEXT NOT NULL`, `vector VECTOR(1024)` und `chunktext TEXT NOT NULL`. Ein Check-Constraint verlangt mindestens ein Zeichen außerhalb von Leerzeichen, LF und CR. Die Vector-API prüft dieselbe Regel vor dem Datenbankzugriff. `embedding_set_id` ist die Variantenkennung, kein numerischer Vektor. `UNIQUE(chunk_id, embedding_set_id)` trennt Importvarianten. Einzelwrites verwenden Upserts und sind nach der jeweiligen Transaktion abrufbar. Die abschließende Bereinigung verwendet eine eigene Transaktion. HNSW-Indizes mit `vector_l2_ops` und `vector_cosine_ops` unterstützen die euklidische Suche und die Cosinus-Suche. Die Vector-API akzeptiert Vektoren als JSON-Zahlenlisten mit 1024 endlichen Zahlen. Die Vector-API verwendet `embedding_set_id` als Set-Kennung in Anfragen und Antworten. Angeforderte Vektoren werden wie der RAG-Fragevektor als JSON-Zahlenlisten ausgegeben.
 
+Das [Initialisierungsschema](../Vector/init.sql) definiert die Tabelle, ihre Constraints und Indizes für neue Datenbanken.
+
 ### 5.3.4 Ollama und Reranker
 
-Ollama benötigt `snowflake-arctic-embed2` für Embeddings und `gemma4:e4b` für RAG-Antworten. Die Modelle werden auf dem Windows-Host bereitgestellt; sie liegen nicht im RAG-Image oder im PostgreSQL-Volume.
+Für den RAG-Standardbetrieb stellt Ollama `snowflake-arctic-embed2` für Embeddings und `gemma4:e4b` für Antworten bereit. Die Importpipeline wählt Embedding- und gegebenenfalls Keyword-Modell aus der Versuchskonfiguration. Die Modelle liegen auf dem Windows-Host.
 
 Das Reranker-Image installiert Flask, sentence-transformers und torch und laedt beim Build `cross-encoder/ms-marco-MiniLM-L6-v2` vor. `POST /rerank` akzeptiert optional `model`; ohne Angabe gilt `RERANK_MODEL`. Ein aktiver CrossEncoder wird bei gleicher Auswahl wiederverwendet und bei Modellwechsel ersetzt. Laden und Inferenz sind gemeinsam synchronisiert. Neue Gewichte werden bei Bedarf geladen; Modelle mit erforderlichem Remote-Code werden nicht unterstuetzt (`trust_remote_code=False`). Ladefehler liefern HTTP 503 ohne Fallback. Antworten enthalten das verwendete `model` und `ranked_documents` mit `original_index`, `score` und `text`, absteigend sortiert. Leere Dokumentlisten laden kein Modell. Der Prozess lädt das Defaultmodell beim Start im Hintergrund. Die Health-Endpunkte lesen den Modellzustand unabhängig von der Inferenzsperre.
 
 Alle drei APIs verwenden den [gemeinsamen Health-Vertrag](8-3-error-handling.md#gemeinsamer-health-vertrag-ts-13).
-
-## 5.4 Zuordnung zum Podman-Betrieb
-
-Die [Verteilungssicht](7-verteilungssicht.md) zeigt die Infrastruktur mit Windows, WSL, Pods und Containern sowie die konkreten Ports, Volumes und Betriebsvarianten.
-
-Die Dockerfiles installieren Pakete und kopieren Anwendungscode beim Image-Build. [build_image.py](../scripts/build_image.py) baut API-Images aus temporären Kontexten mit explizit ausgewählten Quelldateien und `rag_common`. Codeänderungen werden über ein neues Image und einen neu erstellten Container übernommen.
-
-Im README-Neuaufbau teilen PostgreSQL, Vector-API und RAG-API den Pod `vectorpod`. PostgreSQL speichert Daten im Named Volume `pgvector-data`; `init.sql` wird nur bei Initialisierung eines leeren Datenverzeichnisses ausgeführt. Ein Image-Neubau migriert keine vorhandene Datenbank. Der optionale Reranker läuft separat auf Port 5000. Ollama läuft als Windows-Hintergrund-App auf Port 11434.
-
-Die RAG-API kann auch separat auf Port 5600 laufen und die Vector-API über deren veröffentlichten Port erreichen. `Vector/init.sql` definiert das Schema für neue Datenbanken. Ein DB-Containerwechsel mit vorhandenem Volume übernimmt dessen Schema und Daten.
-
-Die Testfixture baut einen eigenen Pod mit eindeutigen Container-/Image-Namen und eigenem Volume auf. API-Hostports vergibt Podman dynamisch, PostgreSQL wird nicht am Host veröffentlicht. Die Test-RAG-API sucht innerhalb des Test-Pods. Nur Ollama wird mit dem Host geteilt. Details stehen im [Testkonzept](8-1-testkonzept.md).
-
-## 5.5 Offene Punkte
-
-Das [Schuldenregister](11-2-technische-schulden.md) führt aktuelle Befunde und Schweregrade. Für die Bausteinsicht sind insbesondere folgende Einschränkungen relevant:
-
-- Paketversionen und pgvector-Quellstand sind nicht vollständig fixiert.
-- Die Dienste verwenden Flask-Entwicklungsserver ohne API-Authentifizierung.
-- Die Evaluationsendpunkte ermöglichen Einzelversuche. Goldvergleich und aggregierte Qualitätsmessung sind offen.

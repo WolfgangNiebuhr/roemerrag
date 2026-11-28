@@ -2,6 +2,7 @@
 
 purpose: "Ausdrücklich identifizierte Architekturrisiken mit ihren möglichen Auswirkungen und dem Umgang damit."
 agent_instructions:
+  - Dies ist Teil einer  Architekturdokumentation nach Arc42
   - "Je Risiko eine stabile R-ID, Auslöser oder Ursache, mögliche Auswirkungen, Status und den Umgang damit festhalten. Wo belastbar, Eintrittswahrscheinlichkeit und Auswirkung für die Priorisierung angeben."
   - "Akzeptierte Restrisiken und ihre Begründung kenntlich machen. Technische Schulden in 11.2 pflegen und bei einem ausdrücklich erfassten Zusammenhang aufeinander verweisen."
   - "Gültige Änderungen direkt einarbeiten. Datierte Nachträge sowie Änderungs-, Prüf- und Ausrollnachweise ausschließlich in ../changelog.md pflegen."

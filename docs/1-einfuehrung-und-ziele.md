@@ -1,7 +1,8 @@
 <!--
 
-purpose: "Aufgabenstellung, wichtigste Architekturqualitätsziele und Erwartungen der Stakeholder im Überblick."
+purpose: "Aufgabenstellung, wichtigste Architekturqualitätsziele und Erwartungen der Stakeholder im Überblick"
 agent_instructions:
+  - Dies ist Teil einer Architekturdokumentation nach Arc42
   - "Die wesentlichen Aufgaben und den Nutzen des Systems aus Sicht der Stakeholder kurz beschreiben. Relevante Rollen und ihre Erwartungen ausdrücklich benennen."
   - "Die drei bis höchstens fünf wichtigsten Qualitätsziele der Architektur mit ihrer Bedeutung festhalten. Detaillierte Prüfszenarien in Kapitel 10 pflegen und von hier verlinken. Lösungsansätze stehen in Kapitel 4."
   - "Gültige Änderungen direkt einarbeiten. Datierte Nachträge sowie Änderungs-, Prüf- und Ausrollnachweise ausschließlich in ../changelog.md pflegen."

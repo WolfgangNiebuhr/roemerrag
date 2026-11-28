@@ -2,6 +2,7 @@
 
 purpose: "Bestehende technische Schulden, ihre Auswirkungen, Schweregrade und verbleibenden Arbeiten im Römer-RAG-Projekt."
 agent_instructions:
+  - Dies ist Teil einer  Architekturdokumentation nach Arc42
   - "Einträge anhand der bestehenden Schweregrade nach ihrer Auswirkung priorisieren. Konkrete betroffene Schnittstellen, Bausteine oder Qualitätsziele benennen und bei Bedarf verlinken. Ausdrücklich erfasste Risiken gehören in Kapitel 11.1."
   - "Jeder Eintrag hat eine stabile TS-ID und genau einen Status: offen, teilweise behoben, behoben oder abgelehnt."
   - "Neben Titel und Status sind die ursprüngliche Problembeschreibung, eine Bewertung nach Schweregrad und ein Lösungsvorschlag zulässig."
@@ -222,11 +223,14 @@ Der [E2E-Test](../tests/podman/test_rag_e2e.py) importiert selbst und umgeht Imp
 
 #### Noch offen
 
-Regressionstests zu den offenen Verträgen aus TS-12/13/15/21 ergänzen. Repräsentative Last und Suchpläne prüfen sowie Goldantworten und erwartete Retrievaltreffer über einen breiteren Korpus absichern.
+- Die Größenregel aus [TS-21](#ts-21--überschrittene-chunkgröße-bei-langen-passagen) mit einer langen, ungetrennten Passage für die Variante ohne Zeichen-Fallback absichern, sobald die Regel feststeht.
+- Repräsentative Lastprofile festlegen und das Suchverhalten bei größeren Beständen und parallelen Anfragen prüfen. Für den aktuellen Bestand liegt ein Suchplanvergleich aus [TS-16](#ts-16--indexstrategie-passt-nicht-zu-allen-suchmetriken) vor.
+- Den bestehenden Ende-zu-Ende-Fall um einen versionierten Referenzkorpus mit mehreren Dokumenten zur römischen Geschichte und fachlich annotierten Fragen erweitern. Benötigt werden Fragen mit einem eindeutigen Beleg, Fragen mit Belegen aus mehreren Passagen und Fragen, die bei vorhandenem, thematisch ähnlichem Kontext unbeantwortbar sind.
+- Je Frage die relevanten Passagen über Dokument und Textstelle festhalten, damit die Referenz bei geändertem Chunking gültig bleibt. Für jede Importvariante die Passagen den tatsächlich erzeugten Chunks zuordnen. Für beantwortbare Fragen die erwarteten Kernaussagen und Belege hinterlegen. Für unbeantwortbare Fragen festhalten, dass die Antwort auf die fehlende Grundlage hinweist.
 
 **Lösungsvorschlag**
 
-Deterministische Vertragstests und echte Modelltests getrennt halten. Goldkorpus, erwartete Treffer, Antwortbewertung und Versuchsparameter gemeinsam definieren.
+Deterministische Vertragstests und Qualitätsläufe mit echten Modellen getrennt halten. Für jeden Qualitätslauf Korpusversion, Importkonfiguration und Set-ID, Suchmetrik und Treffergrenze sowie Modell- und Promptkonfiguration erfassen. Den Anteil gefundener Referenzpassagen unter den ersten k Treffern vor und nach optionalem Reranking ausweisen. Antworten anhand der belegten Kernaussagen, unbelegter Behauptungen und des Verhaltens bei unbeantwortbaren Fragen bewerten. Ergebnisse pro Frage und zusammengefasst über den Korpus ausgeben.
 
 ### TS-18 – Experimenteller Betriebsrahmen
 
@@ -241,6 +245,8 @@ Die APIs starten Flask-Entwicklungsserver; Authentifizierung fehlt, Beispiel-DB-
 #### Noch offen
 
 Für Mehrbenutzer- oder exponierten Betrieb fehlen geeigneter Serverbetrieb, Zugangskontrolle und externe Geheimniskonfiguration.
+
+Die [Startanleitung](../README.md) veröffentlicht die Ports ohne explizite Bindung an Loopback. Vor einer Freigabe die tatsächliche Erreichbarkeit der veröffentlichten Ports prüfen.
 
 **Lösungsvorschlag**
 
@@ -284,7 +290,7 @@ Absatz- und Satztrennung ohne Zeichen-Fallback kann bei langen, ungetrennten Pas
 
 #### Noch offen
 
-Für Strategien ohne Zeichen-Fallback eine explizite Größenregel festlegen. Bei Versuchen die tatsächlich erzeugten Chunklängen ausweisen.
+Für Strategien ohne Zeichen-Fallback eine explizite Größenregel festlegen. In der verlinkten Beispielkonfiguration sind 1.000 Zeichen die Zielgröße. Bei Versuchen die tatsächlich erzeugten Chunklängen ausweisen.
 
 **Lösungsvorschlag**
 
@@ -352,7 +358,7 @@ Speicherzugriff, Artefaktausgabe und CLI-Darstellung über eigene Schnittstellen
 
 **Problembeschreibung**
 
-`search_vectors()` in der [Vector-API](../Vector/app.py) verarbeitet HTTP-Eingaben, wählt den pgvector-Operator, führt SQL aus und formt die Treffer zur JSON-Antwort mit Kompatibilitätsalias. Die Transaktion ist bereits gekapselt. Weitere Suchstrategien oder Änderungen am Rückgabeformat betreffen trotzdem dieselbe Funktion. Der nach außen sichtbare Vektorvertrag ist bereits in [TS-11](#ts-11--widersprüchlicher-und-datenbanknaher-vektorvertrag) erfasst.
+`search_vectors()` in der [Vector-API](../Vector/app.py) verarbeitet HTTP-Eingaben, wählt den pgvector-Operator, führt SQL aus und serialisiert die Treffer als JSON-Antwort. Die Transaktion ist bereits gekapselt. Weitere Suchstrategien oder Änderungen am Rückgabeformat betreffen trotzdem dieselbe Funktion. Der nach außen sichtbare Vektorvertrag ist bereits in [TS-11](#ts-11--widersprüchlicher-und-datenbanknaher-vektorvertrag) erfasst.
 
 **Lösungsvorschlag**
 

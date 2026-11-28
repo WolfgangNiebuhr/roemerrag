@@ -2,6 +2,7 @@
 
 purpose: "Architekturrelevante Qualitätsanforderungen anhand prüfbarer Szenarien konkretisieren."
 agent_instructions:
+  - Dies ist Teil einer  Architekturdokumentation nach Arc42
   - "Die wichtigsten Qualitätsziele aus Kapitel 1 verlinken und hier durch konkrete Szenarien präzisieren. Weitere Qualitätsanforderungen nur aufnehmen, wenn sie Architekturentscheidungen beeinflussen."
   - "Je Szenario eine stabile Kennung, Auslöser und relevante Bedingungen sowie die erwartete Reaktion und ein überprüfbares Erfolgskriterium festhalten. Offene Zielwerte kenntlich machen."
   - "Bei Bedarf die Szenarien nach Qualitätsmerkmal gruppieren und priorisieren. Einen Qualitätsbaum nur ergänzen, wenn er die Übersicht verbessert. Lösungsansätze in Kapitel 4 und Prüfverfahren in Kapitel 8.1 pflegen."

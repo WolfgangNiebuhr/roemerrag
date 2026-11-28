@@ -2,6 +2,7 @@
 
 purpose: "Gemeinsame Regeln für erweiterbare Importstrategien, Artefakte und den Speichervertrag mit der Vector-API."
 agent_instructions:
+  - Dies ist Teil einer  Architekturdokumentation nach Arc42
   - "Strategiewahl, Verarbeitungsschritte und ihre Verträge erklären. Artefakte, Identität, Wiederaufnahme und Abschluss so beschreiben, dass weitere Importvarianten anschließen können."
   - "Umgesetzte Regeln und ausdrücklich offene oder zurückgestellte Konzepte unterscheidbar halten. Bedienbefehle in Ingest/README.md, repräsentative Laufzeitabläufe in Kapitel 6 und begründete Architekturentscheidungen in Kapitel 9 pflegen."
   - "Gültige Änderungen direkt einarbeiten. Datierte Nachträge sowie Änderungs-, Prüf- und Ausrollnachweise ausschließlich in ../changelog.md pflegen."

@@ -2,6 +2,7 @@
 
 purpose: "Zuordnung ausführbarer Bausteine zu Infrastruktur, Umgebungen und Betriebsvarianten."
 agent_instructions:
+  - Dies ist Teil einer  Architekturdokumentation nach Arc42
   - "Relevante Betriebs- und Testumgebungen separat darstellen. Bausteine aus Kapitel 5 den Hosts, Pods oder Containern zuordnen und relevante Netzwerkgrenzen, Verbindungen und persistente Speicher benennen."
   - "Hier die Topologie und ihre Bedeutung dokumentieren. Laufzeitabläufe gehören in Kapitel 6, konkrete Setup- und Startbefehle in die README."
   - "In diesem Kapitel nur den aktuellen Stand und ausdrücklich als offen gekennzeichnete Ziele beschreiben."
@@ -10,7 +11,7 @@ agent_instructions:
 
 -->
 
-# 7 Verteilungssicht nach arc42 – Römer-RAG
+# 7 Verteilungssicht – Römer-RAG
 
 Diese Sicht beschreibt den Windows-/WSL-Betrieb mit gemeinsamem Pod oder separater RAG-API sowie die isolierte Testverteilung. Die [Bausteinsicht](5-bausteinsicht.md) erklärt die Komponenten. Die [Laufzeitsicht](6-laufzeitsicht.md) erklärt Aufrufreihenfolge und Ollama-Ermittlung. Startbefehle stehen im [README](../README.md).
 
@@ -64,7 +65,10 @@ Der Standardaufbau benötigt keine GPU. Der optionale Reranker läuft separat. B
 | `rag-api` | `localhost/rag-api:local`, [Dockerfile](../rag/Dockerfile) | Im gemeinsamen Aufbau in `vectorpod`; `VECTOR_API_URL=http://127.0.0.1:5500/search`. Ollama-Adresse automatisch oder über `OLLAMA_BASE_URL`. |
 | `reranker`, optional | `localhost/reranker:local`, [Dockerfile](../reranker/Dockerfile) | Separater Container; Standardmodell `cross-encoder/ms-marco-MiniLM-L6-v2` wird beim Build heruntergeladen. |
 | Ollama | Installierte Windows-App | Außerhalb von WSL/Containern; persistente Benutzervariable `OLLAMA_HOST=0.0.0.0:11434`. |
-| Import und Analyse | Python-Dateien im Repository | Auf Windows; direkte HTTP-Aufrufe zu Ollama und Vector-API. |
+| Dokumentimport | Python-Dateien im Repository | Auf Windows, mit HTTP-Zugriff auf Ollama und die veröffentlichte Vector-API. |
+| Abfrage- und Analysewerkzeuge | Python-Dateien im Repository | Auf Windows, mit HTTP-Zugriff auf die veröffentlichte RAG-API. |
+
+[build_image.py](../scripts/build_image.py) baut die API-Images aus temporären Kontexten mit explizit ausgewählten Dateien des jeweiligen Dienstes und aus `rag_common`. Der Datenbank-Build kopiert `Vector/init.sql` in das PostgreSQL-Image.
 
 Anwendungscode und Python-Abhängigkeiten liegen in den Images. Eine Codeänderung erfordert einen Image-Neubau und die Neuerstellung des betreffenden Containers. Die im README verwendeten Startbefehle konfigurieren keinen automatischen Wiederanlauf der Podman-Container nach einem Host-Neustart; eine laufende Podman-Machine allein startet diese Dienste nicht garantiert. Vorhandene Container können über `podman start` beziehungsweise einen Pod über `podman pod start` wieder gestartet werden; Die Vector-API kann vor PostgreSQL starten. `GET /actuator/health` meldet bis zur Datenbankbereitschaft HTTP 503. Nach dem Start oder Wiederanlauf der Datenbank verbindet sich die API bei späteren Anfragen erneut.
 
@@ -75,8 +79,8 @@ Die Tabelle beschreibt den gemeinsamen Aufbau; „Hostport“ ist der vom Window
 | Dienst | Port des Dienstes | Hostport im gemeinsamen Aufbau | Nutzung |
 |---|---|---|---|
 | PostgreSQL | 5432/TCP | 5432, am Pod veröffentlicht | Windows-Clients verbinden sich über `127.0.0.1:5432` auf dem Host. Die Vector-API verwendet dieselbe Adresse innerhalb des Pods. |
-| Vector-API | 5500/TCP | 5500, am Pod veröffentlicht | Import und Analyse vom Host; RAG im selben Pod nutzt intern Port 5500. |
-| RAG-API | 5600/TCP | 5600, am Pod veröffentlicht | `POST http://127.0.0.1:5600/process` vom Host. |
+| Vector-API | 5500/TCP | 5500, am Pod veröffentlicht | Dokumentimport vom Host. RAG im selben Pod nutzt intern Port 5500. |
+| RAG-API | 5600/TCP | 5600, am Pod veröffentlicht | Abfrage- und Analysewerkzeuge auf dem Host verwenden `http://127.0.0.1:5600`. |
 | Reranker | 5000/TCP | 5000, am separaten Container veröffentlicht | Optionaler Dienst mit `/actuator/health`, `/actuator/info` und `/rerank`. RAG verwendet standardmäßig `http://host.containers.internal:5000/rerank`. |
 | Windows-Ollama | 11434/TCP | Kein Podman-Mapping | Windows-Aufrufe über `localhost`; Container über erreichbare Windows-Adresse. |
 
