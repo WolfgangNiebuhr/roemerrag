@@ -17,6 +17,10 @@ Aus README und docs übernommene Änderungshistorie. Gleichdatierte Einträge fo
 
 ## 2026-11-28
 
+### TS-21 · Zielgröße ohne Zeichen-Fallback festgelegt
+
+TS-21 ist abgelehnt. In der v2-Beispielkonfiguration gelten 1.000 Zeichen ohne Zeichen-Fallback bewusst als Zielgröße. Der zugehörige offene Testpunkt entfällt in TS-17 und im Testkonzept. Für diese reine Dokumentationsänderung wurden keine Unit- oder Podman-Tests ausgeführt.
+
 ### TS-18 · Technische Randbedingung verlinkt
 
 Der Lösungsvorschlag verweist auf „Lokaler Betrieb“ in Abschnitt 2.1. Für die reine Verlinkung wurden keine Laufzeittests ausgeführt.

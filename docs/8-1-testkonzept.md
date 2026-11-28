@@ -105,4 +105,4 @@ Tests verwenden statische Paketimporte fuer normale Projektmodule. Reexportierte
 
 Offen sind Qualitätsläufe mit echten Modellen über den in [TS-17](11-2-technische-schulden.md#ts-17--testabdeckung-umgeht-relevante-verarbeitungspfade) beschriebenen Referenzkorpus. Sie sollen Retrieval und Reranking anhand der referenzierten Passagen bewerten und die Antworten anhand fachlicher Kriterien prüfen. Dazu gehört eine unbeantwortbare Frage bei vorhandenem, thematisch ähnlichem Kontext. Korpus und Versuchsparameter sollen für jeden Lauf nachvollziehbar sein.
 
-Weitere offene Testziele sind ein Regressionstest für die noch festzulegende Größenregel aus [TS-21](11-2-technische-schulden.md#ts-21--überschrittene-chunkgröße-bei-langen-passagen) sowie Suchpläne und Lastprofile für größere Bestände und parallele Anfragen. GPU-Prüfungen benötigen passende Hardware und bilden eine eigene Testgruppe.
+Weitere offene Testziele betreffen Suchpläne und Lastprofile für größere Bestände und parallele Anfragen. GPU-Prüfungen benötigen passende Hardware und bilden eine eigene Testgruppe.

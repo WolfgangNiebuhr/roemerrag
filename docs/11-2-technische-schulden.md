@@ -223,7 +223,6 @@ Der [E2E-Test](../tests/podman/test_rag_e2e.py) importiert selbst und umgeht Imp
 
 #### Noch offen
 
-- Die Größenregel aus [TS-21](#ts-21--überschrittene-chunkgröße-bei-langen-passagen) mit einer langen, ungetrennten Passage für die Variante ohne Zeichen-Fallback absichern, sobald die Regel feststeht.
 - Repräsentative Lastprofile festlegen und das Suchverhalten bei größeren Beständen und parallelen Anfragen prüfen. Für den aktuellen Bestand liegt ein Suchplanvergleich aus [TS-16](#ts-16--indexstrategie-passt-nicht-zu-allen-suchmetriken) vor.
 - Den bestehenden Ende-zu-Ende-Fall um einen versionierten Referenzkorpus mit mehreren Dokumenten zur römischen Geschichte und fachlich annotierten Fragen erweitern. Benötigt werden Fragen mit einem eindeutigen Beleg, Fragen mit Belegen aus mehreren Passagen und Fragen, die bei vorhandenem, thematisch ähnlichem Kontext unbeantwortbar sind.
 - Je Frage die relevanten Passagen über Dokument und Textstelle festhalten, damit die Referenz bei geändertem Chunking gültig bleibt. Für jede Importvariante die Passagen den tatsächlich erzeugten Chunks zuordnen. Für beantwortbare Fragen die erwarteten Kernaussagen und Belege hinterlegen. Für unbeantwortbare Fragen festhalten, dass die Antwort auf die fehlende Grundlage hinweist.
@@ -274,7 +273,7 @@ Die Vector-API verlangt beim Schreiben einen nichtleeren String. Die Datenbank e
 
 ### TS-21 – Überschrittene Chunkgröße bei langen Passagen
 
-**Status** · teilweise behoben
+**Status** · abgelehnt
 
 **Schweregrad** · P2
 
@@ -282,13 +281,9 @@ Die Vector-API verlangt beim Schreiben einen nichtleeren String. Die Datenbank e
 
 Absatz- und Satztrennung ohne Zeichen-Fallback kann bei langen, ungetrennten Passagen die konfigurierte Chunkgröße überschreiten. Die tatsächlichen Eingabelängen können dadurch von den Versuchsparametern abweichen. Betroffen ist die [Pipeline-Beispielkonfiguration ohne Fallback](../Ingest/experiments/snowflake-arctic-embed-v2.json).
 
-#### Noch offen
+**Entscheidung**
 
-Für Strategien ohne Zeichen-Fallback eine explizite Größenregel festlegen. In der verlinkten Beispielkonfiguration sind 1.000 Zeichen die Zielgröße. Bei Versuchen die tatsächlich erzeugten Chunklängen ausweisen.
-
-**Lösungsvorschlag**
-
-Für Strategien mit garantierter Obergrenze einen Fallback samt Regressionstest für ungetrennte Passagen vorsehen. Bei geänderter Verarbeitung eine eigene Set-ID gemäß R-01 verwenden.
+In der verlinkten Beispielkonfiguration gelten die 1.000 Zeichen ohne Zeichen-Fallback bewusst als Zielgröße. Lange Passagen ohne passende Absatz- oder Satzgrenze bleiben zusammen und dürfen die Zielgröße überschreiten.
 
 ### TS-22 – Veraltete Angaben in der Bausteinsicht
 
