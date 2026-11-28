@@ -59,7 +59,7 @@ Der Standardaufbau benötigt keine GPU. Der optionale Reranker läuft separat. B
 
 | Ausführungseinheit | Image / Quelle | Platzierung und Konfiguration |
 |---|---|---|
-| `vectordb` | `localhost/vectordb:local`, [Dockerfile](../Vector/Dockerfile), Basis PostgreSQL 17 | In `vectorpod`; pgvector wird beim Image-Build kompiliert. Datenbank `vector_db`, Beispielbenutzer `admin`. |
+| `vectordb` | `localhost/vectordb:local`, [Dockerfile](../Vector/Dockerfile), per Digest fixiertes Basisimage mit PostgreSQL 17 und pgvector 0.8.0 | In `vectorpod`, Datenbank `vector_db`, Beispielbenutzer `admin`. |
 | `vector-api` | `localhost/vectorapi:local`, [Dockerfile.api](../Vector/Dockerfile.api) | In `vectorpod`; `DB_HOST=127.0.0.1`, `DB_PORT=5432`, weitere Zugangsdaten über Umgebungsvariablen. |
 | `rag-api` | `localhost/rag-api:local`, [Dockerfile](../rag/Dockerfile) | Im gemeinsamen Aufbau in `vectorpod`; `VECTOR_API_URL=http://127.0.0.1:5500/search`. Ollama-Adresse automatisch oder über `OLLAMA_BASE_URL`. |
 | `reranker`, optional | `localhost/reranker:local`, [Dockerfile](../reranker/Dockerfile) | Separater Container; Standardmodell `cross-encoder/ms-marco-MiniLM-L6-v2` wird beim Build heruntergeladen. |

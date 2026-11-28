@@ -196,7 +196,7 @@ Die Dockerfiles für [Vector](../Vector/Dockerfile), [RAG](../rag/Dockerfile) un
 
 #### Noch offen
 
-Abhängigkeiten, Basisimages, pgvector-Commit und Modellrevisionen fixieren. Die dokumentierte Testinstallation in einer frischen Umgebung prüfen. Bei weiteren Migrationen Versionserkennung und Reihenfolge absichern.
+Python-Abhängigkeiten, die Basisimages der API-Dienste und die Modellrevisionen fixieren. Die dokumentierte Testinstallation in einer frischen Umgebung prüfen. Bei weiteren Migrationen Versionserkennung und Reihenfolge absichern.
 
 ### TS-16 – Indexstrategie passt nicht zu allen Suchmetriken
 

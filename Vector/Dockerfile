@@ -1,15 +1,5 @@
-# PostgreSQL 17 + pgvector aus Source bauen (entspricht dem K8s initContainer)
-FROM postgres:17
-
-# pgvector bauen und installieren
-RUN apt-get update \
- && apt-get install -y --no-install-recommends ca-certificates git build-essential postgresql-server-dev-17 \
- && update-ca-certificates \
- && git config --system http.sslCAInfo /etc/ssl/certs/ca-certificates.crt \
- && git clone --depth 1 https://github.com/pgvector/pgvector.git /tmp/pgvector \
- && make -C /tmp/pgvector \
- && make -C /tmp/pgvector install \
- && rm -rf /tmp/pgvector /var/lib/apt/lists/*
+# PostgreSQL 17 mit vorinstalliertem pgvector 0.8.0 auf Debian Trixie
+FROM docker.io/pgvector/pgvector:0.8.0-pg17-trixie@sha256:0f5e199db9a7e94ee03a6e00365a7c670e54a3e5516fc6a56ac3952e26a3b9c1
 
 # Init-Skript wie im ConfigMap: wird beim ersten Start automatisch ausgeführt
 COPY init.sql /docker-entrypoint-initdb.d/init.sql

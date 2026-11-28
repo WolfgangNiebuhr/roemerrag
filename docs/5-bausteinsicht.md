@@ -25,7 +25,7 @@ Das System erschließt Texte zur römischen Geschichte und beantwortet Fragen an
 | Fragesteller über HTTP | Frage, Set, Metrik, Trefferanzahl und optionale Reranking-Parameter | Antwort, Treffer und Laufzeitmetriken |
 | Importierender | UTF-8-Dateien, optional Start-Chunk | gespeicherte Chunks und Embeddings, Zwischenartefakte und Startnummer bei Fehlern |
 | Experimentierender | Fragen, Texte und Trefferlisten | Retrievaldiagnose, Modell- und Reranking-Ergebnisse |
-| Modell- und Paketquellen | Downloads beim Build bzw. Modellbereitstellen | Python-Pakete, pgvector-Quellcode und Modellgewichte |
+| Image-, Modell- und Paketquellen | Downloads beim Build bzw. Modellbereitstellen | Basisimages, Python-Pakete und Modellgewichte |
 
 Die zentrale Außenschnittstelle ist `POST /process` der RAG-API auf Containerport 5600. Der Dokumentimport greift direkt auf Ollama und Vector-API zu. Ollama läuft im beschriebenen Windows-Betrieb als Hintergrund-App außerhalb der Linux-Container.
 

@@ -15,7 +15,27 @@ agent_instructions:
 
 Aus README und docs übernommene Änderungshistorie. Gleichdatierte Einträge folgen der umgekehrten Reihenfolge der dortigen Nachträge. Nicht datierbare Einträge stehen am Ende. Anleitungen: [README](README.md). Fachkonzepte: [Testkonzept](docs/8-1-testkonzept.md) und [Error-Handling](docs/8-3-error-handling.md).
 
+## 2026-11-28
+
+### TS-15 · PostgreSQL und Vector-API im laufenden Pod ausgetauscht
+
+`vectordb` läuft im bestehenden Pod mit Image `649b1453ea95`, PostgreSQL 17.6, pgvector 0.8.0 und dem bisherigen Volume `pgvector-data`. `vector-api` bedient Port 5500 mit Image `928edc882b2a`. Die Vorgänger `vectordb-before-ts15-20261128-085240` und `vector-api-before-actuator-20261127-185135` bleiben gestoppt für einen Rückwechsel verfügbar.
+
+Das Backup `backups/ts15-20261128-085240.dump` wurde mit `pg_restore` vollständig gelesen. Vor und nach dem Wechsel stimmten der SHA-256-Wert des nach ID sortierten Exports aller Spalten von `public.vectors` und die Anzahlen aller vier Embedding-Sets überein. Die API meldete `UP`, dieselben vier Sets und insgesamt 11.243 Chunks. Die API-Zählungen der einzelnen Sets entsprachen der Datenbank.
+
+### TS-15 · Vorgefertigtes PostgreSQL-Image mit pgvector
+
+`Vector/Dockerfile` verwendet das per Manifest-Index-Digest fixierte Image `pgvector/pgvector:0.8.0-pg17-trixie`. Es enthält PostgreSQL 17 und pgvector 0.8.0. Der bisherige Build von pgvector aus dem Git-Repository entfällt.
+
+Die Standard-Podman-Integration bestand mit 9 Tests im isolierten Teststack. Die 10 optionalen Tests für RAG, Reranker und Ollama blieben deaktiviert. Der laufende Datenbankcontainer und sein Volume wurden nicht verändert.
+
 ## 2026-11-27
+
+### Actuator-Schnittstelle im laufenden Podman-Stack geprüft
+
+Die drei APIs wurden mit ihren bisherigen Startparametern aus den neu gebauten Images `928edc882b2a` (Vector), `2efedb0bb2d2` (RAG) und `1b1004ab82da` (Reranker) neu gestartet. `/actuator/health` lieferte überall HTTP 200 mit `UP` und UTC-Buildzeitpunkt, `/actuator/info` überall HTTP 200. Der Reranker meldete `cross-encoder/ms-marco-MiniLM-L6-v2` als aktives Modell.
+
+Die Vector-API lieferte `embedding1`, `embedding2`, `snowflake-arctic-embed2-v2` und `snowflake-arctic-embed-v1`. Eine lesende PostgreSQL-Abfrage über 11.243 Chunks ergab dieselben vier IDs in derselben Reihenfolge. Der PostgreSQL-Container blieb in Betrieb. Die drei bisherigen API-Container stehen gestoppt unter ihren Namen mit dem Zusatz `-before-actuator-20261127-185135` für den Rückwechsel bereit.
 
 ### Vector-API meldet vorhandene Embedding-Set-IDs
 
